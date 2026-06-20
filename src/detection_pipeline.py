@@ -19,7 +19,8 @@ Key features:
 """
 
 from __future__ import annotations
-
+import os
+os.environ['MPLBACKEND'] = 'Agg'
 import json
 import logging
 import re
@@ -27,13 +28,13 @@ import time
 import traceback
 import io
 import base64
+import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont
-import os
-os.environ['MPLBACKEND'] = 'Agg'
+
 import matplotlib.pyplot as plt
 from openai import OpenAI
 from json_repair import repair_json
