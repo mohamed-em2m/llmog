@@ -28,7 +28,6 @@ import time
 import traceback
 import io
 import base64
-import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional

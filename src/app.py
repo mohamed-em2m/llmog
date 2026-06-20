@@ -16,6 +16,8 @@ Run with: python app.py
 """
 
 from __future__ import annotations
+import os
+os.environ['MPLBACKEND'] = 'Agg'
 
 import json
 import logging
