@@ -1,4 +1,25 @@
+"""
+LLM Object Detection Console.
+
+Styled with the dark "terminal" Gradio console look (console_theme.py +
+console.css + console.js) — see references/patterns.md in the
+gradio-api-console skill for the rationale behind each pattern reused here:
+
+  - console_theme.py / console.css   -> shared dark GitHub-style look
+  - panel_header() + .output-panel   -> output panel anatomy (header with
+    copy button, stats bar, scrollable body, hidden raw textbox for JS)
+  - .section-label                   -> lightweight uppercase section dividers
+  - copyOut() (console.js)           -> client-side copy-to-clipboard
+
+This app drives a local process (a llama-server instance) and a multi-round
+detection pipeline rather than a stateless REST API, so the skill's
+bearer-token-auth and history/pagination patterns don't apply here and were
+intentionally left out — see the accompanying note for what was/wasn't
+adopted from the skill.
+"""
+
 import sys
+import os
 import time
 import json
 import queue
@@ -9,11 +30,14 @@ import io
 import logging
 import traceback
 from pathlib import Path
-from typing import Generator, Tuple, List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 
 import gradio as gr
 from PIL import Image
 from openai import OpenAI
+
+# console_theme.py / console.css / console.js live alongside this file.
+from console_theme import theme
 
 # Ensure local imports resolve
 src_dir = Path(__file__).parent
@@ -28,6 +52,11 @@ from detection_pipeline import (
     DEFAULT_JUDGE_TEMPLATE
 )
 from llama_server_manager import LlamaServerManager
+
+with open(os.path.join(os.path.dirname(__file__), 'console.css'), encoding='utf-8') as f:
+    custom_css = f.read()
+with open(os.path.join(os.path.dirname(__file__), 'console.js'), encoding='utf-8') as f:
+    CONSOLE_JS = f.read()
 
 # ---------------------------------------------------------------------------
 # Global State & Caching
@@ -50,72 +79,26 @@ MODEL_PRESETS = [
     "custom",
 ]
 
-CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+# Extra rules on top of console.css: a couple of status-badge variants and
+# a score badge that the base stylesheet doesn't define, since this app's
+# domain (server lifecycle, detection score) doesn't exist in the API
+# console the base CSS was extracted from. Kept as a small appended block
+# rather than forking console.css, per "Asset loading" in patterns.md.
+EXTRA_CSS = """
+.status-badge { display:inline-block; padding:0.3rem 0.9rem; border-radius:20px;
+    font-family:'JetBrains Mono',monospace; font-weight:600; font-size:0.7rem;
+    text-transform:uppercase; letter-spacing:0.06em; }
+.badge-running { background:rgba(74,222,128,0.12); color:#4ade80; border:1px solid rgba(74,222,128,0.3); }
+.badge-stopped { background:rgba(125,133,144,0.12); color:#7d8590; border:1px solid rgba(125,133,144,0.3); }
+.badge-starting { background:rgba(251,191,36,0.12); color:#fbbf24; border:1px solid rgba(251,191,36,0.3); }
+.badge-error { background:rgba(248,113,113,0.12); color:#f87171; border:1px solid rgba(248,113,113,0.3); }
 
-body, .gradio-container { font-family: 'Outfit', sans-serif !important; }
-h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif !important; font-weight: 700; }
-.code-container pre, .code-container code { font-family: 'Fira Code', monospace !important; }
-
-.header-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 24px;
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
-    border-radius: 12px; margin-bottom: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-}
-.header-bar h1 { margin: 0 !important; font-size: 1.5rem !important; }
-
-.btn-run {
-    background: linear-gradient(135deg, #10B981 0%, #059669 100%) !important;
-    color: white !important; border: none !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2) !important;
-    font-weight: 600 !important;
-}
-.btn-run:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4) !important; }
-
-.btn-stop {
-    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%) !important;
-    color: white !important; border: none !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2) !important;
-    font-weight: 600 !important;
-}
-.btn-stop:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4) !important; }
-
-.btn-server {
-    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
-    color: white !important; border: none !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2) !important;
-    font-weight: 600 !important;
-}
-.btn-server:hover { transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4) !important; }
-
-.btn-server-stop {
-    background: linear-gradient(135deg, #6B7280 0%, #4B5563 100%) !important;
-    color: white !important; border: none !important;
-    font-weight: 600 !important;
-}
-.btn-server-stop:hover { transform: translateY(-2px) !important; }
-
-.status-badge {
-    display: inline-block; padding: 6px 16px; border-radius: 20px;
-    font-weight: 600; text-align: center; font-size: 14px;
-}
-.badge-running { background-color: rgba(16, 185, 129, 0.15) !important; color: #10B981 !important; border: 1px solid rgba(16, 185, 129, 0.3); }
-.badge-stopped { background-color: rgba(107, 114, 128, 0.15) !important; color: #9CA3AF !important; border: 1px solid rgba(107, 114, 128, 0.3); }
-.badge-starting { background-color: rgba(245, 158, 11, 0.15) !important; color: #F59E0B !important; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badge-error { background-color: rgba(239, 68, 68, 0.15) !important; color: #EF4444 !important; border: 1px solid rgba(239, 68, 68, 0.3); }
-
-.score-badge {
-    display: inline-block; padding: 8px 20px; border-radius: 12px;
-    background: rgba(59, 130, 246, 0.15); color: #3B82F6;
-    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.2rem;
-    border: 1px solid rgba(59, 130, 246, 0.3);
-}
+.score-badge { display:inline-block; padding:0.4rem 1.1rem; border-radius:8px;
+    background:rgba(56,189,248,0.1); color:#38bdf8; border:1px solid rgba(56,189,248,0.3);
+    font-family:'JetBrains Mono',monospace; font-weight:600; font-size:0.85rem; }
 """
+custom_css = custom_css + EXTRA_CSS
+
 
 class PipelineCancelledException(Exception):
     """Raised when a user cancels the pipeline mid-run."""
@@ -139,6 +122,22 @@ def handle_preset_change(preset: str) -> gr.update:
     if preset == "custom":
         return gr.update(value="", visible=True)
     return gr.update(value=preset, visible=True)
+
+
+# Reused for every output panel (Server Logs, Pipeline Logs). `raw_ta_id`
+# must match the elem_id given to the hidden Textbox below it — see
+# references/patterns.md "Output panel anatomy" / "Common pitfalls".
+def panel_header(title: str, raw_ta_id: str) -> str:
+    return f"""
+<div class="out-header">
+  <div class="out-header-left">
+    <span class="out-header-dot"></span>
+    <span class="out-header-title">{title}</span>
+  </div>
+  <div class="out-header-right">
+    <button class="copy-btn" onclick="copyOut('{raw_ta_id}')">&#9096; Copy Raw Text</button>
+  </div>
+</div>"""
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +289,7 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
         yield "Error: Please list at least one category.", 0, None, "", gr.update(choices=[]), ""
         return
 
-    image_paths: List[Path] = []
+    image_paths: list[Path] = []
     for f in image_files:
         if isinstance(f, str):
             image_paths.append(Path(f))
@@ -486,7 +485,7 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
                 break
 
         except queue.Empty:
-            if not threading.active_count() > 1: # Simple check if worker died
+            if not threading.active_count() > 1:  # Simple check if worker died
                 break
             yield (f"Processing batch ({current_idx}/{total_imgs})...",
                    int(((current_idx - 1) / total_imgs) * 90),
@@ -509,10 +508,10 @@ def cancel_pipeline():
 def on_explorer_image_change(selected_image, batch_id):
     with BATCH_CACHE_LOCK:
         batch_results = BATCH_CACHE.get(batch_id, {})
-        
+
     if not batch_results or not selected_image or selected_image not in batch_results:
         return gr.update(choices=[], value=None)
-    
+
     rounds = batch_results[selected_image].get("rounds", [])
     choices = ["Final Best"] + [str(r["round"]) for r in rounds]
     return gr.update(choices=choices, value="Final Best")
@@ -538,7 +537,7 @@ def on_explorer_round_change(selected_image, selected_round, batch_id, show_grid
                 best_feedback = r["feedback"]
                 best_raw = r["raw_text"]
                 best_err = r["parse_error"]
-        
+
         score_text = f'<span class="score-badge">Best Score: {best_score}/10 (Round {best_round_num})</span>' if best_score >= 0 else '<span class="score-badge">Score: -/10</span>'
         return (src_img, best_annotated, score_text, best_feedback,
                 best_raw, best_err or "None",
@@ -573,24 +572,30 @@ def toggle_run_btn(is_running):
 # ---------------------------------------------------------------------------
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(css=CUSTOM_CSS, title="LLM Object Detection Console") as app:
+    with gr.Blocks(theme=theme, css=custom_css, title="LLM Object Detection Console") as app:
+        gr.HTML(CONSOLE_JS)
 
         # --- Header ---
-        with gr.Row(elem_classes="header-bar"):
-            gr.Markdown("## 🔍 LLM Object Detection Console")
-            server_status_badge = gr.HTML(
-                value='<span class="status-badge badge-stopped">STOPPED</span>',
-            )
+        gr.HTML("""
+        <div class="app-header" style="display:flex; align-items:center; justify-content:space-between;">
+            <div>
+                <h1><span>&#128269;</span> LLM Object Detection Console</h1>
+                <p>// vision-LLM detector/judge pipeline over a local or external endpoint</p>
+            </div>
+        </div>""")
+        server_status_badge = gr.HTML(
+            value='<span class="status-badge badge-stopped">STOPPED</span>',
+        )
 
         batch_id_state = gr.State("")
 
         with gr.Tabs():
 
             # ============ TAB 1: SERVER ============
-            with gr.TabItem("🦙 Llama Server"):
-                gr.Markdown("### 🚀 Model Server Configuration")
-                with gr.Row():
-                    with gr.Column(scale=1):
+            with gr.TabItem("\U0001F999 Llama Server"):
+                gr.HTML('<p class="section-label">Model Server Configuration</p>')
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=2):
                         server_preset = gr.Dropdown(
                             label="Recommended Model Presets",
                             choices=MODEL_PRESETS,
@@ -619,17 +624,22 @@ def build_app() -> gr.Blocks:
                             )
 
                         with gr.Row():
-                            start_server_btn = gr.Button("▶️ Start Server", elem_classes="btn-server")
-                            stop_server_btn = gr.Button("⏹️ Stop Server", elem_classes="btn-server-stop", size="sm")
+                            start_server_btn = gr.Button("\u25b6  Start Server", variant="primary")
+                            stop_server_btn = gr.Button("\u23f9  Stop Server", variant="secondary", size="sm")
 
-                    with gr.Column(scale=2):
-                        gr.Markdown("#### 🖥️ Server Output Console")
-                        server_logs_viewer = gr.Textbox(
-                            label="Live Logs",
-                            lines=20, max_lines=30,
-                            interactive=False,
-                            elem_classes="code-container",
-                        )
+                    with gr.Column(scale=3):
+                        gr.HTML('<p class="section-label">Server Output Console</p>')
+                        gr.HTML('<div class="output-panel" id="server-log-panel">'
+                                + panel_header('Live Logs', 'server-log-ta'))
+                        with gr.Group(elem_classes=['out-md-wrap']):
+                            server_logs_viewer = gr.Textbox(
+                                lines=20, max_lines=30,
+                                interactive=False,
+                                show_label=False,
+                                container=False,
+                                elem_id="server-log-ta",
+                            )
+                        gr.HTML('</div>')
 
                 start_server_btn.click(
                     start_server_wrapper,
@@ -646,11 +656,11 @@ def build_app() -> gr.Blocks:
                          outputs=[server_logs_viewer, server_status_badge])
 
             # ============ TAB 2: BATCH SANDBOX ============
-            with gr.TabItem("🧪 Batch Sandbox"):
-                with gr.Row():
+            with gr.TabItem("\U0001F9EA Batch Sandbox"):
+                with gr.Row(equal_height=False):
                     # Left column — config
-                    with gr.Column(scale=1, min_width=400):
-                        gr.Markdown("### ⚙️ Configuration")
+                    with gr.Column(scale=2, min_width=400):
+                        gr.HTML('<p class="section-label">Configuration</p>')
 
                         input_images = gr.File(
                             file_count="multiple",
@@ -695,12 +705,12 @@ def build_app() -> gr.Blocks:
                             ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
 
                         with gr.Row():
-                            run_btn = gr.Button("🚀 Run Batch Pipeline", elem_classes="btn-run", interactive=True)
-                            stop_run_btn = gr.Button("⏹️ Cancel", elem_classes="btn-stop", size="sm", interactive=False)
+                            run_btn = gr.Button("\u25b6  Run Batch Pipeline", variant="primary", interactive=True)
+                            stop_run_btn = gr.Button("\u23f9  Cancel", variant="secondary", size="sm", interactive=False)
 
                     # Right column — results
-                    with gr.Column(scale=2, min_width=600):
-                        gr.Markdown("### 📊 Results")
+                    with gr.Column(scale=3, min_width=600):
+                        gr.HTML('<p class="section-label">Results</p>')
 
                         with gr.Group():
                             pipeline_status = gr.Markdown("**Status: Idle**")
@@ -710,12 +720,12 @@ def build_app() -> gr.Blocks:
                                 interactive=False,
                             )
                         download_results_box = gr.File(
-                            label="📥 Download Processed Results (.zip)",
+                            label="\U0001F4E5 Download Processed Results (.zip)",
                             interactive=False,
                         )
 
                         with gr.Tabs():
-                            with gr.TabItem("🖼️ Batch Explorer"):
+                            with gr.TabItem("\U0001F5BC\uFE0F Batch Explorer"):
                                 with gr.Row():
                                     explorer_image_select = gr.Dropdown(
                                         label="Select Image", choices=[], interactive=True, scale=2)
@@ -745,25 +755,34 @@ def build_app() -> gr.Blocks:
                                         label="Raw Detector Text Response",
                                         lines=6, interactive=False)
 
-                            with gr.TabItem("📄 Detections JSON"):
-                                detections_json_box = gr.Code(
-                                    label="Detections (JSON List)",
-                                    language="json",
-                                    elem_classes="code-container",
-                                )
+                            with gr.TabItem("\U0001F4C4 Detections JSON"):
+                                gr.HTML('<div class="json-panel">'
+                                        '<div class="json-panel-hdr"><span class="dot-amber"></span>'
+                                        'Detections (JSON List)</div>')
+                                with gr.Group(elem_classes=['json-panel-body']):
+                                    detections_json_box = gr.Code(
+                                        language="json",
+                                        show_label=False,
+                                    )
+                                gr.HTML('</div>')
 
-                            with gr.TabItem("📋 Pipeline Logs"):
-                                pipeline_logs_viewer = gr.Textbox(
-                                    label="Execution Logs",
-                                    lines=20, max_lines=30,
-                                    interactive=False,
-                                    elem_classes="code-container",
-                                )
+                            with gr.TabItem("\U0001F4CB Pipeline Logs"):
+                                gr.HTML('<div class="output-panel" id="pipeline-log-panel">'
+                                        + panel_header('Execution Logs', 'pipeline-log-ta'))
+                                with gr.Group(elem_classes=['out-md-wrap']):
+                                    pipeline_logs_viewer = gr.Textbox(
+                                        lines=20, max_lines=30,
+                                        interactive=False,
+                                        show_label=False,
+                                        container=False,
+                                        elem_id="pipeline-log-ta",
+                                    )
+                                gr.HTML('</div>')
 
             # ============ TAB 3: PROMPTS ============
-            with gr.TabItem("✍️ Prompts"):
+            with gr.TabItem("\u270D\uFE0F Prompts"):
+                gr.HTML('<p class="section-label">Prompt Engineering</p>')
                 gr.Markdown(
-                    "### ✍️ Prompt Engineering\n"
                     "Modify the custom instruction templates fed to the Detector and Judge agents."
                 )
                 customize_prompts_chk = gr.Checkbox(
@@ -773,12 +792,10 @@ def build_app() -> gr.Blocks:
                     custom_det_prompt = gr.Textbox(
                         label="Detector Prompt Template",
                         lines=12, value=DEFAULT_DETECTOR_TEMPLATE,
-                        elem_classes="code-container",
                     )
                     custom_jdg_prompt = gr.Textbox(
                         label="Judge Prompt Template",
                         lines=12, value=DEFAULT_JUDGE_TEMPLATE,
-                        elem_classes="code-container",
                     )
 
                 customize_prompts_chk.change(
@@ -812,7 +829,7 @@ def build_app() -> gr.Blocks:
                 download_results_box, batch_id_state,
                 explorer_image_select, pipeline_logs_viewer,
             ],
-            concurrency_limit=1 # Prevent overlapping batch runs
+            concurrency_limit=1  # Prevent overlapping batch runs
         ).then(
             # 3. Re-enable Run, Disable Stop when pipeline finishes/errors
             fn=lambda: toggle_run_btn(is_running=False),
@@ -844,7 +861,7 @@ def build_app() -> gr.Blocks:
                      round_raw_response_display, round_parse_error_display,
                      detections_json_box],
         )
-        
+
         show_grid_chk.change(
             on_explorer_round_change,
             inputs=[explorer_image_select, explorer_round_select,

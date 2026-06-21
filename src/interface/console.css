@@ -1,0 +1,169 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Gradio API Console — dark "terminal" theme
+   Drop this whole file into a Python triple-quoted string and pass it as
+   the `css=` argument of gr.Blocks(). Pairs with assets/console_theme.py
+   and assets/console.js. Do not hand-edit colors piecemeal — change the
+   palette in one place (see the comment block below) and everything
+   stays consistent.
+   ════════════════════════════════════════════════════════════════════════
+   PALETTE (GitHub-dark inspired):
+     bg-deepest   #080d14   page background
+     bg-panel     #0d1117   card / block / input background
+     bg-raised    #161b22   header bars, table stripes, hover states
+     border       #21262d   default borders
+     border-hi    #30363d   button borders, hover borders
+     text-dim     #7d8590   labels, muted text
+     text-body    #c9d1d9   body text
+     text-bright  #e6edf3   headings
+     accent       #38bdf8   primary accent (sky) — links, focus rings, dot 1
+     accent-2     #818cf8   secondary accent (indigo) — step 2 badges, dot 2
+     accent-deep  #0ea5e9   primary button fill
+     success      #4ade80   ok states, copied confirmation
+     error        #f87171   error states
+     warning      #fbbf24   "amber dot" on JSON panels (signals raw/debug data)
+
+   FONTS: 'JetBrains Mono' for anything code-like, labels, buttons, headers.
+          'Space Grotesk' for body prose inside markdown output panels.
+   ════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+*, *::before, *::after { box-sizing: border-box; }
+body, .gradio-container { background: #080d14 !important; font-family: 'Space Grotesk', sans-serif !important; }
+
+/* ── Header ── */
+.app-header { padding: 1.75rem 1.5rem 1.25rem; border-bottom: 1px solid #21262d; position: relative; overflow: hidden; }
+.app-header::before { content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background: linear-gradient(90deg, transparent, #38bdf8 40%, #818cf8 70%, transparent); }
+.app-header h1 { font-family:'JetBrains Mono',monospace !important; font-size:1.5rem !important;
+    font-weight:600 !important; color:#e6edf3 !important; letter-spacing:-0.02em !important; margin:0 0 0.2rem !important; }
+.app-header h1 span { color:#38bdf8; }
+.app-header p { color:#7d8590 !important; font-size:0.78rem !important; margin:0 !important;
+    font-family:'JetBrains Mono',monospace !important; }
+
+/* ── Tabs ── */
+.tabs > .tab-nav { background:#0d1117 !important; border-bottom:1px solid #21262d !important; padding:0 1rem !important; gap:0 !important; }
+.tabs > .tab-nav button { font-family:'JetBrains Mono',monospace !important; font-size:0.72rem !important; font-weight:500 !important;
+    color:#7d8590 !important; padding:0.7rem 1.2rem !important; border-radius:0 !important; border:none !important;
+    border-bottom:2px solid transparent !important; transition:all 0.2s !important; text-transform:uppercase !important;
+    letter-spacing:0.06em !important; background:transparent !important; }
+.tabs > .tab-nav button:hover { color:#c9d1d9 !important; }
+.tabs > .tab-nav button.selected { color:#38bdf8 !important; border-bottom-color:#38bdf8 !important; background:transparent !important; }
+.tabitem { padding:1.25rem !important; }
+
+/* ── Section labels (small uppercase headers with a trailing rule) ── */
+.section-label { font-family:'JetBrains Mono',monospace !important; font-size:0.67rem !important; font-weight:600 !important;
+    letter-spacing:0.12em !important; text-transform:uppercase !important; color:#38bdf8 !important;
+    padding:0.4rem 0 0.6rem !important; display:flex !important; align-items:center !important; gap:0.6rem !important; }
+.section-label::after { content:''; flex:1; height:1px; background:#21262d; }
+
+/* ── Inputs ── */
+input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-family:'JetBrains Mono',monospace !important; font-size:0.8rem !important;
+    background:#0d1117 !important; border:1px solid #21262d !important; color:#c9d1d9 !important;
+    border-radius:6px !important; transition:border-color 0.15s, box-shadow 0.15s !important; }
+input:not([type="checkbox"]):not([type="radio"]):focus, textarea:focus { border-color:#38bdf8 !important; box-shadow:0 0 0 3px rgba(56,189,248,0.08) !important; outline:none !important; }
+label span, .block-title, label > span { font-family:'JetBrains Mono',monospace !important; font-size:0.7rem !important;
+    font-weight:500 !important; color:#7d8590 !important; text-transform:uppercase !important; letter-spacing:0.06em !important; }
+
+/* ── Buttons ── */
+button.primary { font-family:'JetBrains Mono',monospace !important; font-size:0.76rem !important; font-weight:600 !important;
+    letter-spacing:0.04em !important; border-radius:6px !important; padding:0.6rem 1.4rem !important;
+    background:#0ea5e9 !important; color:#080d14 !important; border:none !important; cursor:pointer !important;
+    transition:all 0.2s !important; text-transform:uppercase !important; box-shadow:0 0 14px rgba(14,165,233,0.2) !important; }
+button.primary:hover { background:#38bdf8 !important; box-shadow:0 0 22px rgba(56,189,248,0.35) !important; transform:translateY(-1px) !important; }
+button.secondary { font-family:'JetBrains Mono',monospace !important; font-size:0.72rem !important; font-weight:500 !important;
+    border-radius:6px !important; padding:0.5rem 1rem !important; background:#161b22 !important; color:#c9d1d9 !important;
+    border:1px solid #30363d !important; cursor:pointer !important; transition:all 0.2s !important;
+    text-transform:uppercase !important; letter-spacing:0.04em !important; }
+button.secondary:hover { background:#21262d !important; border-color:#38bdf8 !important; color:#38bdf8 !important; }
+
+/* ══════════════════════════════════════════════
+   OUTPUT PANELS — see references/patterns.md "Output panel anatomy"
+   for the Python that builds the structure these classes style.
+══════════════════════════════════════════════ */
+.output-panel { background: #0d1117; border: 1px solid #21262d; border-radius: 10px; overflow: hidden; margin-top: 1.25rem; }
+
+.out-header { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.9rem; background: #161b22; border-bottom: 1px solid #21262d; }
+.out-header-left { display:flex; align-items:center; gap:0.5rem; }
+.out-header-dot { width:6px; height:6px; border-radius:50%; background:#38bdf8; box-shadow:0 0 6px #38bdf8; flex-shrink:0; }
+.out-header-title { font-family:'JetBrains Mono',monospace; font-size:0.67rem; font-weight:600;
+    color:#7d8590; text-transform:uppercase; letter-spacing:0.1em; }
+.out-header-right { display:flex; align-items:center; gap:0.4rem; }
+.copy-btn { font-family:'JetBrains Mono',monospace; font-size:0.63rem; font-weight:500;
+    padding:0.18rem 0.6rem; border-radius:4px; cursor:pointer; transition:all 0.15s; text-transform:uppercase; letter-spacing:0.04em;
+    background:transparent; color:#7d8590; border:1px solid #30363d; }
+.copy-btn:hover { color:#38bdf8; border-color:#38bdf8; }
+.copy-btn.copied { color:#4ade80 !important; border-color:#4ade80 !important; }
+
+/* Thin status line directly under the header: ✓ OK · word/char counts · timing */
+.stats-bar { font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:#7d8590;
+    padding:0.3rem 1rem; background:#0d1117; border-bottom:1px solid #21262d;
+    min-height:1.7rem; display:flex; align-items:center; gap:0.35rem; }
+.stats-bar > div { padding:0 !important; margin:0 !important; }
+.stat-ok { color:#4ade80; font-weight:600; }
+
+/* Fixed-height scrollable wrapper around a gr.Markdown output */
+.out-md-wrap { max-height: 280px !important; overflow-y: auto !important;
+    scrollbar-width: thin; scrollbar-color: #30363d transparent; position: relative; }
+.out-md-wrap::-webkit-scrollbar { width: 6px; }
+.out-md-wrap::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+.out-md-wrap::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+.out-md-wrap > div.block { background:transparent !important; border:none !important; padding:0 !important; margin:0 !important; box-shadow:none !important; border-radius:0 !important; }
+.out-md-wrap > div.block > div { padding:0 !important; }
+.out-md-wrap .prose { padding:1.1rem 1.4rem; color:#c9d1d9; font-family:'Space Grotesk',sans-serif;
+    font-size:0.88rem; line-height:1.78; min-height:140px; max-height: none !important; overflow-y: visible !important; }
+
+/* Markdown prose rules inside output panels */
+.out-md-wrap .prose h1,.out-md-wrap .prose h2,.out-md-wrap .prose h3,.out-md-wrap .prose h4 {
+    font-family:'Space Grotesk',sans-serif; color:#e6edf3; border-bottom:1px solid #21262d; padding-bottom:0.3rem; margin:1rem 0 0.65rem; }
+.out-md-wrap .prose h1 { font-size:1.2rem; }
+.out-md-wrap .prose h2 { font-size:1rem; color:#38bdf8; }
+.out-md-wrap .prose h3 { font-size:0.9rem; color:#818cf8; border:none; }
+.out-md-wrap .prose a { color:#38bdf8; }
+.out-md-wrap .prose code { background:#161b22; color:#38bdf8; padding:0.12rem 0.38rem; border-radius:4px;
+    font-family:'JetBrains Mono',monospace; font-size:0.8em; border:1px solid #21262d; }
+.out-md-wrap .prose pre { background:#161b22; border:1px solid #21262d; border-left:3px solid #38bdf8;
+    padding:0.85rem 1rem; border-radius:6px; overflow-x:auto; }
+.out-md-wrap .prose pre code { background:transparent; border:none; color:#e6edf3; padding:0; }
+.out-md-wrap .prose blockquote { border-left:3px solid #38bdf8; background:#161b22;
+    padding:0.45rem 0.9rem; border-radius:0 6px 6px 0; color:#7d8590; margin:0.75rem 0; }
+.out-md-wrap .prose table { border-collapse:collapse; width:100%; margin:0.7rem 0; }
+.out-md-wrap .prose th { background:#161b22; color:#38bdf8; font-size:0.7rem; text-transform:uppercase;
+    letter-spacing:0.06em; padding:0.4rem 0.65rem; border:1px solid #21262d; }
+.out-md-wrap .prose td { padding:0.35rem 0.65rem; border:1px solid #21262d; }
+.out-md-wrap .prose tr:nth-child(even) { background:#161b22; }
+.out-md-wrap .prose ul li::marker { color:#38bdf8; }
+.out-md-wrap .prose ol li::marker { color:#818cf8; }
+
+/* Numbered step badges for multi-stage outputs (e.g. "1 Extract" → "2 Analyse") */
+.step-badge { display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family:'JetBrains Mono',monospace; font-size:0.65rem; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; }
+.step-badge-num { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+    font-size:0.6rem; font-weight:700; flex-shrink:0; }
+.step-badge-1 .step-badge-num { background:#38bdf8; color:#080d14; box-shadow:0 0 6px #38bdf8; }
+.step-badge-2 .step-badge-num { background:#818cf8; color:#080d14; box-shadow:0 0 6px #818cf8; }
+.step-badge-1 { color:#38bdf8; }
+.step-badge-2 { color:#818cf8; }
+
+.panel-download-row { display: flex; align-items: center; justify-content: flex-end;
+    padding: 0.4rem 0.9rem; background: #161b22; border-top: 1px solid #21262d; gap: 0.5rem; }
+.panel-dl-label { font-family:'JetBrains Mono',monospace; font-size:0.62rem; color:#3d444d; text-transform:uppercase; letter-spacing:0.06em; flex:1; }
+
+/* Raw textbox that backs the copy/download JS — never shown to the user */
+.hidden-raw { display: none !important; }
+
+/* ── JSON / debug panel (amber dot = "this is raw response data, not the rendered result") ── */
+.json-panel { background:#0d1117; border:1px solid #21262d; border-radius:10px; overflow:hidden; margin-top:0.75rem; }
+.json-panel-hdr { padding:0.42rem 0.9rem; background:#161b22; border-bottom:1px solid #21262d;
+    font-family:'JetBrains Mono',monospace; font-size:0.65rem; font-weight:600; color:#7d8590;
+    text-transform:uppercase; letter-spacing:0.1em; display:flex; align-items:center; gap:0.4rem; }
+.json-panel-hdr .dot-amber { width:6px; height:6px; border-radius:50%; background:#fbbf24; box-shadow:0 0 6px #fbbf24; }
+.json-panel-body > div.block { background:transparent !important; border:none !important; padding:0.4rem !important; margin:0 !important; box-shadow:none !important; }
+
+/* ── Misc ── */
+textarea { resize:vertical !important; scrollbar-width:thin !important; scrollbar-color:#21262d transparent !important; }
+input[type="checkbox"] { accent-color:#38bdf8 !important; }
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-thumb { background:#30363d; border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:#38bdf8; }
+.gr-accordion summary { font-family:'JetBrains Mono',monospace !important; font-size:0.72rem !important;
+    color:#7d8590 !important; text-transform:uppercase !important; letter-spacing:0.06em !important; }

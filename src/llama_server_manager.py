@@ -52,6 +52,8 @@ class LlamaServerManager:
 
         self.process = None
         self.server_ready_event = threading.Event()
+        self.logs = []
+        self.log_lock = threading.Lock()
         
         # Resolve connection URL (use localhost if binding to all interfaces)
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
@@ -81,12 +83,16 @@ class LlamaServerManager:
             "--temp", str(self.temp),
             "--top-p", str(self.top_p),
             "--top-k", str(self.top_k),
-            "--spec-type", self.spec_type,
-            "--spec-draft-n-max", str(self.spec_draft_n_max),
             "-fa", self.fa,
             "--chat-template-kwargs", f'{{"enable_thinking": {str(self.enable_thinking).lower()}}}',
             "--jinja",
         ]
+
+        # Dynamically append speculative drafting options
+        if self.spec_type and self.spec_type.lower() != "none":
+            cmd.extend(["--spec-type", self.spec_type])
+            if self.spec_draft_n_max is not None:
+                cmd.extend(["--spec-draft-n-max", str(self.spec_draft_n_max)])
 
         # Dynamically append optional configurations if provided
         if self.batch_size is not None:
@@ -97,6 +103,8 @@ class LlamaServerManager:
             cmd.extend(["--cache-type-k", self.kv_cache_type, "--cache-type-v", self.kv_cache_type])
 
         self.server_ready_event.clear()
+        with self.log_lock:
+            self.logs = []
 
         # Start the subprocess
         self.process = subprocess.Popen(
@@ -109,12 +117,21 @@ class LlamaServerManager:
         # Background reader thread to monitor server startup output
         def monitor_output():
             for line in self.process.stdout:
+                with self.log_lock:
+                    self.logs.append(line)
+                    if len(self.logs) > 2000:
+                        self.logs.pop(0)
                 print(line, end="", flush=True)
                 if "HTTP server listening" in line or "server is listening" in line.lower():
                     self.server_ready_event.set()
 
         monitor_thread = threading.Thread(target=monitor_output, daemon=True)
         monitor_thread.start()
+
+    def get_logs(self) -> str:
+        """Return all captured logs so far as a single string."""
+        with self.log_lock:
+            return "".join(self.logs)
 
     # ─── Wait for server ──────────────────────────────────────────────────────
     def wait_for_server(self, timeout: int = 180):
@@ -216,6 +233,19 @@ class LlamaServerManager:
 
         # 3. Trigger warm up
         self.warmup_model()
+
+    def is_healthy(self) -> bool:
+        """Check if the llama-server is running and responsive."""
+        if self.process is None or self.process.poll() is not None:
+            return False
+        try:
+            r = requests.get(f"{self.server_url}/health", timeout=1)
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("status") == "ok"
+        except Exception:
+            pass
+        return False
 
     # ─── Context Manager ──────────────────────────────────────────────────────
     def __enter__(self):
