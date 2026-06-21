@@ -845,7 +845,7 @@ def build_app() -> gr.Blocks:
 
                         with gr.Accordion("Pipeline Parameters", open=False):
                             rounds_slider = gr.Slider(label="Max Rounds",
-                                                      minimum=1, maximum=5, step=1, value=1)
+                                                      minimum=1, maximum=5, step=1, value=2)
                             score_threshold_slider = gr.Slider(
                                 label="Stop Score Threshold (0-10)",
                                 minimum=0, maximum=10, step=1, value=8)
