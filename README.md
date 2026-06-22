@@ -31,6 +31,7 @@ This project is managed with [uv](https://github.com/astral-sh/uv), a fast Pytho
 
 2. **Install dependencies**:
    ```bash
+   ./scripts/install_llama_cpp.sh
    uv sync
    ```
 
