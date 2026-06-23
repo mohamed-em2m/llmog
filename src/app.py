@@ -546,7 +546,6 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
                 api_retries=3,
                 detector_temperature=detector_temp, detector_top_p=0.95,
                 judge_temperature=judge_temp,
-                logger=batch_logger,
             )
 
             best, _history = pipeline.run(

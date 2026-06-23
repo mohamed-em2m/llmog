@@ -14,6 +14,7 @@ dependencies = [
     "wrapt>=2.2.2",
     "httpx>=0.28.1",
     "numpy>=2.4.6",
+    "streamlit>=1.58.0",
 ]
 
 
