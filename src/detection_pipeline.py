@@ -41,6 +41,7 @@ from json_repair import repair_json
 
 from image_preprocessing import (
     preprocess_resolution,
+    preprocess_custom_resize,
     preprocess_contrast,
     preprocess_noise_sharpness,
     preprocess_color_space,
@@ -681,13 +682,23 @@ attempt that the reviewer did not flag as wrong.
         base_image_raw = preprocess_color_space(base_image_raw, white_balance=self.preprocessing_config.get("white_balance", False))
         orig_w, orig_h = base_image_raw.size
 
-        # 2. Apply resolution scaling and padding
-        preprocessed_image, prep_info = preprocess_resolution(
-            base_image_raw,
-            enabled=self.preprocessing_config.get("resolution_enabled", False),
-            target_short_edge=self.preprocessing_config.get("target_short_edge", 1024),
-            pad_to_square=self.preprocessing_config.get("pad_to_square", False)
-        )
+        # 2. Apply custom resize OR resolution scaling and padding
+        use_custom_resize = self.preprocessing_config.get("custom_resize", False)
+        if use_custom_resize:
+            custom_width = self.preprocessing_config.get("custom_resize_width", 1024)
+            custom_height = self.preprocessing_config.get("custom_resize_height", 1024)
+            preprocessed_image, prep_info = preprocess_custom_resize(
+                base_image_raw,
+                target_width=custom_width,
+                target_height=custom_height
+            )
+        else:
+            preprocessed_image, prep_info = preprocess_resolution(
+                base_image_raw,
+                enabled=self.preprocessing_config.get("resolution_enabled", False),
+                target_short_edge=self.preprocessing_config.get("target_short_edge", 1024),
+                pad_to_square=self.preprocessing_config.get("pad_to_square", False)
+            )
         prep_w, prep_h = preprocessed_image.size
 
         # 3. Apply contrast enhancement

@@ -228,7 +228,8 @@ def _render_progress_bar(pct: int, status: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 def start_server_wrapper(model, port, host, enable_thinking, enable_mtp,
-                         ctx_size, gpu_layers, kv_cache_type):
+                         ctx_size, gpu_layers, kv_cache_type,
+                         image_min_tokens, image_max_tokens):
     global server_manager
 
     with server_lock:
@@ -260,6 +261,8 @@ def start_server_wrapper(model, port, host, enable_thinking, enable_mtp,
             enable_thinking=enable_thinking,
             batch_size=1024, ubatch_size=512,
             kv_cache_type=kv_cache_type,
+            image_min_tokens=int(image_min_tokens) if image_min_tokens is not None else 1024,
+            image_max_tokens=int(image_max_tokens) if image_max_tokens is not None else 4096,
         )
 
         yield "Spawning llama-server process...", \
@@ -416,7 +419,8 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
                             prep_grid_line_color, prep_grid_line_color_custom,
                             prep_grid_text_color, prep_grid_text_color_custom,
                             prep_grid_backing_color, prep_grid_backing_color_custom,
-                            prep_send_pixel_bounds, prep_min_pixels, prep_max_pixels):
+                            prep_send_pixel_bounds, prep_min_pixels, prep_max_pixels,
+                            prep_custom_resize_enabled, prep_custom_resize_width, prep_custom_resize_height):
     pipeline_cancel_event.clear()
 
     if not image_files:
@@ -517,10 +521,14 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
             "send_pixel_bounds": False,
             "min_pixels": 200704,
             "max_pixels": 4194304,
+            "custom_resize": False,
+            "custom_resize_width": 1024,
+            "custom_resize_height": 1024,
         }
     else:
+        use_custom_resize = prep_custom_resize_enabled and prep_custom_resize_enabled is not None
         prep_config = {
-            "resolution_enabled": True,
+            "resolution_enabled": True if not use_custom_resize else False,
             "target_short_edge": int(prep_short_edge),
             "pad_to_square": prep_pad_square,
             "contrast_method": prep_contrast_method,
@@ -549,6 +557,11 @@ def run_batch_detection_gui(image_files, categories_str, category_definitions,
             "send_pixel_bounds": prep_send_pixel_bounds,
             "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
             "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,
+
+            # Custom resize
+            "custom_resize": use_custom_resize,
+            "custom_resize_width": int(prep_custom_resize_width) if prep_custom_resize_width is not None else 1024,
+            "custom_resize_height": int(prep_custom_resize_height) if prep_custom_resize_height is not None else 1024,
         }
 
     batch_results: Dict[str, Any] = {}
@@ -953,6 +966,17 @@ def build_app() -> gr.Blocks:
                                 choices=["q4_0", "q8_0", "f16"],
                                 value="q4_0",
                             )
+                            with gr.Row():
+                                server_img_min_tokens = gr.Number(
+                                    label="Min Image Tokens (--image-min-tokens)",
+                                    value=1024, precision=0,
+                                    info="Minimum number of tokens allocated to image encoding. Lower = faster but lower quality.",
+                                )
+                                server_img_max_tokens = gr.Number(
+                                    label="Max Image Tokens (--image-max-tokens)",
+                                    value=4096, precision=0,
+                                    info="Maximum number of tokens allocated to image encoding. Higher = more detail but slower.",
+                                )
 
                         with gr.Row():
                             start_server_btn = gr.Button("\u25b6  Start Server", variant="primary")
@@ -977,7 +1001,8 @@ def build_app() -> gr.Blocks:
                     start_server_wrapper,
                     inputs=[server_model_input, server_port_input, server_host_input,
                             server_thinking_chk, server_mtp_chk,
-                            server_ctx_input, server_gpu_layers, server_kv_cache],
+                            server_ctx_input, server_gpu_layers, server_kv_cache,
+                            server_img_min_tokens, server_img_max_tokens],
                     outputs=[server_logs_viewer, server_status_badge],
                 )
                 stop_server_btn.click(
@@ -1050,6 +1075,24 @@ def build_app() -> gr.Blocks:
                                     info="Pad with neutral gray to maintain aspect ratio on square inputs."
                                 )
                                 
+                                gr.HTML("<div style='font-weight:bold;margin-top:8px;'>Custom Resize</div>")
+                                prep_custom_resize_chk = gr.Checkbox(
+                                    label="Enable Custom Resize (override short edge)",
+                                    value=False,
+                                    info="Resize all images to exact width x height. Overrides the short-edge target above."
+                                )
+                                with gr.Row(visible=False) as prep_custom_resize_row:
+                                    prep_custom_resize_width = gr.Number(
+                                        label="Target Width (px)",
+                                        value=1024, precision=0,
+                                        info="Exact target width in pixels."
+                                    )
+                                    prep_custom_resize_height = gr.Number(
+                                        label="Target Height (px)",
+                                        value=1024, precision=0,
+                                        info="Exact target height in pixels."
+                                    )
+
                                 gr.HTML("<div style='font-weight:bold;margin-top:8px;'>Contrast & Color</div>")
                                 prep_contrast_dropdown = gr.Dropdown(
                                     label="Contrast Correction Method",
@@ -1325,6 +1368,12 @@ def build_app() -> gr.Blocks:
         def toggle_custom_color_field(choice):
             return gr.update(visible=(choice == "custom"))
 
+        prep_custom_resize_chk.change(
+            lambda v: gr.update(visible=v),
+            inputs=[prep_custom_resize_chk],
+            outputs=[prep_custom_resize_row],
+        )
+
         prep_grid_line_color_dropdown.change(
             toggle_custom_color_field,
             inputs=[prep_grid_line_color_dropdown],
@@ -1384,7 +1433,9 @@ def build_app() -> gr.Blocks:
                 prep_grid_text_color_dropdown, prep_grid_text_color_custom,
                 prep_grid_backing_color_dropdown, prep_grid_backing_color_custom,
                 # VLM Processor bounds inputs
-                prep_send_pixel_bounds_chk, prep_min_pixels_num, prep_max_pixels_num
+                prep_send_pixel_bounds_chk, prep_min_pixels_num, prep_max_pixels_num,
+                # Custom resize inputs
+                prep_custom_resize_chk, prep_custom_resize_width, prep_custom_resize_height,
             ],
             outputs=[
                 pipeline_status, progress_html,

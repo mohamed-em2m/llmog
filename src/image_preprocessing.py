@@ -144,6 +144,18 @@ def preprocess_resolution(image: Image.Image, enabled: bool = False, target_shor
     }
     return image, prep_info
 
+def preprocess_custom_resize(image: Image.Image, target_width: int = 1024, target_height: int = 1024) -> tuple[Image.Image, dict[str, Any]]:
+    """Resize image to exact target_width x target_height (ignoring aspect ratio)."""
+    orig_w, orig_h = image.size
+    image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+    prep_info = {
+        "orig_w": orig_w, "orig_h": orig_h,
+        "prep_w": target_width, "prep_h": target_height,
+        "content_w": target_width, "content_h": target_height,
+        "pad_left": 0, "pad_top": 0
+    }
+    return image, prep_info
+
 def preprocess_contrast(image: Image.Image, method: str = "none", clip_limit: float = 2.0, tile_grid_size: tuple[int, int] = (8, 8), gamma: float = 1.0) -> Image.Image:
     """Apply CLAHE or Autocontrast enhancement and optional gamma correction."""
     if method == "none" and gamma == 1.0:

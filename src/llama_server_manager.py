@@ -5,6 +5,7 @@ import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+
 # ─── Llama Server Class ───────────────────────────────────────────────────────
 class LlamaServerManager:
     # ─── Configuration & Initialization ───────────────────────────────────────
@@ -29,6 +30,8 @@ class LlamaServerManager:
         batch_size: int = 1024,
         ubatch_size: int = 512,
         kv_cache_type: str = "q4_0",
+        image_min_tokens: int = 1024,
+        image_max_tokens: int = 4096,
     ):
         self.model = model
         self.host = host
@@ -49,12 +52,14 @@ class LlamaServerManager:
         self.batch_size = batch_size
         self.ubatch_size = ubatch_size
         self.kv_cache_type = kv_cache_type
+        self.image_min_tokens = image_min_tokens
+        self.image_max_tokens = image_max_tokens
 
         self.process = None
         self.server_ready_event = threading.Event()
         self.logs = []
         self.log_lock = threading.Lock()
-        
+
         # Resolve connection URL (use localhost if binding to all interfaces)
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
         self.server_url = f"http://{req_host}:{self.port}"
@@ -71,21 +76,39 @@ class LlamaServerManager:
 
         cmd = [
             "llama-server",
-            "-hf", self.model,
-            "--host", self.host,
-            "--port", str(self.port),
-            "--ctx-size", str(self.ctx_size),
-            "-ngl", str(self.gpu_layers),
-            "--tensor-split", self.tensor_split,
-            "--main-gpu", str(self.main_gpu),
-            "--parallel", str(self.parallel_slots),
-            "--threads", str(self.n_threads),
-            "--temp", str(self.temp),
-            "--top-p", str(self.top_p),
-            "--top-k", str(self.top_k),
-            "-fa", self.fa,
-            "--chat-template-kwargs", f'{{"enable_thinking": {str(self.enable_thinking).lower()}}}',
+            "-hf",
+            self.model,
+            "--host",
+            self.host,
+            "--port",
+            str(self.port),
+            "--ctx-size",
+            str(self.ctx_size),
+            "-ngl",
+            str(self.gpu_layers),
+            "--tensor-split",
+            self.tensor_split,
+            "--main-gpu",
+            str(self.main_gpu),
+            "--parallel",
+            str(self.parallel_slots),
+            "--threads",
+            str(self.n_threads),
+            "--temp",
+            str(self.temp),
+            "--top-p",
+            str(self.top_p),
+            "--top-k",
+            str(self.top_k),
+            "-fa",
+            self.fa,
+            "--chat-template-kwargs",
+            f'{{"enable_thinking": {str(self.enable_thinking).lower()}}}',
             "--jinja",
+            "--image-min-tokens",
+            str(self.image_min_tokens),
+            "--image-max-tokens",
+            str(self.image_max_tokens),
         ]
 
         # Dynamically append speculative drafting options
@@ -100,7 +123,18 @@ class LlamaServerManager:
         if self.ubatch_size is not None:
             cmd.extend(["--ubatch-size", str(self.ubatch_size)])
         if self.kv_cache_type is not None:
-            cmd.extend(["--cache-type-k", self.kv_cache_type, "--cache-type-v", self.kv_cache_type])
+            cmd.extend(
+                [
+                    "--cache-type-k",
+                    self.kv_cache_type,
+                    "--cache-type-v",
+                    self.kv_cache_type,
+                ]
+            )
+        if self.image_min_tokens is not None:
+            cmd.extend(["--image-min-tokens", str(self.image_min_tokens)])
+        if self.image_max_tokens is not None:
+            cmd.extend(["--image-max-tokens", str(self.image_max_tokens)])
 
         self.server_ready_event.clear()
         with self.log_lock:
@@ -122,7 +156,10 @@ class LlamaServerManager:
                     if len(self.logs) > 2000:
                         self.logs.pop(0)
                 print(line, end="", flush=True)
-                if "HTTP server listening" in line or "server is listening" in line.lower():
+                if (
+                    "HTTP server listening" in line
+                    or "server is listening" in line.lower()
+                ):
                     self.server_ready_event.set()
 
         monitor_thread = threading.Thread(target=monitor_output, daemon=True)
@@ -167,10 +204,10 @@ class LlamaServerManager:
             requests.post(
                 f"{self.server_url}/v1/chat/completions",
                 json={
-                    "model":      self.model,
-                    "messages":   [{"role": "user", "content": test_prompt}],
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": test_prompt}],
                     "max_tokens": 1,
-                    "stream":     False,
+                    "stream": False,
                 },
                 timeout=60,
             )
@@ -182,9 +219,9 @@ class LlamaServerManager:
     def stop_llama_server(self, timeout: float = 5.0):
         """
         Terminates the llama-server process cleanly.
-        
-        Attempts a graceful termination (SIGTERM) first to allow the system 
-        to release GPU VRAM and resources, falling back to a forceful 
+
+        Attempts a graceful termination (SIGTERM) first to allow the system
+        to release GPU VRAM and resources, falling back to a forceful
         kill (SIGKILL) if the process hangs.
         """
         if self.process is None:
@@ -193,7 +230,9 @@ class LlamaServerManager:
 
         # Check if process is already stopped
         if self.process.poll() is not None:
-            print(f"ℹ️ Server process has already stopped (Exit code: {self.process.poll()})")
+            print(
+                f"ℹ️ Server process has already stopped (Exit code: {self.process.poll()})"
+            )
             self.process = None
             return
 
@@ -201,20 +240,22 @@ class LlamaServerManager:
         try:
             # Request a graceful exit (vital for GPU memory cleanup)
             self.process.terminate()
-            
+
             # Wait to allow the process to finish cleaning up resources
             self.process.wait(timeout=timeout)
             print(f"✅ Server stopped cleanly. (Exit code: {self.process.returncode})")
-            
+
         except subprocess.TimeoutExpired:
-            print(f"⚠️ Server did not exit within {timeout} seconds. Forcing shutdown (SIGKILL)...")
+            print(
+                f"⚠️ Server did not exit within {timeout} seconds. Forcing shutdown (SIGKILL)..."
+            )
             try:
                 self.process.kill()
                 self.process.wait()
                 print("✅ Server process forcefully terminated.")
             except Exception as e:
                 print(f"❌ Failed to forcefully kill the process: {e}")
-                
+
         except Exception as e:
             print(f"❌ An error occurred during termination: {e}")
         finally:
@@ -263,12 +304,12 @@ if __name__ == "__main__":
         model="unsloth/Qwen3.6-27B-MTP-GGUF:UD-Q2_K_XL",
         port=8080,
         ctx_size=20000,
-        kv_cache_type="q4_0"
+        kv_cache_type="q4_0",
     )
-    
+
     # Run the orchestration pipeline
     server.run_pipeline()
-    
+
     # Keep main execution alive and manage cleanup cleanly
     try:
         server.process.wait()
