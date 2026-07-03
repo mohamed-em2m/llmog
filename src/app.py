@@ -436,6 +436,7 @@ def run_batch_detection_gui(
 
     _empty_yield = (
         None,
+        "",
         gr.update(choices=[]),
         "",
         _render_status_table({}, []),
@@ -475,7 +476,7 @@ def run_batch_detection_gui(
 
     concurrency = max(1, int(concurrency or DEFAULT_CONCURRENCY))
 
-    yield "Initializing API clients...", _render_progress_bar(2, "Initializing..."), None, gr.update(choices=[]), "", _render_status_table({}, [])
+    yield "Initializing API clients...", _render_progress_bar(2, "Initializing..."), None, "", gr.update(choices=[]), "", _render_status_table({}, [])
 
     if use_external_api:
         api_url, api_key, model_name = ext_api_url, ext_api_key, ext_model_name
@@ -483,14 +484,14 @@ def run_batch_detection_gui(
             yield (
                 "Error: External API selected but no API key provided. "
                 "Set one in the External API section."
-            ), _render_progress_bar(0, "Error"), None, gr.update(choices=[]), "", _render_status_table({}, [])
+            ), _render_progress_bar(0, "Error"), None, "", gr.update(choices=[]), "", _render_status_table({}, [])
             return
     else:
         with server_lock:
             if server_manager is None or not server_manager.is_healthy():
                 yield "Error: Local server not running. Start it on the Server tab or enable External API.", _render_progress_bar(
                     0, "Error"
-                ), None, gr.update(choices=[]), "", _render_status_table({}, [])
+                ), None, "", gr.update(choices=[]), "", _render_status_table({}, [])
                 return
             port = server_manager.port
             model_name = server_manager.model
@@ -506,7 +507,7 @@ def run_batch_detection_gui(
         )
         client = OpenAI(base_url=api_url, api_key=api_key, http_client=http_client)
     except Exception as e:
-        yield f"Error initializing OpenAI client: {e}", _render_progress_bar(0, "Error"), None, gr.update(choices=[]), "", _render_status_table({}, [])
+        yield f"Error initializing OpenAI client: {e}", _render_progress_bar(0, "Error"), None, "", gr.update(choices=[]), "", _render_status_table({}, [])
         return
 
     batch_id = str(int(time.time()))
