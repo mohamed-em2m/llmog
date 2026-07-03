@@ -110,7 +110,7 @@ class LlamaServerManager:
             "--image-max-tokens",
             str(self.image_max_tokens),
         ]
-
+        print("cmd: ", cmd)
         # Dynamically append speculative drafting options
         if self.spec_type and self.spec_type.lower() != "none":
             cmd.extend(["--spec-type", self.spec_type])
