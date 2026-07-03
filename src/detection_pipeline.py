@@ -408,6 +408,7 @@ class RoundResult:
     feedback: str
     raw_detector_output: str
     parse_error: Optional[str] = None
+    actions: Optional[str] = None  # Structured action list from judge
 
 
 # ---------------------------------------------------------------------------
@@ -512,17 +513,61 @@ class ObjectDetectionPipeline:
         self.preprocessing_config = preprocessing_config or {}
         self.judge_enable_thinking = judge_enable_thinking
 
-    def get_detector_prompt(self, categories, category_definitions, feedback=None, som_proposals=None):
+    def get_detector_prompt(
+        self,
+        categories,
+        category_definitions,
+        feedback=None,
+        actions=None,
+        previous_detections=None,
+        som_proposals=None,
+    ):
         feedback_block = ""
         if feedback:
-            feedback_block = f"""
-## Feedback from a previous attempt on this same image
-A separate quality-control reviewer inspected your last attempt and found the issues below.
-Correct them in this attempt: add any missed objects, fix wrong labels, tighten or loosen
-boxes as needed, and remove false positives or duplicates. Keep everything from the previous
-attempt that the reviewer did not flag as wrong.
+            # Build the human-readable feedback section
+            prev_dets_section = ""
+            if previous_detections:
+                indexed = [
+                    {"box_index": f"Box #{i}", "label": d.get("label"), "bbox_2d": d.get("bbox_2d")}
+                    for i, d in enumerate(previous_detections, 1)
+                ]
+                prev_dets_section = f"""
 
+### Your previous detections (starting point for corrections)
+The following JSON is your output from the last round, indexed by Box Index.
+Apply the Required Actions below to this list, then re-scan the image for anything still missed.
+```json
+{json.dumps(indexed, indent=2)}
+```"""
+
+            # Build the structured actions section
+            actions_section = ""
+            if actions and actions.strip().upper() != "NONE" and actions.strip():
+                actions_section = f"""
+
+### Required Actions (MANDATORY — apply these FIRST before re-scanning)
+The reviewer identified these specific changes you MUST make to your previous detections:
+```
+{actions.strip()}
+```
+For each action line:
+- `REMOVE #N` → do NOT include Box #N in your output.
+- `RELABEL #N -> label` → keep Box #N's bounding box but change its label to the specified one.
+- `MODIFY #N bbox -> [x1,y1,x2,y2]` → keep Box #N's label but replace its bbox_2d with the new coordinates.
+- `ADD label at [x1,y1,x2,y2]` → add a new detection with the given label and coordinates."""
+
+            feedback_block = f"""
+## Correction Instructions from Quality Review
+A separate quality-control reviewer inspected your last attempt on this image.{prev_dets_section}{actions_section}
+
+### Reviewer Feedback (context and reasoning)
 {feedback}
+
+### Your responsibilities
+1. Apply every Required Action above EXACTLY as specified.
+2. Keep all boxes from your previous detections that were NOT flagged.
+3. Re-scan the image for any remaining missed objects.
+4. Ensure no duplicates or false positives remain.
 """
         som_block = ""
         if som_proposals:
@@ -553,8 +598,24 @@ attempt that the reviewer did not flag as wrong.
             detections_json=json.dumps(indexed_detections, indent=2),
         )
 
-    def run_inference(self, image_uri, categories, category_definitions, feedback=None, som_proposals=None) -> str:
-        prompt = self.get_detector_prompt(categories, category_definitions, feedback, som_proposals)
+    def run_inference(
+        self,
+        image_uri,
+        categories,
+        category_definitions,
+        feedback=None,
+        actions=None,
+        previous_detections=None,
+        som_proposals=None,
+    ) -> str:
+        prompt = self.get_detector_prompt(
+            categories,
+            category_definitions,
+            feedback=feedback,
+            actions=actions,
+            previous_detections=previous_detections,
+            som_proposals=som_proposals,
+        )
 
         # Prepare extra parameters (e.g. min_pixels, max_pixels) for Qwen-VL or vLLM backends if enabled
         extra_args = {}
@@ -664,16 +725,23 @@ attempt that the reviewer did not flag as wrong.
             )
 
         response = _call_with_retries(_do_call, retries=self.api_retries, what="Judge call")
-        text = response.choices[0].message.content
+        text = _strip_think_blocks(response.choices[0].message.content)
 
         score_match = re.search(r"<score>\s*(\d+)\s*</score>", text)
         feedback_match = re.search(r"<feedback>(.*?)</feedback>", text, re.DOTALL)
+        actions_match = re.search(r"<actions>(.*?)</actions>", text, re.DOTALL)
 
         score = int(score_match.group(1)) if score_match else 0
         score = max(0, min(10, score))
         feedback_text = feedback_match.group(1).strip() if feedback_match else text.strip()
+        actions_text = actions_match.group(1).strip() if actions_match else ""
 
-        return score, feedback_text
+        if actions_text:
+            logger.info("Judge structured actions:\n%s", actions_text)
+        else:
+            logger.info("Judge produced no structured <actions> block; falling back to text-only feedback.")
+
+        return score, feedback_text, actions_text
 
     def run(
         self,
@@ -743,6 +811,8 @@ attempt that the reviewer did not flag as wrong.
         grid_backing_color = self.preprocessing_config.get("grid_backing_color", "black")
 
         feedback = None
+        judge_actions = None
+        previous_detections_prep = None  # detections in preprocessed coordinate space from prior round
         history: list[RoundResult] = []
         best = {"score": -1, "annotated": None, "detections": None, "round": 0}
 
@@ -794,6 +864,7 @@ attempt that the reviewer did not flag as wrong.
                             categories=categories,
                             category_definitions=category_definitions,
                             feedback=tile_feedback,
+                            actions=judge_actions,
                             som_proposals=None
                         )
                         tile_dets = validate_detections(parse_detections(tile_raw_text), categories)
@@ -858,6 +929,8 @@ attempt that the reviewer did not flag as wrong.
                     categories=categories,
                     category_definitions=category_definitions,
                     feedback=feedback,
+                    actions=judge_actions,
+                    previous_detections=previous_detections_prep,
                     som_proposals=som_proposals
                 )
                 
@@ -947,7 +1020,7 @@ attempt that the reviewer did not flag as wrong.
             )
             grid_original_prep_uri = pil_to_data_uri(grid_original_prep)
 
-            score, judge_feedback = self.judge_detections(
+            score, judge_feedback, judge_actions = self.judge_detections(
                 original_grid_uri=grid_original_prep_uri,
                 annotated_grid_uri=annotated_prep_uri,
                 detections=detections_prep,
@@ -964,6 +1037,7 @@ attempt that the reviewer did not flag as wrong.
                 feedback=judge_feedback,
                 raw_detector_output=raw_text,
                 parse_error=parse_error,
+                actions=judge_actions,
             )
             history.append(round_result)
 
@@ -981,6 +1055,9 @@ attempt that the reviewer did not flag as wrong.
                 break
 
             feedback = judge_feedback
+            # Carry forward the preprocessed-space detections so the next round can use them
+            # as its starting point when applying the judge's structured corrections
+            previous_detections_prep = detections_prep
 
         logger.info("Best result: round %d with score %d/10", best["round"], best["score"])
 
@@ -1012,6 +1089,7 @@ attempt that the reviewer did not flag as wrong.
                 "score": r.score,
                 "detections": r.detections,
                 "feedback": r.feedback,
+                "actions": r.actions,
                 "parse_error": r.parse_error,
             }
             for r in history
