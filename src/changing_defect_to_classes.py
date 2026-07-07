@@ -147,7 +147,7 @@ def init_llama_server(args):
         image_max_tokens=args.image_max_tokens,
     )
     llama_manager.start_llama_server()
-    llama_manager.server_ready_event.wait(timeout=120)
+    llama_manager.server_ready_event.wait(timeout=1200)
     return llama_manager
 
 
