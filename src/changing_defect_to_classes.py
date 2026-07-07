@@ -21,7 +21,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-
+import urllib
 import cv2
 import json_repair
 import numpy as np
@@ -121,6 +121,47 @@ class RunStats:
             lines.append("New classes discovered this run: none")
         return lines
 
+def wait_for_server_health(port, timeout=120, poll_interval=2.0):
+    """
+    Poll the llama.cpp /health endpoint until it returns a status of 200 ('ok')
+    or we hit the timeout threshold.
+    """
+    url = f"http://localhost:{port}/health"
+    start_time = time.time()
+    logger.info(f"Probing server health at {url} (max timeout: {timeout}s)...")
+
+    while time.time() - start_time < timeout:
+        try:
+            with urllib.request.urlopen(url, timeout=2.0) as response:
+                if response.status == 200:
+                    try:
+                        data = json.loads(response.read().decode())
+                        if data.get("status") == "ok":
+                            logger.info("Server is healthy, model is loaded, and ready to process requests.")
+                            return True
+                    except Exception:
+                        logger.info("Server responded with 200. Proceeding.")
+                        return True
+        except urllib.error.HTTPError as e:
+            # HTTP 503 means the server is online but still loading the model weights
+            if e.code == 503:
+                try:
+                    err_data = json.loads(e.read().decode())
+                    msg = err_data.get("error", {}).get("message", "Loading model")
+                    logger.info(f"Server is online but model is still loading: '{msg}'...")
+                except Exception:
+                    logger.info("Server is online but still loading the model (503)...")
+            else:
+                logger.warning(f"Server returned unexpected HTTP status: {e.code}")
+        except Exception as e:
+            # Quietly wait if connection is refused (server process hasn't fully bound to the port yet)
+            logger.debug(f"Could not connect to server port yet: {e}")
+
+        time.sleep(poll_interval)
+
+    logger.error(f"Timed out waiting for server to become healthy after {timeout} seconds.")
+    return False
+
 
 def init_llama_server(args):
     llama_manager = LlamaServerManager(
@@ -147,7 +188,12 @@ def init_llama_server(args):
         image_max_tokens=args.image_max_tokens,
     )
     llama_manager.start_llama_server()
-    llama_manager.server_ready_event.wait(timeout=1200)
+    
+    # Active HTTP polling replaces the static event wait logic
+    server_ready = wait_for_server_health(args.port, timeout=120)
+    if not server_ready:
+        logger.warning("Proceeding, but server health checks did not pass successfully.")
+        
     return llama_manager
 
 
@@ -198,7 +244,13 @@ def detect_defect(crop_image, client, model_name, known_class_names):
             }
         ],
     )
+    if not response.choices or not response.choices[0].message:
+        raise ValueError("No choices returned from the VLM API call.")
+        
     raw = response.choices[0].message.content
+    if not raw:
+        raise ValueError("Model returned an empty text content response.")
+        
     return json_repair.loads(raw)
 
 
@@ -239,17 +291,20 @@ def process_one_image(
     if not os.path.exists(label_path):
         logger.warning(f"Label file not found for {img_file}: {label_path}")
         stats.incr("images_skipped_no_label")
+        stats.log_progress(img_file)
         return None
 
     if resume and label_out_path.exists():
         logger.info(f"Skipping {img_file} (already relabeled, --resume).")
         stats.incr("images_skipped_resume")
+        stats.log_progress(img_file)
         return None
 
     img = cv2.imread(img_path)
     if img is None:
         logger.error(f"Could not read image {img_path}, skipping.")
         stats.incr("images_failed_read")
+        stats.log_progress(img_file)
         return None
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w, _ = img.shape
@@ -260,6 +315,7 @@ def process_one_image(
     except Exception as e:
         logger.error(f"Failed to read label file {label_path}: {e}")
         stats.incr("images_failed_read")
+        stats.log_progress(img_file)
         return None
 
     new_label_lines = []
@@ -290,8 +346,7 @@ def process_one_image(
             stats.incr("boxes_dry_run")
             continue
 
-        # preprocess_custom_resize works on PIL.Image, not numpy arrays -
-        # round-trip through PIL and back so encode_crop_to_data_uri still gets what it needs.
+        # preprocess_custom_resize works on PIL.Image, not numpy arrays
         pil_crop = Image.fromarray(crop_image)
         try:
             pil_crop, _ = preprocess_custom_resize(
@@ -299,7 +354,7 @@ def process_one_image(
             )
             crop_image = np.array(pil_crop)
         except Exception as e:
-            logger.error(f"Error preprocessing crop in {img_file}: {e}")
+            logger.error(f"Error resizing crop in {img_file} for box ({x}, {y}): {e}")
             stats.incr("boxes_empty_crop")
             continue
 
@@ -419,6 +474,10 @@ def read_images_with_labels(
         f for f in os.listdir(train_image) if f.lower().endswith(image_extensions)
     )
 
+    if not image_names:
+        logger.warning(f"No images found in '{train_image}' with extensions: {image_extensions}")
+        return None
+
     if shuffle:
         random.seed(seed)
         random.shuffle(image_names)
@@ -490,6 +549,9 @@ def read_images_with_labels(
 
 
 def save_updated_yaml(yaml_path, original_data, class_map):
+    if not class_map:
+        logger.warning("Class map is empty. Skipping YAML update to prevent erasing existing names.")
+        return
     updated = dict(original_data)
     sorted_names = [name for name, _ in sorted(class_map.items(), key=lambda kv: kv[1])]
     updated["names"] = sorted_names
