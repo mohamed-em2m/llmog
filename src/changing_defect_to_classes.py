@@ -179,6 +179,10 @@ def process_one_image(
             print(f"Warning: empty crop in {img_file}, skipping box.")
             continue
 
+        if dry_run:
+            print(f"[dry run] {img_file}: would classify box at ({x}, {y}, {bw}, {bh}).")
+            continue
+
         # preprocess_custom_resize works on PIL.Image, not numpy arrays -
         # round-trip through PIL and back so encode_crop_to_data_uri (which
         # expects an RGB numpy array for cv2) still gets what it needs.
@@ -188,22 +192,42 @@ def process_one_image(
         )
         crop_image = np.array(pil_crop)
 
-        if dry_run:
-            print(f"[dry run] {img_file}: would classify box at ({x}, {y}, {bw}, {bh}).")
-            continue
-
         # class_map is read here for the prompt before we know if this call
-        # will add a new class, so a stale-but-safe snapshot is fine.
+        # will add a new class. Take the snapshot under the lock so a
+        # concurrent writer (another thread inserting a new class) can't
+        # mutate the dict mid-iteration and blow up list(...).
+        with class_map_lock:
+            known_names = list(class_map.keys())
+
         try:
-            result = detect_defect(crop_image, client, model_name, list(class_map.keys()))
+            result = detect_defect(crop_image, client, model_name, known_names)
         except Exception as e:
             print(f"Warning: model call failed for {img_file}: {e}")
             continue
 
+        if not isinstance(result, dict):
+            print(
+                f"Warning: unexpected (non-dict) model response for {img_file}: "
+                f"{result!r}, skipping box."
+            )
+            continue
+
         class_name = result.get("class")
-        confidence = result.get("confidence", 0)
+        if not class_name or not isinstance(class_name, str):
+            continue
+        class_name = class_name.strip().lower()
         if not class_name:
             continue
+
+        raw_confidence = result.get("confidence", 0)
+        try:
+            confidence = int(raw_confidence)
+        except (TypeError, ValueError):
+            print(
+                f"Warning: non-numeric confidence {raw_confidence!r} for {img_file}, "
+                "defaulting to 0."
+            )
+            confidence = 0
 
         with class_map_lock:
             if class_name not in class_map:
