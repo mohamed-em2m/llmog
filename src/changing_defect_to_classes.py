@@ -247,11 +247,12 @@ def detect_defect(crop_image, client, model_name, known_class_names):
         raise ValueError("No choices returned from the VLM API call.")
         
     raw = response.choices[0].message.content
-    logger.info(f"Model raw response: {raw}")
     if not raw:
         raise ValueError("Model returned an empty text content response.")
         
-    return json_repair.loads(raw)
+    output = json_repair.loads(raw)
+    logger.debug(f"Model response: {output}")
+    return output
 
 
 def load_or_init_class_map(names_from_yaml):
