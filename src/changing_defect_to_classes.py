@@ -248,7 +248,7 @@ def detect_defect(crop_image, client, model_name, known_class_names):
         raise ValueError("No choices returned from the VLM API call.")
         
     raw = response.choices[0].message.content
-    logger.debug(f"Model raw response: {raw}")
+    logger.info(f"Model raw response: {raw}")
     if not raw:
         raise ValueError("Model returned an empty text content response.")
         
