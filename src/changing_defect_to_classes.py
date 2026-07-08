@@ -120,7 +120,7 @@ class RunStats:
             lines.append("New classes discovered this run: none")
         return lines
 
-def wait_for_server_health(port, timeout=120, poll_interval=2.0):
+def wait_for_server_health(port, timeout=1200, poll_interval=2.0):
     """
     Poll the llama.cpp /health endpoint until it returns a status of 200 ('ok')
     or we hit the timeout threshold.
