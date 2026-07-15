@@ -1,0 +1,65 @@
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+[default]
+env="prod"
+[default.cors]
+# Explicit allowlist of browser origins (scheme + host + port, matched exactly).
+#   - Production frontend (served over HTTPS)
+#   - Local developer frontends (Vite defaults to 5173; some setups use 3000)
+# Add more origins here as needed, then redeploy (push to main).
+allow_origins = [
+    "https://test.tech-trax.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+# allow_origin_regex = "http://localhost(:\\d+)?"
+allow_credentials = true
+
+# ── Logging & Diagnostics ─────────────────────────────────────────────────────
+[default.logging]
+LOG_LEVEL = "INFO"            # DEBUG | INFO | WARNING | ERROR
+LOG_FILE = "logs/echolyzer.log"
+activate_tracing = true
+enable_langfuse = false
+
+
+[default.llm]
+AGENT_TYPE = "google_adk"
+TEMPERATURE = 0.7             # Low temperature guarantees strict compliance grading
+TOP_P = 0.95
+MAX_OUTPUT_TOKENS = 16384      # Prevents long transcript/analysis truncations
+ACTIVATE_TRACING = true
+
+# ── Gemini ─────────────────────────────────────────────────────────────────────
+[default.gemini]
+MODEL_NAME = "gemini-2.5-flash"
+SCHEMA_MODEL = "gemini-2.5-flash-lite"  # Used exclusively for fast, text-only JSON syntax fixing
+ACTIVATE_THINKING = false     # Set to true to activate Gemini's advanced reasoning thoughts
+THINKING_BUDGET = -1          # -1 = dynamic thinking, 0 = disable thinking, or custom budget (e.g. 1024)
+THINKING_LEVEL = "minimal"       # "minimal" | "low" | "medium" | "high" (for Gemini 3 models)
+
+# ── MCP ────────────────────────────────────────────────────────────────────────
+[default.mcp]
+# The TechTrax MCP server exposes all tools on a single SSE endpoint.
+# Start the server with: npm run start:dev  (inside techtrax-mcp-main)
+prefix_tools_exclude=["health"]
+
+# ── Multi-Agent ────────────────────────────────────────────────────────────────
+[default.agents]
+# Model used by the master orchestrator agent.
+MASTER_MODEL = "gemini-2.5-flash"
+# Model used by each sub-agent.
+SUB_AGENT_MODEL = "gemini-2.5-flash"
+# Human-readable name for the master agent (shown in ADK session metadata).
+MASTER_NAME = "omni_meta_master"
+
+[default.google_adk]
+LANGSMITH_TRACING=true
+
+[default.google]
+SERVICE_ACCOUNT_PATH = "google_service_account.json"
+FIRESTORE_CREDENTIALS_PATH = "omni_meta/config/firestore-service-account.json"
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+FIRESTORE_DATABASE = "omni-meta-chat"

@@ -1101,7 +1101,7 @@ def parse_args():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=50,
+        default=0,
         help="Number of images per batch (default: 50). When not using --inplace_saving, each "
         "batch's relabeled annotations are written to their own 'batch_XXXX' subfolder under "
         "--output-folder, and a checkpoint marks each batch done as soon as it finishes, so a "

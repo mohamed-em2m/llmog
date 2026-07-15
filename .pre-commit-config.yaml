@@ -1,0 +1,67 @@
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6 # Use latest stable version
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: "security · Detect hardcoded secrets"
+        exclude: ^omni_meta/tools/temp_tools/bright_data\.py$
+
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.25
+    hooks:
+      - id: validate-pyproject
+        name: "python · Validate pyproject.toml"
+        additional_dependencies: ["validate-pyproject-schema-store[all]"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Filesystem Checks
+      - id: check-executables-have-shebangs
+        name: "filesystem/exec · Verify shebang presence"
+      - id: check-shebang-scripts-are-executable
+        name: "filesystem/exec · Verify script permissions"
+      - id: check-case-conflict
+        name: "filesystem/names · Check case sensitivity"
+      - id: check-illegal-windows-names
+        name: "filesystem/names · Validate Windows filenames"
+      - id: check-symlinks
+        name: "filesystem/symlink · Check symlink validity"
+      - id: destroyed-symlinks
+        name: "filesystem/symlink · Detect broken symlinks"
+      # Git Tools
+      - id: forbid-new-submodules
+        name: "git · Prevent submodule creation"
+      - id: check-added-large-files
+        name: "git · Block large file commits"
+        args: ["--maxkb=5000"]
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.13.9
+    hooks:
+      - id: commitizen
+        name: "git · Validate commit message"
+        stages: [commit-msg]
+        additional_dependencies: [cz-conventional-gitmoji]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
