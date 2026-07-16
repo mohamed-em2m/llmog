@@ -3,7 +3,7 @@ Relabel binary defect / no-defect YOLO annotations into multi-class defect
 labels (e.g. "cut", "spot", ...) using a vision-language model.
 
 Supports two backends:
-  --use_llama_model            -> spins up a local llama.cpp server (LlamaServerManager)
+  --use_local_model            -> spins up a local llama.cpp server (LlamaServerManager)
   (default, no flag)           -> talks to an external OpenAI-compatible API via
                                    --base_url / --api_key
 
@@ -53,8 +53,7 @@ import numpy as np
 import yaml
 from openai import OpenAI
 from PIL import Image
-
-from llama_server_manager import LlamaServerManager
+from servers import factory
 from image_preprocessing import preprocess_custom_resize
 
 logger = logging.getLogger(__name__)
@@ -272,31 +271,53 @@ def wait_for_server_health(port, timeout=1200, poll_interval=2.0):
     return False
 
 
-def init_llama_server(args):
-    llama_manager = LlamaServerManager(
-        model=args.model,
-        host="localhost",
-        port=args.port,
-        ctx_size=args.ctx_size,
-        parallel_slots=args.parallel_slots,
-        n_threads=-1,
-        gpu_layers=-1,
-        tensor_split="1,1",
-        main_gpu=0,
-        temp=0.1,
-        top_p=0.85,
-        top_k=24,
-        spec_type="draft-mtp" if args.use_mtp else "none",
-        spec_draft_n_max=4 if args.use_mtp else 0,
-        fa="auto",
-        enable_thinking=args.enable_thinking,
-        batch_size=1024,
-        ubatch_size=1024,
-        kv_cache_type="q4_0",
-        image_min_tokens=args.image_min_tokens,
-        image_max_tokens=args.image_max_tokens,
-    )
-    llama_manager.start_llama_server()
+def init_server(args):
+    if args.server_type == "llama_cpp":
+        manager = factory[args.server_type](
+            model=args.model,
+            host="localhost",
+            port=args.port,
+            ctx_size=args.ctx_size,
+            parallel_slots=args.parallel_slots,
+            n_threads=-1,
+            gpu_layers=-1,
+            tensor_split="1,1",
+            main_gpu=0,
+            temp=0.1,
+            top_p=0.85,
+            top_k=24,
+            spec_type="draft-mtp" if args.use_mtp else "none",
+            spec_draft_n_max=4 if args.use_mtp else 0,
+            fa="auto",
+            enable_thinking=args.enable_thinking,
+            batch_size=1024,
+            ubatch_size=1024,
+            kv_cache_type="q4_0",
+            image_min_tokens=args.image_min_tokens,
+            image_max_tokens=args.image_max_tokens,
+        )
+        manager.start_llama_server()
+    elif args.server_type == "vllm":
+        manager = factory[args.server_type](
+            model=args.model,
+            host="localhost",
+            port=args.port,
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            pipeline_parallel_size=args.pipeline_parallel_size,
+            dtype=args.dtype,
+            quantization=args.quantization,
+            kv_cache_dtype=args.kv_cache_dtype,
+            max_num_seqs=args.max_num_seqs,
+            enforce_eager=args.enforce_eager,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            enable_prefix_caching=args.enable_prefix_caching,
+            speculative_model=args.speculative_model,
+            tokenizer_mode=args.tokenizer_mode,
+            trust_remote_code=args.trust_remote_code,
+            download_dir=args.download_dir,
+        )
 
     # Active HTTP polling replaces the static event wait logic
     server_ready = wait_for_server_health(args.port, timeout=1200, poll_interval=20.0)
@@ -305,7 +326,35 @@ def init_llama_server(args):
             "Proceeding, but server health checks did not pass successfully."
         )
 
-    return llama_manager
+    return manager
+
+
+def init_vllm_server(args):
+
+    vllm_manager = factory["vllm"](
+        model=args.model,
+        host="localhost",
+        port=args.port,
+        max_model_len=args.max_model_len,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        pipeline_parallel_size=args.pipeline_parallel_size,
+        dtype=args.dtype,
+        quantization=args.quantization,
+        kv_cache_dtype=args.kv_cache_dtype,
+        max_num_seqs=args.max_num_seqs,
+        enforce_eager=args.enforce_eager,
+        enable_chunked_prefill=args.enable_chunked_prefill,
+        enable_prefix_caching=args.enable_prefix_caching,
+        speculative_model=args.speculative_model,
+        num_speculative_tokens=args.num_speculative_tokens,
+        trust_remote_code=args.trust_remote_code,
+        limit_mm_per_prompt=args.limit_mm_per_prompt,
+        chat_template=args.chat_template,
+        extra_args=args.extra_args,
+    )
+    vllm_manager.start_vllm_server()
+    return vllm_manager
 
 
 def encode_crop_to_data_uri(crop_rgb):
@@ -918,13 +967,14 @@ def save_updated_yaml(yaml_path, output_folder, original_data, class_map):
 
 
 def build_client(args):
-    """--use_llama_model True -> local llama.cpp server. Otherwise -> external API."""
-    if args.use_llama_model:
-        llama_manager = init_llama_server(args)
+    """--use_local_model True -> local llama.cpp server. Otherwise -> external API."""
+    if args.server_type != "external":
+        manager = init_server(args.server_type, args)
+
         client = OpenAI(
             base_url=f"http://localhost:{args.port}/v1", api_key="not-needed"
         )
-        return client, llama_manager
+        return client, manager
     else:
         client = OpenAI(base_url=args.base_url, api_key=args.api_key)
         return client, None
@@ -967,15 +1017,17 @@ def parse_args():
         help="Base URL for the external/hosted model.",
     )
     parser.add_argument(
-        "--use_llama_model",
-        action="store_true",
+        "--server_type",
+        type=str,
+        default="llama_cpp",
+        choices=["llama_cpp", "vllm", "external"],
         help="Use a local llama.cpp server instead of an external API.",
     )
     parser.add_argument(
         "--enable_thinking",
         action="store_true",
         help="Enable the model's thinking/reasoning mode on the local llama.cpp server "
-        "(--use_llama_model only). Off by default: faster and usually unnecessary for a "
+        "(--use_local_model only). Off by default: faster and usually unnecessary for a "
         "single classify-this-crop call.",
     )
     parser.add_argument(
@@ -983,33 +1035,33 @@ def parse_args():
         action="store_true",
         default=True,
         help="Enable draft-MTP speculative decoding on the local llama.cpp server "
-        "(--use_llama_model only). On by default for speed; pass --no_mtp to disable it "
+        "(--use_local_model only). On by default for speed; pass --no_mtp to disable it "
         "if you hit compatibility issues with a given model/build.",
     )
     parser.add_argument(
         "--no_mtp",
         action="store_false",
         dest="use_mtp",
-        help="Disable draft-MTP speculative decoding (--use_llama_model only).",
+        help="Disable draft-MTP speculative decoding (--use_local_model only).",
     )
     parser.add_argument(
         "--ctx_size",
         type=int,
         default=20000,
-        help="Context size for the local llama.cpp server (--use_llama_model only).",
+        help="Context size for the local llama.cpp server (--use_local_model only).",
     )
     parser.add_argument(
         "--port",
         type=int,
         default=8080,
-        help="Port for the local llama.cpp server (--use_llama_model only).",
+        help="Port for the local llama.cpp server (--use_local_model only).",
     )
     parser.add_argument(
         "--parallel_slots",
         type=int,
         default=1,
         help="Number of parallel inference slots on the local llama.cpp server "
-        "(--use_llama_model only). If you raise this, --max_workers can be raised to match "
+        "(--use_local_model only). If you raise this, --max_workers can be raised to match "
         "so multiple images are in flight at once.",
     )
     parser.add_argument(

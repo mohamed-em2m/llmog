@@ -47,7 +47,11 @@ from detection_pipeline import (
     DEFAULT_DETECTOR_TEMPLATE,
     DEFAULT_JUDGE_TEMPLATE,
 )
-from llama_server_manager import LlamaServerManager
+from servers.llama_server_manager import LlamaServerManager
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -122,37 +126,38 @@ CUSTOM_CSS = """
 # Session State Initialization
 # ---------------------------------------------------------------------------
 
+
 def init_session_state():
     """Initialize all session state variables on first run."""
     defaults = {
         # Server state
-        'server_manager': None,
-        'server_status': 'stopped',
-        'server_logs': 'No server instance exists.',
-        'server_lock': threading.Lock(),
+        "server_manager": None,
+        "server_status": "stopped",
+        "server_logs": "No server instance exists.",
+        "server_lock": threading.Lock(),
         # Pipeline state
-        'pipeline_cancel_event': threading.Event(),
-        'pipeline_running': False,
-        'pipeline_queue': None,
-        'worker_done': None,
-        'image_status': {},
-        'stem_order': [],
-        'pipeline_logs': '',
-        'last_zip_path': None,
-        'current_batch_id': '',
-        'batch_cache': OrderedDict(),
+        "pipeline_cancel_event": threading.Event(),
+        "pipeline_running": False,
+        "pipeline_queue": None,
+        "worker_done": None,
+        "image_status": {},
+        "stem_order": [],
+        "pipeline_logs": "",
+        "last_zip_path": None,
+        "current_batch_id": "",
+        "batch_cache": OrderedDict(),
         # Internal references for the worker
-        '_batch_results': {},
-        '_results_lock': threading.Lock(),
-        '_log_capture': None,
-        '_total_imgs': 0,
+        "_batch_results": {},
+        "_results_lock": threading.Lock(),
+        "_log_capture": None,
+        "_total_imgs": 0,
         # Explorer state
-        'explorer_image': None,
-        'explorer_round': 'Final Best',
+        "explorer_image": None,
+        "explorer_round": "Final Best",
         # Prompt state
-        'customize_prompts': False,
+        "customize_prompts": False,
         # Flag to trigger full rerun from fragment
-        '_need_rerun': False,
+        "_need_rerun": False,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -163,6 +168,7 @@ def init_session_state():
 # Cache Helpers
 # ---------------------------------------------------------------------------
 
+
 def cache_put(batch_id: str, value: Dict[str, Any]) -> None:
     cache = st.session_state.batch_cache
     cache[batch_id] = value
@@ -170,42 +176,48 @@ def cache_put(batch_id: str, value: Dict[str, Any]) -> None:
     while len(cache) > MAX_CACHED_BATCHES:
         cache.popitem(last=False)
 
+
 def cache_get(batch_id: str) -> Dict[str, Any]:
     return st.session_state.batch_cache.get(batch_id, {})
+
 
 # ---------------------------------------------------------------------------
 # Utility Functions
 # ---------------------------------------------------------------------------
 
+
 def zip_results_folder(folder_path: Path) -> Path:
     zip_path = folder_path.parent / f"batch_results_{int(time.time())}.zip"
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for file in folder_path.rglob('*'):
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for file in folder_path.rglob("*"):
             if file.is_file() and file.name != zip_path.name:
                 zipf.write(file, file.relative_to(folder_path))
     return zip_path
+
 
 def tail(s: str, n: int = LOG_TAIL_BYTES) -> str:
     if len(s) <= n:
         return s
     return "...[log tail truncated]...\n" + s[-n:]
 
+
 def render_status_badge(status: str, port: Optional[int] = None) -> str:
     classes = {
-        'running': 'badge-running',
-        'stopped': 'badge-stopped',
-        'starting': 'badge-starting',
-        'error': 'badge-error',
+        "running": "badge-running",
+        "stopped": "badge-stopped",
+        "starting": "badge-starting",
+        "error": "badge-error",
     }
     labels = {
-        'running': f'RUNNING (Port {port})' if port else 'RUNNING',
-        'stopped': 'STOPPED',
-        'starting': 'STARTING...',
-        'error': 'ERROR',
+        "running": f"RUNNING (Port {port})" if port else "RUNNING",
+        "stopped": "STOPPED",
+        "starting": "STARTING...",
+        "error": "ERROR",
     }
-    cls = classes.get(status, 'badge-stopped')
+    cls = classes.get(status, "badge-stopped")
     label = labels.get(status, status.upper())
     return f'<span class="status-badge {cls}">{label}</span>'
+
 
 _STATUS_PILL = {
     "queued": '<span class="img-status-pill pill-queued">QUEUED</span>',
@@ -214,6 +226,7 @@ _STATUS_PILL = {
     "error": '<span class="img-status-pill pill-error">ERROR</span>',
     "cancelled": '<span class="img-status-pill pill-cancelled">CANCELLED</span>',
 }
+
 
 def render_status_table(image_status: Dict[str, dict], order: List[str]) -> str:
     rows = []
@@ -230,12 +243,14 @@ def render_status_table(image_status: Dict[str, dict], order: List[str]) -> str:
         detail_short = html.escape(detail[:120])
         detail_attr = html.escape(detail)
         rows.append(
-            f'<tr><td>{name_esc}</td><td>{pill}</td>'
-            f'<td>{rounds_txt}</td><td>{score_txt}</td>'
+            f"<tr><td>{name_esc}</td><td>{pill}</td>"
+            f"<td>{rounds_txt}</td><td>{score_txt}</td>"
             f'<td style="color:#7d8590;font-size:0.7rem" title="{detail_attr}">{detail_short}</td></tr>'
         )
-    body = "".join(rows) if rows else (
-        '<tr><td colspan="5" style="color:#7d8590">No images yet.</td></tr>'
+    body = (
+        "".join(rows)
+        if rows
+        else ('<tr><td colspan="5" style="color:#7d8590">No images yet.</td></tr>')
     )
     return f"""
 <div style="margin-top: 0.75rem;">
@@ -254,14 +269,17 @@ def render_status_table(image_status: Dict[str, dict], order: List[str]) -> str:
 # Pipeline Cancelled Exception
 # ---------------------------------------------------------------------------
 
+
 class PipelineCancelledException(Exception):
     """Raised when a user cancels the pipeline mid-run."""
+
     pass
 
 
 # ---------------------------------------------------------------------------
 # Server Management Functions
 # ---------------------------------------------------------------------------
+
 
 def refresh_server_status():
     """Non-blocking refresh of server status into session state."""
@@ -271,13 +289,13 @@ def refresh_server_status():
     try:
         sm = st.session_state.server_manager
         if sm is None:
-            st.session_state.server_status = 'stopped'
+            st.session_state.server_status = "stopped"
             if not st.session_state.server_logs:
-                st.session_state.server_logs = 'No server instance exists.'
+                st.session_state.server_logs = "No server instance exists."
             return
         if sm.process and sm.process.poll() is not None:
             exit_code = sm.process.poll()
-            st.session_state.server_status = 'error'
+            st.session_state.server_status = "error"
             st.session_state.server_logs = (
                 f"Server process is dead (Exit code: {exit_code}).\n\n"
                 f"--- Logs ---\n{sm.get_logs()}"
@@ -286,15 +304,16 @@ def refresh_server_status():
         logs = sm.get_logs()
         st.session_state.server_logs = logs
         if sm.is_healthy():
-            st.session_state.server_status = 'running'
+            st.session_state.server_status = "running"
         else:
-            st.session_state.server_status = 'starting'
+            st.session_state.server_status = "starting"
     finally:
         lock.release()
 
 
-def start_server(model, port, host, enable_thinking, enable_mtp,
-                 ctx_size, gpu_layers, kv_cache_type):
+def start_server(
+    model, port, host, enable_thinking, enable_mtp, ctx_size, gpu_layers, kv_cache_type
+):
     """Start the llama-server synchronously with status updates."""
     lock = st.session_state.server_lock
     with lock:
@@ -314,25 +333,34 @@ def start_server(model, port, host, enable_thinking, enable_mtp,
         st.write("Configuring server...")
         spec_type = "draft-mtp" if enable_mtp else "none"
         sm = LlamaServerManager(
-            model=model, host=host, port=int(port),
-            ctx_size=int(ctx_size), parallel_slots=1, n_threads=-1,
-            gpu_layers=int(gpu_layers), tensor_split="1,1", main_gpu=0,
-            temp=0.4, top_p=0.95, top_k=64,
+            model=model,
+            host=host,
+            port=int(port),
+            ctx_size=int(ctx_size),
+            parallel_slots=1,
+            n_threads=-1,
+            gpu_layers=int(gpu_layers),
+            tensor_split="1,1",
+            main_gpu=0,
+            temp=0.4,
+            top_p=0.95,
+            top_k=64,
             spec_type=spec_type,
             spec_draft_n_max=4 if enable_mtp else 0,
             enable_thinking=enable_thinking,
-            batch_size=1024, ubatch_size=512,
+            batch_size=1024,
+            ubatch_size=512,
             kv_cache_type=kv_cache_type,
         )
         st.session_state.server_manager = sm
-        st.session_state.server_status = 'starting'
+        st.session_state.server_status = "starting"
 
         st.write("Spawning llama-server process...")
         try:
             sm.start_llama_server()
         except Exception as e:
             st.session_state.server_manager = None
-            st.session_state.server_status = 'error'
+            st.session_state.server_status = "error"
             st.error(f"Failed to start server process: {e}")
             return
 
@@ -347,14 +375,14 @@ def start_server(model, port, host, enable_thinking, enable_mtp,
         sm = st.session_state.server_manager
         if sm is None:
             status_placeholder.warning("Server initialization aborted.")
-            st.session_state.server_status = 'stopped'
+            st.session_state.server_status = "stopped"
             return
         if sm.process and sm.process.poll() is not None:
             exit_code = sm.process.poll()
             logs = sm.get_logs()
             st.session_state.server_logs = logs
             st.session_state.server_manager = None
-            st.session_state.server_status = 'error'
+            st.session_state.server_status = "error"
             status_placeholder.error(f"Server process exited with code {exit_code}.")
             log_placeholder.text(logs[-2000:])
             return
@@ -376,17 +404,15 @@ def start_server(model, port, host, enable_thinking, enable_mtp,
             sm = st.session_state.server_manager
             if sm:
                 sm.warmup_model()
-            st.session_state.server_status = 'running'
+            st.session_state.server_status = "running"
             status_placeholder.success(
                 "Server started and warmed up. Ready for detection tasks."
             )
         except Exception as e:
-            st.session_state.server_status = 'running'
-            status_placeholder.warning(
-                f"Server is healthy, but warmup failed: {e}"
-            )
+            st.session_state.server_status = "running"
+            status_placeholder.warning(f"Server is healthy, but warmup failed: {e}")
     else:
-        st.session_state.server_status = 'error'
+        st.session_state.server_status = "error"
         status_placeholder.error(
             "Timed out waiting for the server to report healthy status."
         )
@@ -403,11 +429,11 @@ def stop_server():
         try:
             sm.stop_llama_server()
             st.session_state.server_manager = None
-            st.session_state.server_status = 'stopped'
-            st.session_state.server_logs = 'Server stopped.'
+            st.session_state.server_status = "stopped"
+            st.session_state.server_logs = "Server stopped."
             st.success("Server stopped successfully.")
         except Exception as e:
-            st.session_state.server_status = 'error'
+            st.session_state.server_status = "error"
             st.error(f"Error stopping server: {e}")
 
 
@@ -415,13 +441,22 @@ def stop_server():
 # Pipeline Worker (Background Thread)
 # ---------------------------------------------------------------------------
 
-def start_pipeline_worker(image_paths: List[Path], categories: List[str],
-                          category_definitions: str,
-                          api_url: str, api_key: str, model_name: str,
-                          max_rounds: int, score_threshold: int,
-                          detector_temp: float, judge_temp: float,
-                          concurrency: int,
-                          det_tmpl: str, jdg_tmpl: str):
+
+def start_pipeline_worker(
+    image_paths: List[Path],
+    categories: List[str],
+    category_definitions: str,
+    api_url: str,
+    api_key: str,
+    model_name: str,
+    max_rounds: int,
+    score_threshold: int,
+    detector_temp: float,
+    judge_temp: float,
+    concurrency: int,
+    det_tmpl: str,
+    jdg_tmpl: str,
+):
     """Validate inputs, create API client, and launch the worker thread."""
     # --- Create HTTP client ---
     try:
@@ -503,25 +538,28 @@ def start_pipeline_worker(image_paths: List[Path], categories: List[str],
                     "rounds": [],
                 }
 
-            def progress_callback(round_result: RoundResult,
-                                  annotated_image: Image.Image,
-                                  _stem=stem):
+            def progress_callback(
+                round_result: RoundResult, annotated_image: Image.Image, _stem=stem
+            ):
                 if st.session_state.pipeline_cancel_event.is_set():
-                    raise PipelineCancelledException(
-                        "Pipeline cancelled by user."
-                    )
+                    raise PipelineCancelledException("Pipeline cancelled by user.")
                 q.put(("round", _stem, round_result, annotated_image))
 
             pipeline = ObjectDetectionPipeline(
-                detector_client=client, judge_client=client,
-                detector_model=model_name, judge_model=model_name,
-                max_rounds=max_rounds, score_threshold=score_threshold,
-                detector_template=det_tmpl, judge_template=jdg_tmpl,
-                detector_max_tokens=4096, judge_max_tokens=1024,
+                detector_client=client,
+                judge_client=client,
+                detector_model=model_name,
+                judge_model=model_name,
+                max_rounds=max_rounds,
+                score_threshold=score_threshold,
+                detector_template=det_tmpl,
+                judge_template=jdg_tmpl,
+                detector_max_tokens=4096,
+                judge_max_tokens=1024,
                 api_retries=3,
-                detector_temperature=detector_temp, detector_top_p=0.95,
+                detector_temperature=detector_temp,
+                detector_top_p=0.95,
                 judge_temperature=judge_temp,
-                logger=batch_logger,
             )
 
             best, _history = pipeline.run(
@@ -551,9 +589,7 @@ def start_pipeline_worker(image_paths: List[Path], categories: List[str],
         try:
             if not st.session_state.pipeline_cancel_event.is_set():
                 with ThreadPoolExecutor(max_workers=concurrency) as pool:
-                    futures = [
-                        pool.submit(process_one_image, p) for p in image_paths
-                    ]
+                    futures = [pool.submit(process_one_image, p) for p in image_paths]
                     for fut in as_completed(futures):
                         exc = fut.exception()
                         if exc is not None:
@@ -611,19 +647,24 @@ def start_pipeline_worker(image_paths: List[Path], categories: List[str],
 # Explorer
 # ---------------------------------------------------------------------------
 
+
 def get_explorer_data(selected_image, selected_round, show_grid):
     """Retrieve image and metadata for the explorer view."""
     batch_id = st.session_state.current_batch_id
     batch_results = cache_get(batch_id)
-    if (not batch_results or not selected_image
-            or selected_image not in batch_results):
-        return (None, None,
-                '<span class="score-badge">Score: -/10</span>',
-                "", "", "", "[]")
+    if not batch_results or not selected_image or selected_image not in batch_results:
+        return (
+            None,
+            None,
+            '<span class="score-badge">Score: -/10</span>',
+            "",
+            "",
+            "",
+            "[]",
+        )
 
     img_data = batch_results[selected_image]
-    src_img = (img_data["grid_original"] if show_grid
-               else img_data["raw_original"])
+    src_img = img_data["grid_original"] if show_grid else img_data["raw_original"]
 
     if not selected_round or selected_round == "Final Best":
         best_annotated = img_data["best_annotated"]
@@ -647,16 +688,25 @@ def get_explorer_data(selected_image, selected_round, show_grid):
         if best_score >= 0:
             score_text = (
                 f'<span class="score-badge">'
-                f'Best Score: {best_score}/10 (Round {best_round_num})'
-                f'</span>'
+                f"Best Score: {best_score}/10 (Round {best_round_num})"
+                f"</span>"
             )
         else:
             score_text = '<span class="score-badge">Score: -/10</span>'
 
-        return (src_img, display_img, score_text, best_feedback,
-                best_raw, best_err or "None",
+        return (
+            src_img,
+            display_img,
+            score_text,
+            best_feedback,
+            best_raw,
+            best_err or "None",
+            (
                 json.dumps(img_data["detections"], indent=2)
-                if img_data["detections"] else "[]")
+                if img_data["detections"]
+                else "[]"
+            ),
+        )
 
     try:
         round_idx = int(selected_round) - 1
@@ -666,22 +716,33 @@ def get_explorer_data(selected_image, selected_round, show_grid):
             round_detections = r.get("detections") or []
             display_img = r["image"] if round_detections else src_img
             score_text = f'<span class="score-badge">Score: {r["score"]}/10</span>'
-            return (src_img, display_img, score_text,
-                    r["feedback"], r["raw_text"],
-                    r["parse_error"] or "None",
-                    json.dumps(r["detections"], indent=2)
-                    if r["detections"] else "[]")
+            return (
+                src_img,
+                display_img,
+                score_text,
+                r["feedback"],
+                r["raw_text"],
+                r["parse_error"] or "None",
+                json.dumps(r["detections"], indent=2) if r["detections"] else "[]",
+            )
     except Exception as e:
         st.error(f"Error loading round details: {e}")
 
-    return (src_img, None,
-            '<span class="score-badge">Score: -/10</span>',
-            "", "", "", "[]")
+    return (
+        src_img,
+        None,
+        '<span class="score-badge">Score: -/10</span>',
+        "",
+        "",
+        "",
+        "[]",
+    )
 
 
 # ---------------------------------------------------------------------------
 # UI: Server Tab
 # ---------------------------------------------------------------------------
+
 
 def on_preset_change():
     """Callback when the model preset dropdown changes."""
@@ -710,7 +771,7 @@ def render_server_tab():
             on_change=on_preset_change,
         )
 
-        use_ext = st.session_state.get('use_external_chk', False)
+        use_ext = st.session_state.get("use_external_chk", False)
         st.text_input(
             "Model GGUF Path or HF Repo ID",
             value=MODEL_PRESETS[0] if MODEL_PRESETS else "",
@@ -722,54 +783,77 @@ def render_server_tab():
         port_col, host_col = st.columns(2)
         with port_col:
             st.number_input(
-                "Port Number", value=8080, step=1,
-                key="server_port_input", disabled=use_ext,
+                "Port Number",
+                value=8080,
+                step=1,
+                key="server_port_input",
+                disabled=use_ext,
             )
         with host_col:
             st.text_input(
-                "Host Binding", value="0.0.0.0",
-                key="server_host_input", disabled=use_ext,
+                "Host Binding",
+                value="0.0.0.0",
+                key="server_host_input",
+                disabled=use_ext,
             )
 
         chk_col1, chk_col2 = st.columns(2)
         with chk_col1:
             st.checkbox(
-                "Thinking Mode", value=False,
-                key="server_thinking_chk", disabled=use_ext,
+                "Thinking Mode",
+                value=False,
+                key="server_thinking_chk",
+                disabled=use_ext,
             )
         with chk_col2:
             st.checkbox(
-                "MTP Speculative Drafting", value=True,
-                key="server_mtp_chk", disabled=use_ext,
+                "MTP Speculative Drafting",
+                value=True,
+                key="server_mtp_chk",
+                disabled=use_ext,
             )
 
         with st.expander("Advanced Server Parameters"):
             st.number_input(
-                "Context Size", value=20000, step=1,
-                key="server_ctx_input", disabled=use_ext,
+                "Context Size",
+                value=20000,
+                step=1,
+                key="server_ctx_input",
+                disabled=use_ext,
             )
             st.number_input(
-                "GPU Layers (-ngl)", value=-1, step=1,
-                key="server_gpu_layers_input", disabled=use_ext,
+                "GPU Layers (-ngl)",
+                value=-1,
+                step=1,
+                key="server_gpu_layers_input",
+                disabled=use_ext,
             )
             st.selectbox(
-                "KV Cache Type", ["q4_0", "q8_0", "f16"],
-                index=0, key="server_kv_cache_input", disabled=use_ext,
+                "KV Cache Type",
+                ["q4_0", "q8_0", "f16"],
+                index=0,
+                key="server_kv_cache_input",
+                disabled=use_ext,
             )
 
         btn_col1, btn_col2, btn_col3 = st.columns(3)
         with btn_col1:
             start_btn = st.button(
-                "\u25b6 Start Server", type="primary",
-                use_container_width=True, disabled=use_ext,
+                "\u25b6 Start Server",
+                type="primary",
+                use_container_width=True,
+                disabled=use_ext,
             )
         with btn_col2:
             stop_btn = st.button(
-                "\u23f9 Stop", use_container_width=True, disabled=use_ext,
+                "\u23f9 Stop",
+                use_container_width=True,
+                disabled=use_ext,
             )
         with btn_col3:
             refresh_btn = st.button(
-                "\U0001F504 Refresh", use_container_width=True,
+                "\U0001f504 Refresh",
+                use_container_width=True,
             )
 
     # ---- Output column (auto-refreshing fragment) ----
@@ -789,7 +873,7 @@ def render_server_tab():
                 int(st.session_state.server_gpu_layers_input),
                 st.session_state.server_kv_cache_input,
             )
-            if st.session_state.server_status == 'running':
+            if st.session_state.server_status == "running":
                 status.update(label="Server started!", state="complete")
             else:
                 status.update(label="Server failed to start", state="error")
@@ -831,6 +915,7 @@ def render_server_output_fragment():
 # UI: Batch Sandbox Tab
 # ---------------------------------------------------------------------------
 
+
 def render_batch_sandbox_tab():
     col_config, col_results = st.columns([2, 3])
 
@@ -869,14 +954,14 @@ def render_batch_sandbox_tab():
         )
 
         with st.expander("Pipeline Parameters"):
-            st.slider("Optimization Max Rounds", 1, 5, 1,
-                      key="max_rounds_slider")
-            st.slider("Stop Score Threshold (0-10)", 0, 10, 8,
-                      key="score_threshold_slider")
-            st.slider("Detector Temperature", 0.0, 1.5, 0.9, 0.05,
-                      key="det_temp_slider")
-            st.slider("Judge Temperature", 0.0, 1.5, 0.2, 0.05,
-                      key="jdg_temp_slider")
+            st.slider("Optimization Max Rounds", 1, 5, 1, key="max_rounds_slider")
+            st.slider(
+                "Stop Score Threshold (0-10)", 0, 10, 8, key="score_threshold_slider"
+            )
+            st.slider(
+                "Detector Temperature", 0.0, 1.5, 0.9, 0.05, key="det_temp_slider"
+            )
+            st.slider("Judge Temperature", 0.0, 1.5, 0.2, 0.05, key="jdg_temp_slider")
 
         with st.expander("External API (Optional)"):
             use_ext = st.checkbox(
@@ -884,19 +969,19 @@ def render_batch_sandbox_tab():
                 value=False,
                 key="use_external_chk",
             )
-            st.text_input("Base URL",
-                          value="https://api.openai.com/v1",
-                          key="ext_api_url_input")
-            st.text_input("API Key", value="", type="password",
-                          key="ext_api_key_input")
-            st.text_input("Model Name", value="gpt-4o",
-                          key="ext_model_input")
+            st.text_input(
+                "Base URL", value="https://api.openai.com/v1", key="ext_api_url_input"
+            )
+            st.text_input("API Key", value="", type="password", key="ext_api_key_input")
+            st.text_input("Model Name", value="gpt-4o", key="ext_model_input")
 
         with st.expander("Advanced Settings"):
             st.slider(
                 "Concurrent Images",
-                min_value=1, max_value=64,
-                value=DEFAULT_CONCURRENCY, step=1,
+                min_value=1,
+                max_value=64,
+                value=DEFAULT_CONCURRENCY,
+                step=1,
                 help=(
                     "Images processed in parallel via httpx. With a local "
                     "llama-server running parallel_slots=1, only one request "
@@ -908,12 +993,12 @@ def render_batch_sandbox_tab():
             )
 
         # Get prompt settings (set in Prompts tab)
-        customize_prompts = st.session_state.get('customize_prompts', False)
+        customize_prompts = st.session_state.get("customize_prompts", False)
         custom_det_prompt = st.session_state.get(
-            'custom_det_prompt_input', DEFAULT_DETECTOR_TEMPLATE
+            "custom_det_prompt_input", DEFAULT_DETECTOR_TEMPLATE
         )
         custom_jdg_prompt = st.session_state.get(
-            'custom_jdg_prompt_input', DEFAULT_JUDGE_TEMPLATE
+            "custom_jdg_prompt_input", DEFAULT_JUDGE_TEMPLATE
         )
 
         btn_col1, btn_col2 = st.columns(2)
@@ -964,12 +1049,23 @@ def render_batch_sandbox_tab():
         st.rerun()
 
 
-def _handle_run_button(uploaded_files, categories_str, category_definitions,
-                        use_external_api, ext_api_url, ext_api_key,
-                        ext_model_name, max_rounds, score_threshold,
-                        det_temp, jdg_temp, concurrency,
-                        customize_prompts, detector_template,
-                        judge_template):
+def _handle_run_button(
+    uploaded_files,
+    categories_str,
+    category_definitions,
+    use_external_api,
+    ext_api_url,
+    ext_api_key,
+    ext_model_name,
+    max_rounds,
+    score_threshold,
+    det_temp,
+    jdg_temp,
+    concurrency,
+    customize_prompts,
+    detector_template,
+    judge_template,
+):
     """Validate inputs and start the pipeline worker."""
     if not uploaded_files:
         st.error("Please upload at least one image.")
@@ -1028,12 +1124,19 @@ def _handle_run_button(uploaded_files, categories_str, category_definitions,
     jdg_tmpl = judge_template if customize_prompts else DEFAULT_JUDGE_TEMPLATE
 
     start_pipeline_worker(
-        image_paths, categories, category_definitions,
-        api_url, api_key, model_name,
-        max_rounds, score_threshold,
-        det_temp, jdg_temp,
+        image_paths,
+        categories,
+        category_definitions,
+        api_url,
+        api_key,
+        model_name,
+        max_rounds,
+        score_threshold,
+        det_temp,
+        jdg_temp,
         max(1, int(concurrency or DEFAULT_CONCURRENCY)),
-        det_tmpl, jdg_tmpl,
+        det_tmpl,
+        jdg_tmpl,
     )
     st.rerun()
 
@@ -1041,6 +1144,7 @@ def _handle_run_button(uploaded_files, categories_str, category_definitions,
 # ---------------------------------------------------------------------------
 # Results Fragment (auto-refreshing)
 # ---------------------------------------------------------------------------
+
 
 @st.fragment(run_every=0.5)
 def render_results_fragment():
@@ -1072,22 +1176,20 @@ def render_results_fragment():
                     batch_results = st.session_state._batch_results
                     with st.session_state._results_lock:
                         if stem in batch_results:
-                            batch_results[stem]["rounds"].append({
-                                "round": r_res.round,
-                                "score": r_res.score,
-                                "feedback": r_res.feedback,
-                                "raw_text": r_res.raw_detector_output,
-                                "parse_error": r_res.parse_error,
-                                "image": r_img,
-                                "detections": r_res.detections,
-                            })
+                            batch_results[stem]["rounds"].append(
+                                {
+                                    "round": r_res.round,
+                                    "score": r_res.score,
+                                    "feedback": r_res.feedback,
+                                    "raw_text": r_res.raw_detector_output,
+                                    "parse_error": r_res.parse_error,
+                                    "image": r_img,
+                                    "detections": r_res.detections,
+                                }
+                            )
                     if stem in st.session_state.image_status:
-                        st.session_state.image_status[stem]["rounds_done"] = (
-                            r_res.round
-                        )
-                        st.session_state.image_status[stem]["score"] = (
-                            r_res.score
-                        )
+                        st.session_state.image_status[stem]["rounds_done"] = r_res.round
+                        st.session_state.image_status[stem]["score"] = r_res.score
 
                 elif tag == "finish_image":
                     stem = msg[1]
@@ -1098,23 +1200,17 @@ def render_results_fragment():
                     stem, err = msg[1], msg[2]
                     if stem in st.session_state.image_status:
                         st.session_state.image_status[stem]["state"] = "error"
-                        st.session_state.image_status[stem]["detail"] = (
-                            err[:200]
-                        )
+                        st.session_state.image_status[stem]["detail"] = err[:200]
 
                 elif tag == "image_cancelled":
                     stem = msg[1]
                     if stem in st.session_state.image_status:
-                        st.session_state.image_status[stem]["state"] = (
-                            "cancelled"
-                        )
+                        st.session_state.image_status[stem]["state"] = "cancelled"
 
                 elif tag == "image_skipped":
                     stem = msg[1]
                     if stem in st.session_state.image_status:
-                        st.session_state.image_status[stem]["state"] = (
-                            "cancelled"
-                        )
+                        st.session_state.image_status[stem]["state"] = "cancelled"
 
                 elif tag == "done":
                     st.session_state.last_zip_path = msg[1]
@@ -1135,8 +1231,11 @@ def render_results_fragment():
             st.session_state.pipeline_logs = tail(log_capture.getvalue())
 
         # Check if worker has exited
-        if (worker_done is not None and worker_done.is_set()
-                and st.session_state.pipeline_running):
+        if (
+            worker_done is not None
+            and worker_done.is_set()
+            and st.session_state.pipeline_running
+        ):
             st.session_state.pipeline_running = False
 
     # ---- Trigger full rerun if pipeline just finished ----
@@ -1155,24 +1254,18 @@ def render_results_fragment():
 
     if total > 0 and stem_order:
         done_n = sum(
-            1 for s in image_status.values()
+            1
+            for s in image_status.values()
             if s["state"] in ("done", "error", "cancelled")
         )
-        running_n = sum(
-            1 for s in image_status.values()
-            if s["state"] == "running"
-        )
-        errored_n = sum(
-            1 for s in image_status.values()
-            if s["state"] == "error"
-        )
+        running_n = sum(1 for s in image_status.values() if s["state"] == "running")
+        errored_n = sum(1 for s in image_status.values() if s["state"] == "error")
         pct = int((done_n / total) * 100) if total else 0
 
         if st.session_state.pipeline_running:
             if running_n > 0:
                 status_text = (
-                    f"Processing... ({done_n}/{total} done, "
-                    f"{running_n} running)"
+                    f"Processing... ({done_n}/{total} done, " f"{running_n} running)"
                 )
             else:
                 status_text = f"Starting... ({done_n}/{total} done)"
@@ -1202,7 +1295,7 @@ def render_results_fragment():
         if zip_path.exists():
             with open(zip_path, "rb") as f:
                 st.download_button(
-                    "\U0001F4E5 Download Processed Results (.zip)",
+                    "\U0001f4e5 Download Processed Results (.zip)",
                     data=f.read(),
                     file_name=zip_path.name,
                     mime="application/zip",
@@ -1210,11 +1303,13 @@ def render_results_fragment():
 
     # ---- Sub-tabs: Explorer, JSON, Logs ----
     if stem_order:
-        sub1, sub2, sub3 = st.tabs([
-            "\U0001F5BC\uFE0F Batch Explorer",
-            "\U0001F4C4 Detections JSON",
-            "\U0001F4CB Pipeline Logs",
-        ])
+        sub1, sub2, sub3 = st.tabs(
+            [
+                "\U0001f5bc\ufe0f Batch Explorer",
+                "\U0001f4c4 Detections JSON",
+                "\U0001f4cb Pipeline Logs",
+            ]
+        )
 
         with sub1:
             _render_explorer(stem_order)
@@ -1222,7 +1317,7 @@ def render_results_fragment():
         with sub2:
             batch_id = st.session_state.current_batch_id
             batch_results = cache_get(batch_id)
-            sel_img = st.session_state.get('explorer_image_select')
+            sel_img = st.session_state.get("explorer_image_select")
             if sel_img and sel_img in batch_results:
                 detections = batch_results[sel_img].get("detections") or []
                 st.code(
@@ -1242,7 +1337,7 @@ def render_results_fragment():
             )
 
     # ---- Trigger full rerun if needed ----
-    if st.session_state.get('_need_rerun', False):
+    if st.session_state.get("_need_rerun", False):
         st.session_state._need_rerun = False
         st.rerun()
 
@@ -1282,11 +1377,15 @@ def _render_explorer(stem_order):
 
     # Retrieve and display explorer data
     if selected_image:
-        (src_img, display_img, score_html,
-         feedback, raw_text, parse_err,
-         detections_json) = get_explorer_data(
-            selected_image, selected_round, show_grid
-        )
+        (
+            src_img,
+            display_img,
+            score_html,
+            feedback,
+            raw_text,
+            parse_err,
+            detections_json,
+        ) = get_explorer_data(selected_image, selected_round, show_grid)
 
         st.markdown(score_html, unsafe_allow_html=True)
 
@@ -1330,6 +1429,7 @@ def _render_explorer(stem_order):
 # UI: Prompts Tab
 # ---------------------------------------------------------------------------
 
+
 def render_prompts_tab():
     st.markdown(
         '<p class="section-label">Prompt Engineering</p>',
@@ -1342,7 +1442,7 @@ def render_prompts_tab():
 
     customize = st.checkbox(
         "Enable Custom Prompt Templates",
-        value=st.session_state.get('customize_prompts', False),
+        value=st.session_state.get("customize_prompts", False),
         key="customize_prompts_chk",
     )
     st.session_state.customize_prompts = customize
@@ -1373,10 +1473,11 @@ def render_prompts_tab():
 # Main App
 # ---------------------------------------------------------------------------
 
+
 def main():
     st.set_page_config(
         page_title="LLM Object Detection Console",
-        page_icon="\U0001F50D",
+        page_icon="\U0001f50d",
         layout="wide",
         initial_sidebar_state="collapsed",
     )
@@ -1392,7 +1493,7 @@ def main():
     st.markdown(
         """
         <div class="app-header">
-            <h1>\U0001F50D LLM Object Detection Console</h1>
+            <h1>\U0001f50d LLM Object Detection Console</h1>
             <p>// vision-LLM detector/judge pipeline over a local or
                external endpoint</p>
         </div>
@@ -1411,11 +1512,13 @@ def main():
     st.divider()
 
     # Main tabs
-    tab_server, tab_batch, tab_prompts = st.tabs([
-        "\U0001F999 Llama Server",
-        "\U0001F9EA Batch Sandbox",
-        "\u270D\uFE0F Prompts",
-    ])
+    tab_server, tab_batch, tab_prompts = st.tabs(
+        [
+            "\U0001f999 Llama Server",
+            "\U0001f9ea Batch Sandbox",
+            "\u270d\ufe0f Prompts",
+        ]
+    )
 
     with tab_server:
         render_server_tab()
