@@ -1100,6 +1100,7 @@ def parse_args():
         dest="auto_resume",
         help="Disable auto-resume and ignore/clear any existing checkpoint, starting completely fresh.",
     )
+
     parser.add_argument(
         "--batch_size",
         type=int,
