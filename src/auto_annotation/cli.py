@@ -200,6 +200,132 @@ def parse_args():
         "llama.cpp server with parallel_slots=1; raise it for a remote API that supports "
         "concurrent requests.",
     )
+    # vLLM Configuration Options
+    parser.add_argument(
+        "--max_model_len",
+        type=int,
+        default=20000,
+        help="vLLM maximum model length.",
+    )
+    parser.add_argument(
+        "--gpu_memory_utilization",
+        type=float,
+        default=0.90,
+        help="vLLM GPU memory utilization.",
+    )
+    parser.add_argument(
+        "--tensor_parallel_size",
+        type=int,
+        default=1,
+        help="vLLM tensor parallel size.",
+    )
+    parser.add_argument(
+        "--pipeline_parallel_size",
+        type=int,
+        default=1,
+        help="vLLM pipeline parallel size.",
+    )
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        default="auto",
+        help="vLLM data type.",
+    )
+    parser.add_argument(
+        "--quantization",
+        type=str,
+        default=None,
+        help="vLLM quantization method.",
+    )
+    parser.add_argument(
+        "--kv_cache_dtype",
+        type=str,
+        default="auto",
+        help="vLLM KV cache data type.",
+    )
+    parser.add_argument(
+        "--max_num_seqs",
+        type=int,
+        default=16,
+        help="vLLM maximum number of sequences.",
+    )
+    parser.add_argument(
+        "--enforce_eager",
+        action="store_true",
+        help="Enforce eager execution in vLLM.",
+    )
+    parser.add_argument(
+        "--enable_chunked_prefill",
+        action="store_true",
+        default=True,
+        help="Enable chunked prefill in vLLM.",
+    )
+    parser.add_argument(
+        "--no_chunked_prefill",
+        action="store_false",
+        dest="enable_chunked_prefill",
+        help="Disable chunked prefill in vLLM.",
+    )
+    parser.add_argument(
+        "--enable_prefix_caching",
+        action="store_true",
+        default=True,
+        help="Enable prefix caching in vLLM.",
+    )
+    parser.add_argument(
+        "--no_prefix_caching",
+        action="store_false",
+        dest="enable_prefix_caching",
+        help="Disable prefix caching in vLLM.",
+    )
+    parser.add_argument(
+        "--speculative_model",
+        type=str,
+        default=None,
+        help="vLLM speculative model name.",
+    )
+    parser.add_argument(
+        "--num_speculative_tokens",
+        type=int,
+        default=None,
+        help="Number of speculative tokens.",
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        default=True,
+        help="Trust remote code in vLLM.",
+    )
+    parser.add_argument(
+        "--no_trust_remote_code",
+        action="store_false",
+        dest="trust_remote_code",
+        help="Do not trust remote code in vLLM.",
+    )
+    parser.add_argument(
+        "--download_dir",
+        type=str,
+        default=None,
+        help="vLLM model download directory.",
+    )
+    parser.add_argument(
+        "--limit_mm_per_prompt",
+        type=str,
+        default=None,
+        help="vLLM limit multimodal items per prompt.",
+    )
+    parser.add_argument(
+        "--chat_template",
+        type=str,
+        default=None,
+        help="vLLM chat template.",
+    )
+    parser.add_argument(
+        "--extra_args",
+        action="append",
+        default=None,
+        help="Extra arguments to pass to vLLM server.",
+    )
     parser.add_argument(
         "--image_min_tokens",
         type=int,
