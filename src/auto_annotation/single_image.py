@@ -9,8 +9,8 @@ import numpy as np
 from PIL import Image
 
 from image_preprocessing import preprocess_custom_resize
-from .logging_utils import logger
-from .image_io import detect_defect
+from auto_annotation.logging_utils import logger
+from auto_annotation.image_io import detect_defect
 
 
 def process_one_image(

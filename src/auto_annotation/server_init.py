@@ -14,7 +14,7 @@ import urllib.request
 from openai import OpenAI
 
 from servers import servers_factory
-from .logging_utils import logger
+from auto_annotation.logging_utils import logger
 
 # Back-compat alias: the original single-file module imported `factory` from
 # `servers`, but `servers/__init__.py` only exports `servers_factory`. Keep
@@ -101,21 +101,19 @@ def init_server(args):
             model=args.model,
             host="localhost",
             port=args.port,
-            max_model_len=getattr(args, "max_model_len", 20000),
-            gpu_memory_utilization=getattr(args, "gpu_memory_utilization", 0.90),
-            tensor_parallel_size=getattr(args, "tensor_parallel_size", 1),
-            pipeline_parallel_size=getattr(args, "pipeline_parallel_size", 1),
-            dtype=getattr(args, "dtype", "auto"),
-            quantization=getattr(args, "quantization", None),
-            kv_cache_dtype=getattr(args, "kv_cache_dtype", "auto"),
-            max_num_seqs=getattr(args, "max_num_seqs", 16),
-            enforce_eager=getattr(args, "enforce_eager", False),
-            enable_chunked_prefill=getattr(args, "enable_chunked_prefill", True),
-            enable_prefix_caching=getattr(args, "enable_prefix_caching", True),
-            speculative_model=getattr(args, "speculative_model", None),
-            tokenizer_mode=getattr(args, "tokenizer_mode", "auto"),
-            trust_remote_code=getattr(args, "trust_remote_code", True),
-            download_dir=getattr(args, "download_dir", None),
+            max_model_len=args.max_model_len,
+            gpu_memory_utilization=args.gpu_memory_utilization,
+            tensor_parallel_size=args.tensor_parallel_size,
+            pipeline_parallel_size=args.pipeline_parallel_size,
+            dtype=args.dtype,
+            quantization=args.quantization,
+            kv_cache_dtype=args.kv_cache_dtype,
+            max_num_seqs=args.max_num_seqs,
+            enforce_eager=args.enforce_eager,
+            enable_chunked_prefill=args.enable_chunked_prefill,
+            enable_prefix_caching=args.enable_prefix_caching,
+            speculative_model=args.speculative_model,
+            trust_remote_code=args.trust_remote_code,
         )
         # vLLM manager surfaces its own readiness; still poll HTTP health before
         # handing the client back so callers have a single wait-for-ready contract.
@@ -124,7 +122,9 @@ def init_server(args):
         # Should never happen (argparse choices restrict this), but keep a
         # defensive guard so a future server type fails loudly here rather
         # than producing an UnboundLocalError on `manager` below.
-        raise ValueError(f"Unsupported server_type for local serving: {args.server_type!r}")
+        raise ValueError(
+            f"Unsupported server_type for local serving: {args.server_type!r}"
+        )
 
     # Active HTTP polling replaces the static event wait logic
     server_ready = wait_for_server_health(args.port, timeout=1200, poll_interval=20.0)
@@ -141,23 +141,23 @@ def init_vllm_server(args):
         model=args.model,
         host="localhost",
         port=args.port,
-        max_model_len=getattr(args, "max_model_len", 20000),
-        gpu_memory_utilization=getattr(args, "gpu_memory_utilization", 0.90),
-        tensor_parallel_size=getattr(args, "tensor_parallel_size", 1),
-        pipeline_parallel_size=getattr(args, "pipeline_parallel_size", 1),
-        dtype=getattr(args, "dtype", "auto"),
-        quantization=getattr(args, "quantization", None),
-        kv_cache_dtype=getattr(args, "kv_cache_dtype", "auto"),
-        max_num_seqs=getattr(args, "max_num_seqs", 16),
-        enforce_eager=getattr(args, "enforce_eager", False),
-        enable_chunked_prefill=getattr(args, "enable_chunked_prefill", True),
-        enable_prefix_caching=getattr(args, "enable_prefix_caching", True),
-        speculative_model=getattr(args, "speculative_model", None),
-        num_speculative_tokens=getattr(args, "num_speculative_tokens", None),
-        trust_remote_code=getattr(args, "trust_remote_code", True),
-        limit_mm_per_prompt=getattr(args, "limit_mm_per_prompt", None),
-        chat_template=getattr(args, "chat_template", None),
-        extra_args=getattr(args, "extra_args", None),
+        max_model_len=args.max_model_len,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        tensor_parallel_size=args.tensor_parallel_size,
+        pipeline_parallel_size=args.pipeline_parallel_size,
+        dtype=args.dtype,
+        quantization=args.quantization,
+        kv_cache_dtype=args.kv_cache_dtype,
+        max_num_seqs=args.max_num_seqs,
+        enforce_eager=args.enforce_eager,
+        enable_chunked_prefill=args.enable_chunked_prefill,
+        enable_prefix_caching=args.enable_prefix_caching,
+        speculative_model=args.speculative_model,
+        num_speculative_tokens=args.num_speculative_tokens,
+        trust_remote_code=args.trust_remote_code,
+        limit_mm_per_prompt=args.limit_mm_per_prompt,
+        chat_template=args.chat_template,
+        extra_args=args.extra_args,
     )
     vllm_manager.start_vllm_server()
     return vllm_manager

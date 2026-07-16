@@ -11,10 +11,10 @@ import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .logging_utils import logger
-from .stats import RunStats
-from .image_io import find_labeled_images, chunk_list
-from .single_image import process_one_image
+from auto_annotation.logging_utils import logger
+from auto_annotation.stats import RunStats
+from auto_annotation.image_io import find_labeled_images, chunk_list
+from auto_annotation.single_image import process_one_image
 
 
 def read_images_with_labels(

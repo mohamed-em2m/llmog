@@ -6,14 +6,14 @@ import os
 
 import yaml
 
-from .logging_utils import logger, setup_logging
-from .stats import RunStats
-from .checkpoint import CheckpointManager
-from .image_io import load_or_init_class_map
-from .server_init import build_client
-from .batch_runner import read_images_with_labels
-from .yaml_utils import save_updated_yaml
-from .cli import parse_args
+from auto_annotation.logging_utils import logger, setup_logging
+from auto_annotation.stats import RunStats
+from auto_annotation.checkpoint import CheckpointManager
+from auto_annotation.image_io import load_or_init_class_map
+from auto_annotation.server_init import build_client
+from auto_annotation.batch_runner import read_images_with_labels
+from auto_annotation.yaml_utils import save_updated_yaml
+from auto_annotation.cli import parse_args
 
 
 def main():
@@ -128,7 +128,9 @@ def main():
         logger.info(line)
 
     if args.dry_run:
-        logger.info("Dry run complete \u2014 no files were written, yaml was not updated.")
+        logger.info(
+            "Dry run complete \u2014 no files were written, yaml was not updated."
+        )
     else:
         try:
             save_updated_yaml(args.yaml_path, args.output_folder, data, class_map)

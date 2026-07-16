@@ -22,7 +22,7 @@ import os
 import threading
 from pathlib import Path
 
-from .logging_utils import logger
+from auto_annotation.logging_utils import logger
 
 
 class CheckpointManager:

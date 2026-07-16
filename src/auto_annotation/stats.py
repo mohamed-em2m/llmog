@@ -3,7 +3,7 @@
 import threading
 import time
 
-from .logging_utils import logger
+from auto_annotation.logging_utils import logger
 
 
 class RunStats:

@@ -2,7 +2,7 @@
 
 import yaml
 
-from .logging_utils import logger
+from auto_annotation.logging_utils import logger
 
 
 def save_updated_yaml(yaml_path, output_folder, original_data, class_map):

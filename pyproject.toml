@@ -29,7 +29,10 @@ detection-gui = "gui:main"
 detection-cli = "cli:main"
 
 # Launch the auto annotation server with vllm
-auto-annotation = "auto_annotation:run_server"
+auto-annotation = "auto_annotation:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.uv]
+package = true
