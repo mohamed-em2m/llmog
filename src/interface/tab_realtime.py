@@ -515,9 +515,8 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
             with gr.Column(scale=2):
-                # Inject the overlay canvas via JS directly onto document.body so it
-                # floats above the video element without being constrained by Gradio's
-                # nested wrapper divs (which break position:absolute stacking).
+                # NOTE: Gradio 6.x strips <script> from gr.HTML for security.
+                # Only inject the CSS here; all canvas JS runs in the .change(js=) handler.
                 gr.HTML(
                     """
                     <style>
@@ -528,33 +527,6 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         box-sizing: border-box;
                     }
                     </style>
-                    <script>
-                    (function() {
-                        if (document.getElementById('rt_float_canvas')) return;
-                        var cv = document.createElement('canvas');
-                        cv.id = 'rt_float_canvas';
-                        document.body.appendChild(cv);
-
-                        function syncPosition() {
-                            // Find the live <video> inside the webcam component
-                            var anchor = document.getElementById('rt_webcam_input');
-                            if (!anchor) return;
-                            var video = anchor.querySelector('video');
-                            var target = video || anchor;
-                            var r = target.getBoundingClientRect();
-                            cv.style.left   = r.left + 'px';
-                            cv.style.top    = r.top  + 'px';
-                            cv.style.width  = r.width  + 'px';
-                            cv.style.height = r.height + 'px';
-                            if (cv.width  !== Math.round(r.width))  cv.width  = Math.round(r.width);
-                            if (cv.height !== Math.round(r.height)) cv.height = Math.round(r.height);
-                        }
-
-                        // Reposition on every animation frame so scrolling/resize is instant
-                        function loop() { syncPosition(); requestAnimationFrame(loop); }
-                        requestAnimationFrame(loop);
-                    })();
-                    </script>
                     """
                 )
                 with gr.Group(elem_id="rt_webcam_wrap") as webcam_wrap:
@@ -633,47 +605,83 @@ def _wire_realtime_events(
         outputs=[],
         js="""
         (payload) => {
-            // Use the body-level floating canvas that is always positioned over
-            // the live <video> element via the rAF loop set up at build time.
-            const canvas = document.getElementById('rt_float_canvas');
-            if (!canvas || !payload) return;
+            if (!payload) return;
 
-            const ctx = canvas.getContext('2d');
+            // ── 1. Lazily create the floating canvas once (gr.HTML strips <script>) ──
+            var canvas = document.getElementById('rt_float_canvas');
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                canvas.id = 'rt_float_canvas';
+                canvas.style.position      = 'fixed';
+                canvas.style.pointerEvents = 'none';
+                canvas.style.zIndex        = '9999';
+                canvas.style.boxSizing     = 'border-box';
+                document.body.appendChild(canvas);
+            }
+
+            // ── 2. Start the rAF position loop exactly once ───────────────────────
+            if (!window._rtCanvasLoopRunning) {
+                window._rtCanvasLoopRunning = true;
+                (function loop() {
+                    var cv = document.getElementById('rt_float_canvas');
+                    if (!cv) { window._rtCanvasLoopRunning = false; return; }
+                    var anchor = document.getElementById('rt_webcam_input');
+                    if (anchor) {
+                        var vid = anchor.querySelector('video');
+                        var target = vid || anchor;
+                        var r = target.getBoundingClientRect();
+                        if (r.width > 0 && r.height > 0) {
+                            cv.style.left   = r.left   + 'px';
+                            cv.style.top    = r.top    + 'px';
+                            cv.style.width  = r.width  + 'px';
+                            cv.style.height = r.height + 'px';
+                            var rw = Math.round(r.width),  rh = Math.round(r.height);
+                            if (cv.width !== rw)  cv.width  = rw;
+                            if (cv.height !== rh) cv.height = rh;
+                        }
+                    }
+                    requestAnimationFrame(loop);
+                })();
+            }
+
+            // ── 3. Draw boxes ─────────────────────────────────────────────────────
+            var ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const boxes = payload.boxes || [];
-            const frameW = payload.frame_w || canvas.width;
-            const frameH = payload.frame_h || canvas.height;
+            var boxes  = payload.boxes  || [];
+            var frameW = payload.frame_w || canvas.width;
+            var frameH = payload.frame_h || canvas.height;
             if (!frameW || !frameH || boxes.length === 0) return;
 
-            const scaleX = canvas.width  / frameW;
-            const scaleY = canvas.height / frameH;
+            var scaleX = canvas.width  / frameW;
+            var scaleY = canvas.height / frameH;
 
             ctx.lineWidth = 2;
             ctx.font = '12px "JetBrains Mono", monospace';
 
-            for (const box of boxes) {
+            for (var i = 0; i < boxes.length; i++) {
+                var box = boxes[i];
                 if (!box || box.length < 4) continue;
-                const [ymin, xmin, ymax, xmax, label, trackId] = box;
-                const x = xmin * scaleX, y = ymin * scaleY;
-                const w = (xmax - xmin) * scaleX, h = (ymax - ymin) * scaleY;
+                var ymin = box[0], xmin = box[1], ymax = box[2], xmax = box[3];
+                var label   = box[4] !== undefined ? String(box[4]) : '';
+                var trackId = box[5] !== undefined ? box[5] : null;
+                var x = xmin * scaleX,  y = ymin * scaleY;
+                var w = (xmax - xmin) * scaleX,  h = (ymax - ymin) * scaleY;
 
-                // Draw box outline with neon glow effect
+                // Neon cyan box with glow
                 ctx.strokeStyle = '#00ffcc';
-                ctx.shadowColor  = '#00ffcc';
-                ctx.shadowBlur   = 6;
+                ctx.shadowColor = '#00ffcc';
+                ctx.shadowBlur  = 6;
                 ctx.strokeRect(x, y, w, h);
-                ctx.shadowBlur   = 0;
+                ctx.shadowBlur  = 0;
 
-                const tag = (trackId !== undefined && trackId !== null)
-                    ? `${label || ''} #${trackId}`
-                    : `${label || ''}`;
+                var tag = trackId !== null ? (label + ' #' + trackId) : label;
                 if (tag.trim()) {
-                    const textW = ctx.measureText(tag).width;
-                    const bh = 18;
-                    const by = y > bh ? y - bh : y + h;
+                    var tw = ctx.measureText(tag).width;
+                    var bh = 18;
+                    var by = (y > bh) ? (y - bh) : (y + h);
                     ctx.fillStyle = 'rgba(0,255,204,0.85)';
-                    ctx.fillRect(x, by, textW + 8, bh);
+                    ctx.fillRect(x, by, tw + 8, bh);
                     ctx.fillStyle = '#050811';
                     ctx.fillText(tag, x + 4, by + bh - 4);
                 }
