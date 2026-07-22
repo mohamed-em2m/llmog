@@ -96,20 +96,11 @@ class SessionDetector:
                 self.last_applied_frame_id = frame_id
                 if boxes is not None:
                     self.last_raw_boxes = boxes
-                    tracked = self.multi_tracker.update_with_detections(
-                        frame=self._last_submitted_frame, detections=boxes
-                    )
-                    if tracked:
-                        self.last_tracked_boxes = tracked
+                    self.last_tracked_boxes = boxes
                 self.last_hud = hud
 
     def update_tracking_only(self, frame: Optional[Any], algorithm: str) -> List[Any]:
         with self.lock:
-            self._last_submitted_frame = frame
-            self.multi_tracker.set_algorithm(algorithm)
-            tracked = self.multi_tracker.track_frame_only(frame, self.last_tracked_boxes)
-            if tracked:
-                self.last_tracked_boxes = tracked
             return list(self.last_tracked_boxes)
 
     def snapshot(self) -> Tuple[List[Any], str]:

@@ -163,7 +163,7 @@ def process_video_frames(
             boxes, _hud = run_vlm_detect(
                 f, categories, base_url, api_key, model_name, prep_info, True, 100
             )
-            tracked_boxes = tracker.update_with_detections(f, boxes)
+            tracked_boxes = boxes
         except Exception:
             tracked_boxes = []
             errors += 1
