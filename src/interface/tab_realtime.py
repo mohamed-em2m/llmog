@@ -295,13 +295,19 @@ def process_single_frame(
     motion_sensitivity_pct: float,
     stale_refresh_seconds: float,
     session: SessionDetector,
-) -> tuple[Optional[np.ndarray], str, SessionDetector]:
+) -> tuple[dict, str, SessionDetector]:
     """
     Called on every Gradio webcam stream tick.
 
-    - EVERY tick immediately returns the current live frame with whatever
-      boxes are already cached, drawn on top -- the video output is never
-      delayed waiting on the model. This is what keeps the stream smooth.
+    - This does NOT render or return an image. The webcam feed the user
+      sees is the browser's own native `<video>` preview -- it is already
+      real-time and never touches this function. What this returns is a
+      small JSON payload (`{"boxes": [...], "frame_w": W, "frame_h": H}`)
+      that a client-side JS snippet (wired in _wire_realtime_events) uses
+      to redraw a transparent <canvas> overlaid on top of that live video.
+      No image round-trips through the server for display -- only box
+      coordinates, which is what makes the overlay feel real-time instead
+      of laggy.
     - In the background, at most one detection runs at a time. Instead of
       deciding "should I detect?" from a fixed timer, we diff the current
       frame against the last frame we actually sent to the model
@@ -319,15 +325,20 @@ def process_single_frame(
         session = new_session_detector()
 
     if frame is None:
-        _, hud = session.snapshot()
-        return None, hud, session
+        boxes, hud = session.snapshot()
+        return {"boxes": boxes, "frame_w": 0, "frame_h": 0}, hud, session
 
     pil_img = Image.fromarray(frame).convert("RGB")
+    frame_h, frame_w = frame.shape[0], frame.shape[1]
 
-    # 1) Always draw the CURRENT live frame with the latest cached boxes,
-    #    right away -- this never waits on detection.
+    # 1) Grab whatever boxes are already cached -- NO image is rendered here.
+    #    The browser already has a live, native webcam feed on screen; we
+    #    just hand it the latest box coordinates as JSON and a small bit of
+    #    client-side JS (wired in _wire_realtime_events) draws them onto a
+    #    transparent <canvas> sitting on top of that live video. That keeps
+    #    the video itself genuinely real-time (it never goes through this
+    #    Python round trip at all) while the overlay updates as boxes arrive.
     boxes_to_draw, hud = session.snapshot()
-    annotated_live = draw_boxes_opencv(np.array(pil_img), boxes_to_draw)
 
     # 2) Decide, in the background, whether this frame is worth detecting.
     if not session.is_busy():
@@ -372,7 +383,11 @@ def process_single_frame(
             session.reference_gray = gray_small
             session.last_detect_time = now
 
-    return annotated_live, hud, session
+    return (
+        {"boxes": boxes_to_draw, "frame_w": frame_w, "frame_h": frame_h},
+        hud,
+        session,
+    )
 
 
 def reset_session(session: Optional[SessionDetector]) -> SessionDetector:
@@ -529,19 +544,41 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
             with gr.Column(scale=2):
-                c["webcam_input"] = gr.Image(
-                    sources=["webcam"],
-                    streaming=True,
-                    label="LIVE WEBCAM STREAM",
-                    type="numpy",
+                # elem_id lets the JS below find this component's DOM
+                # wrapper to size/position the overlay canvas on top of it.
+                gr.HTML(
+                    """
+                    <style>
+                    #rt_webcam_wrap { position: relative; }
+                    #rt_overlay_canvas {
+                        position: absolute;
+                        top: 0; left: 0;
+                        width: 100%; height: 100%;
+                        pointer-events: none;
+                        z-index: 5;
+                    }
+                    </style>
+                    """
                 )
+                with gr.Group(elem_id="rt_webcam_wrap") as webcam_wrap:
+                    c["webcam_input"] = gr.Image(
+                        sources=["webcam"],
+                        streaming=True,
+                        label="LIVE WEBCAM STREAM",
+                        type="numpy",
+                        elem_id="rt_webcam_input",
+                    )
+                    c["overlay_canvas_html"] = gr.HTML(
+                        '<canvas id="rt_overlay_canvas"></canvas>'
+                    )
+                c["webcam_wrap_group"] = webcam_wrap
+                # Hidden data channel: box coordinates + frame size only --
+                # never an image. The JS bound in _wire_realtime_events
+                # draws this onto #rt_overlay_canvas whenever it changes.
+                c["boxes_json_state"] = gr.JSON(visible=False)
                 c["video_input"] = gr.Video(
                     label="INPUT VIDEO FILE",
                     visible=False,
-                )
-                c["annotated_stream_output"] = gr.Image(
-                    label="NEO-RETRO DETECTED STREAM / OVERLAY",
-                    type="numpy",
                 )
                 c["video_gallery_output"] = gr.Gallery(
                     label="SAMPLED FRAME DETECTIONS (EVERY 1 SEC)",
@@ -562,7 +599,6 @@ def _wire_realtime_events(
         return (
             gr.update(visible=is_cam),
             gr.update(visible=not is_cam),
-            gr.update(visible=is_cam),
             gr.update(visible=not is_cam),
             fresh_session,
         )
@@ -571,9 +607,8 @@ def _wire_realtime_events(
         toggle_mode,
         inputs=[c_real["stream_mode"], c_real["session_state"]],
         outputs=[
-            c_real["webcam_input"],
+            c_real["webcam_wrap_group"],
             c_real["video_input"],
-            c_real["annotated_stream_output"],
             c_real["video_gallery_output"],
             c_real["session_state"],
         ],
@@ -596,11 +631,67 @@ def _wire_realtime_events(
             c_real["session_state"],
         ],
         outputs=[
-            c_real["annotated_stream_output"],
+            c_real["boxes_json_state"],
             c_real["hud_status"],
             c_real["session_state"],
         ],
         stream_every=0.3,
+    )
+
+    # Pure client-side redraw: fires whenever boxes_json_state's value
+    # changes (i.e. every stream tick), with NO extra server round trip --
+    # the data already arrived as part of the stream() response above. This
+    # is what makes the overlay track the (always-live) video in real time
+    # instead of waiting on a second image to render server-side.
+    c_real["boxes_json_state"].change(
+        fn=None,
+        inputs=[c_real["boxes_json_state"]],
+        outputs=[],
+        js="""
+        (payload) => {
+            const wrap = document.getElementById('rt_webcam_wrap');
+            const canvas = document.getElementById('rt_overlay_canvas');
+            if (!wrap || !canvas || !payload) return;
+
+            // Keep the canvas's pixel buffer matched to its on-screen size
+            // (CSS already stretches it to cover the wrapper via 100%/100%).
+            const rect = wrap.getBoundingClientRect();
+            if (canvas.width !== rect.width || canvas.height !== rect.height) {
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+            }
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const boxes = payload.boxes || [];
+            const frameW = payload.frame_w || canvas.width;
+            const frameH = payload.frame_h || canvas.height;
+            if (!frameW || !frameH || boxes.length === 0) return;
+
+            const scaleX = canvas.width / frameW;
+            const scaleY = canvas.height / frameH;
+
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 2;
+            ctx.font = '12px "JetBrains Mono", monospace';
+
+            for (const box of boxes) {
+                if (!box || box.length < 4) continue;
+                const [ymin, xmin, ymax, xmax, label] = box;
+                const x = xmin * scaleX, y = ymin * scaleY;
+                const w = (xmax - xmin) * scaleX, h = (ymax - ymin) * scaleY;
+                ctx.strokeRect(x, y, w, h);
+                if (label) {
+                    const text = String(label);
+                    const textW = ctx.measureText(text).width;
+                    ctx.fillStyle = '#00ffcc';
+                    ctx.fillRect(x, Math.max(0, y - 16), textW + 6, 16);
+                    ctx.fillStyle = '#110805';
+                    ctx.fillText(text, x + 3, Math.max(11, y - 4));
+                }
+            }
+        }
+        """,
     )
 
     c_real["process_video_btn"].click(
