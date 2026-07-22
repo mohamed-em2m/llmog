@@ -129,14 +129,11 @@ class SessionDetector:
                 self.last_hud = hud
 
     def update_tracking_only(self) -> List[Any]:
-        """Runs ByteTracker prediction tick using existing tracks when no new VLM detection has completed."""
+        """Advance Kalman filter one tick between VLM detections.
+        Calls predict_only() -- no association, no new track creation.
+        This keeps boxes smoothly gliding on screen while the model is busy."""
         with self.lock:
-            if self.last_raw_boxes:
-                formatted_dets = []
-                for b in self.last_raw_boxes:
-                    lbl = b[4] if len(b) >= 5 else ""
-                    formatted_dets.append([b[0], b[1], b[2], b[3], lbl, 0.85])
-                self.last_tracked_boxes = self.tracker.update(formatted_dets)
+            self.last_tracked_boxes = self.tracker.predict_only()
             return list(self.last_tracked_boxes)
 
     def snapshot(self):

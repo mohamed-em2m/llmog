@@ -81,11 +81,8 @@ class KalmanFilterVector:
 class Track:
     """Represents a single tracked object across frames."""
 
-    _count = 0
-
-    def __init__(self, bbox: Tuple[float, float, float, float], score: float, label: str):
-        Track._count += 1
-        self.track_id = Track._count
+    def __init__(self, bbox: Tuple[float, float, float, float], score: float, label: str, track_id: int):
+        self.track_id = track_id
         self.kf = KalmanFilterVector(bbox)
         self.score = score
         self.label = label
@@ -169,6 +166,12 @@ class ByteTracker:
     ByteTrack multi-object tracker.
     Splits detections into high-score and low-score sets to associate both
     confident detections and occluded/low-confidence bounding boxes.
+
+    Lifecycle:
+    - update(detections): call when new VLM detections arrive. Runs full
+      Kalman predict + Hungarian IoU association + track init/kill.
+    - predict_only(): call every frame tick BETWEEN detections. Advances
+      Kalman state so tracks glide smoothly without re-running association.
     """
 
     def __init__(self, high_thresh: float = 0.5, low_thresh: float = 0.1, match_thresh: float = 0.8, max_time_lost: int = 30):
@@ -178,6 +181,20 @@ class ByteTracker:
         self.max_time_lost = max_time_lost
         self.tracked_tracks: List[Track] = []
         self.lost_tracks: List[Track] = []
+        self._id_counter = 0  # Per-instance counter so sessions don't share IDs
+
+    def _new_track(self, bbox, score, label) -> Track:
+        self._id_counter += 1
+        return Track(bbox, score, label, self._id_counter)
+
+    def predict_only(self) -> List[List[Any]]:
+        """Advance Kalman filters one step and return current predicted box positions.
+        Does NOT do any detection association — call this between VLM ticks so boxes
+        glide smoothly rather than staying frozen until the next model response."""
+        for t in self.tracked_tracks:
+            t.kf.predict()
+            t.time_since_update += 1
+        return [t.get_box() for t in self.tracked_tracks]
 
     def update(self, detections: List[List[Any]]) -> List[List[Any]]:
         """
@@ -258,7 +275,7 @@ class ByteTracker:
         # Step 5: Init new tracks for unmatched high-score detections
         for det_idx in u_det_high_final:
             box, score, label = det_high[det_idx]
-            new_trk = Track(box, score, label)
+            new_trk = self._new_track(box, score, label)
             self.tracked_tracks.append(new_trk)
 
         # Step 6: Remove old lost tracks
