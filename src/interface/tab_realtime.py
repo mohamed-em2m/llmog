@@ -515,18 +515,46 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
             with gr.Column(scale=2):
+                # Inject the overlay canvas via JS directly onto document.body so it
+                # floats above the video element without being constrained by Gradio's
+                # nested wrapper divs (which break position:absolute stacking).
                 gr.HTML(
                     """
                     <style>
-                    #rt_webcam_wrap { position: relative; width: 100%; }
-                    #rt_overlay_canvas {
-                        position: absolute;
-                        top: 0; left: 0;
-                        width: 100%; height: 100%;
+                    #rt_float_canvas {
+                        position: fixed;
                         pointer-events: none;
-                        z-index: 5;
+                        z-index: 9999;
+                        box-sizing: border-box;
                     }
                     </style>
+                    <script>
+                    (function() {
+                        if (document.getElementById('rt_float_canvas')) return;
+                        var cv = document.createElement('canvas');
+                        cv.id = 'rt_float_canvas';
+                        document.body.appendChild(cv);
+
+                        function syncPosition() {
+                            // Find the live <video> inside the webcam component
+                            var anchor = document.getElementById('rt_webcam_input');
+                            if (!anchor) return;
+                            var video = anchor.querySelector('video');
+                            var target = video || anchor;
+                            var r = target.getBoundingClientRect();
+                            cv.style.left   = r.left + 'px';
+                            cv.style.top    = r.top  + 'px';
+                            cv.style.width  = r.width  + 'px';
+                            cv.style.height = r.height + 'px';
+                            if (cv.width  !== Math.round(r.width))  cv.width  = Math.round(r.width);
+                            if (cv.height !== Math.round(r.height)) cv.height = Math.round(r.height);
+                        }
+
+                        // Reposition on every animation frame so scrolling/resize is instant
+                        function loop() { syncPosition(); requestAnimationFrame(loop); }
+                        requestAnimationFrame(loop);
+                    })();
+                    </script>
                     """
                 )
                 with gr.Group(elem_id="rt_webcam_wrap") as webcam_wrap:
@@ -536,9 +564,6 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         label="LIVE WEBCAM STREAM",
                         type="numpy",
                         elem_id="rt_webcam_input",
-                    )
-                    c["overlay_canvas_html"] = gr.HTML(
-                        '<canvas id="rt_overlay_canvas"></canvas>'
                     )
                 c["webcam_wrap_group"] = webcam_wrap
                 c["boxes_json_state"] = gr.JSON(visible=False)
@@ -608,15 +633,11 @@ def _wire_realtime_events(
         outputs=[],
         js="""
         (payload) => {
-            const wrap = document.getElementById('rt_webcam_wrap');
-            const canvas = document.getElementById('rt_overlay_canvas');
-            if (!wrap || !canvas || !payload) return;
+            // Use the body-level floating canvas that is always positioned over
+            // the live <video> element via the rAF loop set up at build time.
+            const canvas = document.getElementById('rt_float_canvas');
+            if (!canvas || !payload) return;
 
-            const rect = wrap.getBoundingClientRect();
-            if (canvas.width !== rect.width || canvas.height !== rect.height) {
-                canvas.width = rect.width;
-                canvas.height = rect.height;
-            }
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -625,10 +646,9 @@ def _wire_realtime_events(
             const frameH = payload.frame_h || canvas.height;
             if (!frameW || !frameH || boxes.length === 0) return;
 
-            const scaleX = canvas.width / frameW;
+            const scaleX = canvas.width  / frameW;
             const scaleY = canvas.height / frameH;
 
-            ctx.strokeStyle = '#00ffcc';
             ctx.lineWidth = 2;
             ctx.font = '12px "JetBrains Mono", monospace';
 
@@ -637,14 +657,25 @@ def _wire_realtime_events(
                 const [ymin, xmin, ymax, xmax, label, trackId] = box;
                 const x = xmin * scaleX, y = ymin * scaleY;
                 const w = (xmax - xmin) * scaleX, h = (ymax - ymin) * scaleY;
+
+                // Draw box outline with neon glow effect
+                ctx.strokeStyle = '#00ffcc';
+                ctx.shadowColor  = '#00ffcc';
+                ctx.shadowBlur   = 6;
                 ctx.strokeRect(x, y, w, h);
-                const tag = (trackId !== undefined && trackId !== null) ? `${label || ''} #${trackId}` : `${label || ''}`;
+                ctx.shadowBlur   = 0;
+
+                const tag = (trackId !== undefined && trackId !== null)
+                    ? `${label || ''} #${trackId}`
+                    : `${label || ''}`;
                 if (tag.trim()) {
                     const textW = ctx.measureText(tag).width;
-                    ctx.fillStyle = '#00ffcc';
-                    ctx.fillRect(x, Math.max(0, y - 16), textW + 6, 16);
-                    ctx.fillStyle = '#110805';
-                    ctx.fillText(tag, x + 3, Math.max(11, y - 4));
+                    const bh = 18;
+                    const by = y > bh ? y - bh : y + h;
+                    ctx.fillStyle = 'rgba(0,255,204,0.85)';
+                    ctx.fillRect(x, by, textW + 8, bh);
+                    ctx.fillStyle = '#050811';
+                    ctx.fillText(tag, x + 4, by + bh - 4);
                 }
             }
         }
