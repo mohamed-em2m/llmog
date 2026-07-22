@@ -47,6 +47,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_srv["server_parallel_slots_input"],
             c_srv["server_batch_size"],
             c_srv["server_ubatch_size"],
+            c_srv["server_log_disable"],
         ],
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )
@@ -57,6 +58,11 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     )
 
     c_srv["refresh_logs_btn"].click(
+        get_server_status_and_logs,
+        outputs=[c_srv["server_logs_viewer"], server_status_badge],
+    )
+
+    c_srv["log_timer"].tick(
         get_server_status_and_logs,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )

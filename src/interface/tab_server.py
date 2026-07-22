@@ -31,6 +31,7 @@ def _get_server_status_html() -> str:
 def start_server_wrapper(
     model_path, port, host, enable_thinking, enable_mtp, ctx_size, n_gpu_layers,
     cache_type_k, img_min_tokens, img_max_tokens, parallel_slots, batch_size, ubatch_size,
+    disable_log=False,
 ):
     global server_manager
     with server_lock:
@@ -59,6 +60,7 @@ def start_server_wrapper(
                 host=host,
                 enable_thinking=enable_thinking,
                 spec_type=spec_type,
+                log_disable=bool(disable_log),
                 **kwargs,
             )
             server_manager.start_llama_server()
@@ -131,6 +133,8 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 with gr.Row():
                     server_batch_size = gr.Number(label="Batch Size (-b)", value=2048, precision=0)
                     server_ubatch_size = gr.Number(label="Micro Batch Size (-ub)", value=512, precision=0)
+                with gr.Row():
+                    server_log_disable = gr.Checkbox(label="Disable Server Console Logs (--log-disable)", value=False)
 
             with gr.Row():
                 start_server_btn = gr.Button("🚀 Start Server", variant="primary", scale=2)
@@ -146,6 +150,7 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 interactive=False,
             )
             refresh_logs_btn = gr.Button("🔄 Refresh Logs", size="sm")
+            log_timer = gr.Timer(2.0)
 
     return dict(
         server_preset=server_preset,
@@ -162,8 +167,10 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
         server_img_max_tokens=server_img_max,
         server_batch_size=server_batch_size,
         server_ubatch_size=server_ubatch_size,
+        server_log_disable=server_log_disable,
         start_server_btn=start_server_btn,
         stop_server_btn=stop_server_btn,
         server_logs_viewer=server_logs_viewer,
         refresh_logs_btn=refresh_logs_btn,
+        log_timer=log_timer,
     )

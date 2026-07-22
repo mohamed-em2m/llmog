@@ -32,6 +32,7 @@ class LlamaServerManager:
         kv_cache_type: str = "q4_0",
         image_min_tokens: int = 1024,
         image_max_tokens: int = 4096,
+        log_disable: bool = True,
     ):
         self.model = model
         self.host = host
@@ -54,6 +55,7 @@ class LlamaServerManager:
         self.kv_cache_type = kv_cache_type
         self.image_min_tokens = image_min_tokens
         self.image_max_tokens = image_max_tokens
+        self.log_disable = log_disable
 
         self.process = None
         self.server_ready_event = threading.Event()
@@ -105,12 +107,9 @@ class LlamaServerManager:
             "--chat-template-kwargs",
             f'{{"enable_thinking": {str(self.enable_thinking).lower()}}}',
             "--jinja",
-            "--image-min-tokens",
-            str(self.image_min_tokens),
-            "--image-max-tokens",
-            str(self.image_max_tokens),
-            "--log-disable"
         ]
+        if self.log_disable:
+            cmd.append("--log-disable")
         print("cmd: ", cmd)
         # Dynamically append speculative drafting options
         if self.spec_type and self.spec_type.lower() != "none":
