@@ -34,10 +34,9 @@ from free_detection.image_preprocessing import (
 # ---------------------------------------------------------------------------
 _realtime_lock = threading.Lock()
 _detect_thread: Optional[threading.Thread] = None
-_last_raw_frame: Optional[np.ndarray] = None        # Latest webcam frame captured
-_last_annotated_frame: Optional[np.ndarray] = None  # Latest detection result to display
+_last_boxes: List[Any] = []                         # Latest bounding boxes in original pixel space
 _last_hud_info: str = '<div class="neo-retro-hud-stat">STATUS: INITIALIZED</div>'
-_tick_counter: int = 0                              # Monotonic counter forces Gradio diff
+_is_detecting: bool = False
 
 
 def draw_boxes_opencv(image_np: np.ndarray, boxes: List[Any]) -> np.ndarray:
@@ -87,10 +86,9 @@ def _run_detection_bg(
     api_key: str,
     model_name: str,
     prep_info: dict,
-    orig_frame: np.ndarray,
 ):
-    """Background thread: runs VLM detection and updates global cache."""
-    global _last_annotated_frame, _last_hud_info
+    """Background thread: runs VLM detection and updates global boxes cache."""
+    global _last_boxes, _last_hud_info, _is_detecting
 
     start_time = time.time()
     try:
@@ -115,9 +113,6 @@ def _run_detection_bg(
             bbox = d.get("bbox_2d", [])
             lbl = d.get("label", "")
             if len(bbox) == 4:
-                # Use map_bbox_to_original to remap from preprocessed-image
-                # coordinate space (0-1000) back to original frame pixel space,
-                # correctly accounting for any scaling/padding done by preprocess_resolution.
                 x1, y1, x2, y2 = map_bbox_to_original(list(bbox), prep_info)
                 ymin = y1 * orig_h / 1000.0
                 xmin = x1 * orig_w / 1000.0
@@ -125,14 +120,11 @@ def _run_detection_bg(
                 xmax = x2 * orig_w / 1000.0
                 boxes.append([ymin, xmin, ymax, xmax, lbl])
 
-        # Draw on the ORIGINAL resolution frame (not the downscaled one)
-        annotated_np = draw_boxes_opencv(orig_frame.copy(), boxes)
-
         elapsed = (time.time() - start_time) * 1000.0
         fps = 1000.0 / max(elapsed, 1.0)
 
         with _realtime_lock:
-            _last_annotated_frame = annotated_np
+            _last_boxes = boxes
             _last_hud_info = (
                 f'<div class="neo-retro-hud-stat">FPS: {fps:.1f} | '
                 f"LATENCY: {elapsed:.0f}ms | DETECTED: {len(boxes)}</div>"
@@ -143,6 +135,9 @@ def _run_detection_bg(
                 f'<div class="neo-retro-hud-stat" style="color:#ff0055 !important;">'
                 f"ERROR: {html.escape(str(e))}</div>"
             )
+    finally:
+        with _realtime_lock:
+            _is_detecting = False
 
 
 def process_single_frame(
@@ -157,27 +152,21 @@ def process_single_frame(
     max_resolution: int = 640,
 ) -> tuple[Optional[np.ndarray], str]:
     """
-    Called on every Gradio stream tick (~0.3 s).
+    Called on every Gradio webcam stream tick.
 
     Strategy:
-    - Each tick we start a NEW background detection thread only if no thread
-      is currently running (non-blocking; incoming frames are dropped while
-      the model is busy).
-    - We ALWAYS return a *fresh copy* of the current best annotated frame so
-      that Gradio detects a value change every tick and pushes the update to
-      the browser immediately when the previous detection finishes.
+    - Every tick receives the LIVE webcam frame from the browser.
+    - If no background detection is running, launch detection asynchronously on a downscaled frame.
+    - Render the latest known detected bounding boxes dynamically onto the CURRENT LIVE WEBCAM FRAME.
+    - This ensures the video stream remains 100% smooth & live at 30 FPS while bounding boxes update asynchronously!
     """
-    global _detect_thread, _last_raw_frame, _tick_counter
+    global _detect_thread, _is_detecting
 
     if frame is None:
         with _realtime_lock:
-            out = _last_annotated_frame.copy() if _last_annotated_frame is not None else None
             hud = _last_hud_info
-        return out, hud
+        return None, hud
 
-    # Downscale the frame sent to the model using preprocess_resolution from
-    # image_preprocessing.py. This preserves aspect ratio via LANCZOS resampling
-    # and returns a prep_info dict for correct coordinate remapping.
     pil_img = Image.fromarray(frame).convert("RGB")
     max_res = int(max_resolution or 640)
     proc_img, prep_info = preprocess_resolution(
@@ -191,38 +180,35 @@ def process_single_frame(
     api_key = ext_api_key if use_external_api else "no-key"
     model_name = ext_model_name if use_external_api else "local-model"
 
-    orig_frame_np = np.array(pil_img)  # original resolution numpy array for display
+    # Launch detection in background if model is free
+    with _realtime_lock:
+        should_start = not _is_detecting
+        if should_start:
+            _is_detecting = True
 
-    # Launch detection in background only if previous thread has finished
-    if _detect_thread is None or not _detect_thread.is_alive():
-        t = threading.Thread(
+    if should_start:
+        _detect_thread = threading.Thread(
             target=_run_detection_bg,
             args=(
-                np.array(proc_img),   # downscaled for model speed
+                np.array(proc_img),   # downscaled for VLM speed
                 categories,
                 base_url,
                 api_key,
                 model_name,
-                prep_info,            # carries orig_w, orig_h, scale, pad offsets
-                orig_frame_np,        # display frame at original resolution
+                prep_info,            # resolution & coordinate mapping info
             ),
             daemon=True,
         )
-        t.start()
-        _detect_thread = t
+        _detect_thread.start()
 
-    # Always return a *copy* so Gradio sees a different object every tick.
-    # This is the key fix: returning the same ndarray reference causes
-    # Gradio to skip the browser push (it sees no diff).
+    # Draw the LATEST detected bounding boxes onto the CURRENT LIVE WEBCAM FRAME
     with _realtime_lock:
-        if _last_annotated_frame is not None:
-            out_frame = _last_annotated_frame.copy()
-        else:
-            # Before first detection completes, show the raw webcam frame
-            out_frame = frame.copy()
+        boxes_to_draw = list(_last_boxes)
         hud = _last_hud_info
 
-    return out_frame, hud
+    annotated_live = draw_boxes_opencv(np.array(pil_img), boxes_to_draw)
+
+    return annotated_live, hud
 
 
 def process_video_frames(
