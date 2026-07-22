@@ -129,11 +129,9 @@ class SessionDetector:
                 self.last_hud = hud
 
     def update_tracking_only(self) -> List[Any]:
-        """Advance Kalman filter one tick between VLM detections.
-        Calls predict_only() -- no association, no new track creation.
-        This keeps boxes smoothly gliding on screen while the model is busy."""
+        """Returns the current active boxes without applying Kalman motion prediction extrapolation.
+        Holds bounding box coordinates steady on screen until the next VLM detection completes."""
         with self.lock:
-            self.last_tracked_boxes = self.tracker.predict_only()
             return list(self.last_tracked_boxes)
 
     def snapshot(self):
