@@ -39,6 +39,9 @@ from free_detection.detection_pipeline import (
     ObjectDetectionPipeline,
     RoundResult,
     draw_grid,
+    pil_to_data_uri,
+    parse_detections,
+    validate_detections,
     DEFAULT_DETECTOR_TEMPLATE,
     DEFAULT_JUDGE_TEMPLATE,
 )
@@ -1943,11 +1946,27 @@ def process_single_frame(
         client = OpenAI(base_url=base_url, api_key=api_key)
         pipeline = ObjectDetectionPipeline(client=client, detector_model=model_name)
 
-        boxes, _ = pipeline.detect_objects(
-            image=pil_img,
+        img_uri = pil_to_data_uri(pil_img)
+        raw_output = pipeline.call_detector(
+            image_uris=img_uri,
             categories=categories,
-            temperature=0.2,
+            category_definitions="",
         )
+        parsed_dets = parse_detections(raw_output)
+        valid_dets = validate_detections(parsed_dets, categories)
+
+        boxes = []
+        for d in valid_dets:
+            bbox = d.get("bbox_2d", [])
+            lbl = d.get("label", "")
+            if len(bbox) == 4:
+                # Convert 0-1000 scale [x1, y1, x2, y2] to image coordinates [ymin, xmin, ymax, xmax, label]
+                x1, y1, x2, y2 = bbox
+                ymin = y1 * pil_img.height / 1000.0
+                xmin = x1 * pil_img.width / 1000.0
+                ymax = y2 * pil_img.height / 1000.0
+                xmax = x2 * pil_img.width / 1000.0
+                boxes.append([ymin, xmin, ymax, xmax, lbl])
 
         annotated_img = draw_grid(pil_img, style="none")
         annotated_np = draw_boxes_on_image(annotated_img, boxes)
