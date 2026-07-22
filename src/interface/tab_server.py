@@ -21,7 +21,6 @@ from interface.state import (
 logger = logging.getLogger("detection_pipeline")
 
 
-
 def start_server_wrapper(
     model,
     port,
@@ -34,8 +33,8 @@ def start_server_wrapper(
     image_min_tokens,
     image_max_tokens,
     parallel_slots,
-    batch_size=2048,
-    ubatch_size=512,
+    batch_size=1024,
+    ubatch_size=1024,
     disable_log=False,
 ):
     ctx_size = ctx_size * parallel_slots
@@ -268,7 +267,7 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 gr.HTML(_section_title("🎛️", "Compute"))
                 server_ctx_input = gr.Number(
                     label="Context Size per Slot",
-                    value=15000,
+                    value=10000,
                     precision=0,
                 )
                 server_parallel_slots_input = gr.Number(
@@ -296,13 +295,13 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 with gr.Row():
                     server_batch_size = gr.Number(
                         label="Batch Size (-b / --batch-size)",
-                        value=2048,
+                        value=1024,
                         precision=0,
                         info="Logical batch size for prompt processing.",
                     )
                     server_ubatch_size = gr.Number(
                         label="Micro-Batch Size (-ub / --ubatch-size)",
-                        value=512,
+                        value=1024,
                         precision=0,
                         info="Physical micro-batch size submitted to GPU.",
                     )
