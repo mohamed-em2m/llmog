@@ -34,7 +34,7 @@ from free_detection.image_preprocessing import (
 # ---------------------------------------------------------------------------
 _realtime_lock = threading.Lock()
 _detect_thread: Optional[threading.Thread] = None
-_last_boxes: List[Any] = []                         # Latest bounding boxes in original pixel space
+_last_boxes: List[Any] = []  # Latest bounding boxes in original pixel space
 _last_hud_info: str = '<div class="neo-retro-hud-stat">STATUS: INITIALIZED</div>'
 _is_detecting: bool = False
 
@@ -60,7 +60,9 @@ def draw_boxes_opencv(image_np: np.ndarray, boxes: List[Any]) -> np.ndarray:
                 font = cv2.FONT_HERSHEY_SIMPLEX
                 font_scale = 0.5
                 thickness = 1
-                (text_w, text_h), _ = cv2.getTextSize(label, font, font_scale, thickness)
+                (text_w, text_h), _ = cv2.getTextSize(
+                    label, font, font_scale, thickness
+                )
 
                 lbl_pt1 = (int(xmin), max(0, int(ymin) - text_h - 6))
                 lbl_pt2 = (int(xmin) + text_w + 6, max(text_h + 6, int(ymin)))
@@ -175,7 +177,9 @@ def process_single_frame(
         target_short_edge=max_res,
     )
 
-    categories = [c.strip() for c in categories_str.split(",") if c.strip()] or ["object"]
+    categories = [c.strip() for c in categories_str.split(",") if c.strip()] or [
+        "object"
+    ]
     base_url = ext_api_url if use_external_api else f"http://127.0.0.1:{server_port}/v1"
     api_key = ext_api_key if use_external_api else "no-key"
     model_name = ext_model_name if use_external_api else "local-model"
@@ -190,12 +194,12 @@ def process_single_frame(
         _detect_thread = threading.Thread(
             target=_run_detection_bg,
             args=(
-                np.array(proc_img),   # downscaled for VLM speed
+                np.array(proc_img),  # downscaled for VLM speed
                 categories,
                 base_url,
                 api_key,
                 model_name,
-                prep_info,            # resolution & coordinate mapping info
+                prep_info,  # resolution & coordinate mapping info
             ),
             daemon=True,
         )
@@ -266,20 +270,25 @@ def process_video_frames(
         if ann is not None:
             annotated_frames.append(ann)
 
-    return annotated_frames, f"Successfully processed {len(annotated_frames)} frames from video!"
+    return (
+        annotated_frames,
+        f"Successfully processed {len(annotated_frames)} frames from video!",
+    )
 
 
 def _build_realtime_tab() -> Dict[str, Any]:
     c = {}
     with gr.Column(elem_classes=["neo-retro-card"]):
-        gr.HTML("""
+        gr.HTML(
+            """
         <div style="padding: 10px; border-bottom: 2px solid #00ffcc; background: #050811;">
             <span class="neo-retro-badge">LIVE CYBER-STREAM</span>
             <h2 style="color: #00ffcc; font-family: 'JetBrains Mono', monospace; margin: 5px 0 0;">
                 ⚡ REAL-TIME WEBCAM & VIDEO FRAME DETECTOR
             </h2>
         </div>
-        """)
+        """
+        )
 
         with gr.Row():
             with gr.Column(scale=1):
