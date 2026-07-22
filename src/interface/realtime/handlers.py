@@ -15,7 +15,11 @@ except ImportError:
 
 from free_detection.image_preprocessing import preprocess_resolution
 from free_detection.trackers import MultiAlgorithmTracker
-from interface.realtime.state import SessionDetector, new_session_detector, resolve_endpoint
+from interface.realtime.state import (
+    SessionDetector,
+    new_session_detector,
+    resolve_endpoint,
+)
 from interface.realtime.utils import (
     to_small_gray,
     scene_has_changed,
@@ -92,7 +96,7 @@ def process_single_frame(
                 model_name,
                 prep_info,
                 True,  # enable_grid
-                100,   # grid_step
+                100,  # grid_step
             )
             session.reference_gray = gray_small
             session.last_detect_time = now
@@ -161,7 +165,7 @@ def process_video_frames(
         prep_info = {"max_res": max_res, "orig_w": f.shape[1], "orig_h": f.shape[0]}
         try:
             boxes, _hud = run_vlm_detect(
-                f, categories, base_url, api_key, model_name, prep_info, True, 100
+                f, categories, base_url, api_key, model_name, prep_info, True, 250
             )
             tracked_boxes = boxes
         except Exception:

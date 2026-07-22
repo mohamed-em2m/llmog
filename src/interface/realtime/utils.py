@@ -25,7 +25,9 @@ from free_detection.image_preprocessing import (
 from interface.realtime.state import get_pipeline
 
 
-def to_small_gray(frame_rgb: np.ndarray, size: Tuple[int, int] = (160, 120)) -> Optional[np.ndarray]:
+def to_small_gray(
+    frame_rgb: np.ndarray, size: Tuple[int, int] = (160, 120)
+) -> Optional[np.ndarray]:
     """Downscaled, blurred grayscale version of a frame, cheap to diff."""
     if cv2 is None:
         return None
@@ -98,7 +100,7 @@ def run_vlm_detect(
     model_name: str,
     prep_info: dict,
     enable_grid: bool = True,
-    grid_step: int = 100,
+    grid_step: int = 250,
     grid_style: str = "standard",
     grid_line_color: str = "red",
     grid_line_width: int = 1,
