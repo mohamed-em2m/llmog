@@ -10,6 +10,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+import GPUtil
 
 from openai import OpenAI
 
@@ -79,6 +80,8 @@ def init_server(args):
     extra_args = list(getattr(args, "extra_args", None) or [])
     serving_extra = getattr(args, "serving_extra", {}) or {}
 
+    num_gpus = len(GPUtil.getGPUs())
+    tensor_split = "1," * num_gpus
     if args.server_type == "llama_cpp":
         # Build kwargs from any user overrides first, then the structured
         # PipelineConfig fields (so explicit fields win over --serving_extra).

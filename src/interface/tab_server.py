@@ -6,7 +6,7 @@ import time
 import logging
 from typing import Dict, Any
 import gradio as gr
-
+import GPUtil
 from servers import LlamaServerManager
 from interface.state import (
     state,
@@ -62,6 +62,8 @@ def start_server_wrapper(
             '<span class="status-badge badge-starting">INITIALIZING...</span>',
         )
 
+        num_gpus = len(GPUtil.getGPUs())
+        tensor_split = "1," * num_gpus
         spec_type = "draft-mtp" if enable_mtp else "none"
         state.server_manager = LlamaServerManager(
             model=model,
@@ -71,7 +73,7 @@ def start_server_wrapper(
             parallel_slots=parallel_slots,
             n_threads=-1,
             gpu_layers=int(gpu_layers),
-            tensor_split="1,1",
+            tensor_split=tensor_split,
             main_gpu=0,
             temp=0.4,
             top_p=0.95,

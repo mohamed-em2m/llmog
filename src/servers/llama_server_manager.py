@@ -4,6 +4,10 @@ import threading
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import GPUtil
+
+num_gpus = len(GPUtil.getGPUs())
+tensor_split = "1," * num_gpus
 
 
 # ─── Llama Server Class ───────────────────────────────────────────────────────
@@ -18,7 +22,7 @@ class LlamaServerManager:
         parallel_slots: int = 1,
         n_threads: int = -1,
         gpu_layers: int = -1,
-        tensor_split: str = "1,1",
+        tensor_split: str = tensor_split,
         main_gpu: int = 0,
         temp: float = 0.4,
         top_p: float = 0.95,
