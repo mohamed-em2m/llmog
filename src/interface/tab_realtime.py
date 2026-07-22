@@ -380,6 +380,7 @@ def process_video_frames(
     ext_api_key: str,
     ext_model_name: str,
     max_resolution: int = 640,
+    tracker_algorithm: str = "ByteTrack",
     progress=gr.Progress(),
 ) -> tuple[List[np.ndarray], str]:
     if not video_path:
@@ -415,7 +416,7 @@ def process_video_frames(
     )
     max_res = int(max_resolution or 640)
 
-    tracker = ByteTracker(high_thresh=0.4, low_thresh=0.1)
+    tracker = MultiAlgorithmTracker(tracker_algorithm)
     annotated_frames = []
     errors = 0
     for idx, f in enumerate(frames):
@@ -430,11 +431,7 @@ def process_video_frames(
             boxes, _hud = _detect(
                 np.array(proc_img), categories, base_url, api_key, model_name, prep_info
             )
-            formatted_dets = []
-            for b in boxes:
-                lbl = b[4] if len(b) >= 5 else ""
-                formatted_dets.append([b[0], b[1], b[2], b[3], lbl, 0.9])
-            tracked_boxes = tracker.update(formatted_dets)
+            tracked_boxes = tracker.update_with_detections(f, boxes)
         except Exception:
             tracked_boxes = []
             errors += 1
@@ -708,6 +705,7 @@ def _wire_realtime_events(
             c_bat["ext_api_key"],
             c_bat["ext_model_name"],
             c_real["max_resolution"],
+            c_real["tracker_algorithm"],
         ],
         outputs=[c_real["video_gallery_output"], c_real["hud_status"]],
     )
