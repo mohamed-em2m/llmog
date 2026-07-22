@@ -41,6 +41,7 @@ from free_detection.image_preprocessing import (
     map_bbox_to_original,
 )
 from free_detection.bytetrack import ByteTracker
+from free_detection.siamonnx import SiamONNXTracker
 
 DEFAULT_HUD = '<div class="neo-retro-hud-stat">STATUS: INITIALIZED</div>'
 
@@ -83,6 +84,7 @@ class SessionDetector:
     )
     future: Optional[Future] = None
     tracker: ByteTracker = field(default_factory=lambda: ByteTracker(high_thresh=0.4, low_thresh=0.1))
+    siam_tracker: SiamONNXTracker = field(default_factory=SiamONNXTracker)
     last_raw_boxes: List[Any] = field(default_factory=list)
     last_tracked_boxes: List[Any] = field(default_factory=list)
     last_hud: str = DEFAULT_HUD
@@ -118,20 +120,22 @@ class SessionDetector:
                 self.last_applied_frame_id = frame_id
                 if boxes is not None:
                     self.last_raw_boxes = boxes
-                    # Feed new VLM predictions into ByteTracker
+                    # Feed new VLM predictions into ByteTracker & SiamONNXTracker
                     formatted_dets = []
                     for b in boxes:
-                        # b: [ymin, xmin, ymax, xmax, label]
                         if len(b) >= 4:
                             lbl = b[4] if len(b) >= 5 else ""
                             formatted_dets.append([b[0], b[1], b[2], b[3], lbl, 0.9])
                     self.last_tracked_boxes = self.tracker.update(formatted_dets)
                 self.last_hud = hud
 
-    def update_tracking_only(self) -> List[Any]:
-        """Returns the current active boxes without applying Kalman motion prediction extrapolation.
-        Holds bounding box coordinates steady on screen until the next VLM detection completes."""
+    def update_tracking_only(self, frame: Optional[np.ndarray] = None) -> List[Any]:
+        """Runs SiamONNXTracker / ByteTracker tick when no new VLM detection has completed."""
         with self.lock:
+            if frame is not None and self.siam_tracker.active_tracks:
+                siam_boxes = self.siam_tracker.track_only(frame)
+                if siam_boxes:
+                    self.last_tracked_boxes = siam_boxes
             return list(self.last_tracked_boxes)
 
     def snapshot(self):
@@ -303,8 +307,8 @@ def process_single_frame(
     pil_img = Image.fromarray(frame).convert("RGB")
     frame_h, frame_w = frame.shape[0], frame.shape[1]
 
-    # 1) Execute ByteTrack update for continuous tracking across stream ticks
-    tracked_boxes = session.update_tracking_only()
+    # 1) Execute tracker update (SiamONNXTracker / ByteTrack) for continuous tracking
+    tracked_boxes = session.update_tracking_only(frame)
     hud = session.last_hud
 
     # 2) Dispatch background detection when ready
