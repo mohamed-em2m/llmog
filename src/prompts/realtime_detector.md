@@ -31,6 +31,5 @@ Estimate tight bounding boxes using those grid lines as reference.
 
 ## Rules
 - Integers only, 0–1000 scale, x1 < x2, y1 < y2.
-- One entry per distinct object instance.
 - Do NOT include markdown fences, comments, or any text outside the JSON.
 - If nothing is visible, output an empty array: []

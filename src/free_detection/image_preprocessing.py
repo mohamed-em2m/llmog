@@ -15,9 +15,184 @@ import numpy as np
 import cv2
 import logging
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 
 logger = logging.getLogger("detection_pipeline.preprocessing")
+
+
+# ---------------------------------------------------------------------------
+# Section A: Advanced Image Conditioning for VLM Input
+# ---------------------------------------------------------------------------
+
+
+def preprocess_vlm_conditioning(
+    image: Image.Image,
+    clahe_enabled: bool = True,
+    clahe_clip: float = 2.0,
+    white_balance_enabled: bool = True,
+    denoise_method: str = "bilateral",  # "bilateral", "nlm", or "none"
+    denoise_d: int = 5,
+    denoise_sigma_color: float = 25.0,
+    denoise_sigma_space: float = 25.0,
+) -> Image.Image:
+    """
+    Section A: Image conditioning for VLM input (keeps image clean & consistent).
+
+    Defaults (best single wins):
+      - CLAHE (True, clip=2.0): Normalizes uneven lighting across fabric/samples.
+      - White balance (True): Corrects color temperature drift across shots.
+      - Bilateral Denoising ('bilateral', d=5): Preserves sharp defect edges while
+        smoothing sensor/fabric weave noise (unlike Gaussian blur).
+    """
+    img_np = np.array(image)
+
+    # 1. White balance / color constancy correction
+    if white_balance_enabled:
+        img_np = _apply_gray_world_wb(img_np)
+
+    # 2. CLAHE (Contrast-Limited Adaptive Histogram Equalization)
+    if clahe_enabled:
+        lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l)
+        lab_enhanced = cv2.merge((l_enhanced, a, b))
+        img_np = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
+
+    # 3. Bilateral Filter Denoising (edge-preserving)
+    if denoise_method == "bilateral":
+        bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        denoised = cv2.bilateralFilter(
+            bgr, d=denoise_d, sigmaColor=denoise_sigma_color, sigmaSpace=denoise_sigma_space
+        )
+        img_np = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
+    elif denoise_method == "nlm":
+        bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        denoised = cv2.fastNlMeansDenoisingColored(bgr, None, 5, 5, 7, 21)
+        img_np = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
+
+    return Image.fromarray(img_np)
+
+
+def _apply_gray_world_wb(img_rgb: np.ndarray) -> np.ndarray:
+    """Gray World White Balance color constancy algorithm."""
+    img_float = img_rgb.astype(np.float32)
+    mean_r = np.mean(img_float[:, :, 0])
+    mean_g = np.mean(img_float[:, :, 1])
+    mean_b = np.mean(img_float[:, :, 2])
+    mean_gray = (mean_r + mean_g + mean_b) / 3.0
+
+    if mean_r > 0 and mean_g > 0 and mean_b > 0:
+        img_float[:, :, 0] = np.clip(img_float[:, :, 0] * (mean_gray / mean_r), 0, 255)
+        img_float[:, :, 1] = np.clip(img_float[:, :, 1] * (mean_gray / mean_g), 0, 255)
+        img_float[:, :, 2] = np.clip(img_float[:, :, 2] * (mean_gray / mean_b), 0, 255)
+    return img_float.astype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# Section B: Pre-Filter / Triage Stage (Fast Traditional CV)
+# ---------------------------------------------------------------------------
+
+
+def compute_blur_laplacian(frame_bgr: np.ndarray) -> float:
+    """Compute variance of Laplacian (sharpness/blur score). Lower = blurry."""
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def compute_edge_density_canny(
+    frame_bgr: np.ndarray, low_thresh: int = 50, high_thresh: int = 150
+) -> float:
+    """Compute Canny edge density ratio (0.0 to 1.0). High = high structural anomaly."""
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, low_thresh, high_thresh)
+    return float(cv2.countNonZero(edges) / (edges.shape[0] * edges.shape[1]))
+
+
+def compute_local_entropy_variance(frame_bgr: np.ndarray) -> float:
+    """
+    Compute local standard deviation / texture anomaly score.
+    Fabric weave has uniform texture; holes/snags/stains create local std-dev spikes.
+    """
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    blur = cv2.blur(gray, (5, 5))
+    sqr_blur = cv2.blur(gray * gray, (5, 5))
+    std_dev = np.sqrt(np.maximum(0, sqr_blur - blur * blur))
+    return float(np.std(std_dev))
+
+
+def compute_diff_from_reference(
+    current_bgr: np.ndarray, reference_bgr: Optional[np.ndarray], diff_thresh: int = 25
+) -> float:
+    """
+    Fast difference against a clean reference patch/frame.
+    Returns ratio of pixels exceeding diff_thresh.
+    """
+    if reference_bgr is None or reference_bgr.shape != current_bgr.shape:
+        return 1.0  # Force trigger if no reference
+    diff = cv2.absdiff(current_bgr, reference_bgr)
+    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray_diff, diff_thresh, 255, cv2.THRESH_BINARY)
+    return float(cv2.countNonZero(thresh) / (thresh.shape[0] * thresh.shape[1]))
+
+
+def triage_frame_check(
+    frame_bgr: np.ndarray,
+    reference_bgr: Optional[np.ndarray] = None,
+    min_laplacian_var: float = 30.0,
+    edge_density_thresh: float = 0.02,
+    entropy_variance_thresh: float = 2.0,
+    reference_diff_thresh: float = 0.015,
+    enable_blur_reject: bool = True,
+    enable_edge_triage: bool = True,
+    enable_entropy_triage: bool = True,
+    enable_ref_triage: bool = True,
+) -> Tuple[bool, str, Dict[str, float]]:
+    """
+    Fast pre-filter/triage stage running traditional CV heuristics before VLM call.
+
+    Returns:
+        (should_process, reason_string, metrics_dict)
+    """
+    metrics = {}
+
+    # 1. Laplacian blur rejection check
+    lap_var = compute_blur_laplacian(frame_bgr)
+    metrics["laplacian_var"] = lap_var
+    if enable_blur_reject and lap_var < min_laplacian_var:
+        return False, f"Blurry frame rejected (Laplacian var {lap_var:.1f} < {min_laplacian_var})", metrics
+
+    trig_reasons = []
+
+    # 2. Canny edge density check
+    if enable_edge_triage:
+        edge_ratio = compute_edge_density_canny(frame_bgr)
+        metrics["edge_density"] = edge_ratio
+        if edge_ratio >= edge_density_thresh:
+            trig_reasons.append(f"edge structure ({edge_ratio:.3f})")
+
+    # 3. Local texture entropy/std-dev anomaly check
+    if enable_entropy_triage:
+        entropy_var = compute_local_entropy_variance(frame_bgr)
+        metrics["entropy_variance"] = entropy_var
+        if entropy_var >= entropy_variance_thresh:
+            trig_reasons.append(f"texture anomaly ({entropy_var:.2f})")
+
+    # 4. Difference-from-reference check
+    if enable_ref_triage and reference_bgr is not None:
+        ref_diff = compute_diff_from_reference(frame_bgr, reference_bgr)
+        metrics["reference_diff"] = ref_diff
+        if ref_diff >= reference_diff_thresh:
+            trig_reasons.append(f"reference diff ({ref_diff:.3f})")
+
+    if trig_reasons:
+        return True, f"Triage triggered: {', '.join(trig_reasons)}", metrics
+
+    # If no specific triage flags were triggered and ref diff was enabled, skip
+    if enable_ref_triage or enable_edge_triage or enable_entropy_triage:
+        return False, "No structural/texture anomaly detected by triage heuristics", metrics
+
+    return True, "Default pass", metrics
 
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:

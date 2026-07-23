@@ -20,7 +20,13 @@ from free_detection.detection_pipeline import (
     get_realtime_prompt,
 )
 from free_detection.image_preprocessing import (
+    preprocess_color_space,
+    preprocess_custom_resize,
     preprocess_resolution,
+    preprocess_contrast,
+    preprocess_noise_sharpness,
+    preprocess_vlm_conditioning,
+    triage_frame_check,
     map_bbox_to_original,
 )
 from interface.realtime.state import get_pipeline
@@ -121,11 +127,39 @@ def run_vlm_detect(
     start_time = time.time()
     pil_img = Image.fromarray(frame).convert("RGB")
 
-    # Preprocess image resolution (or keep native resolution if resizing is disabled)
+    # Section A: Advanced VLM Image Conditioning (CLAHE, White Balance, Bilateral Denoise)
+    use_vlm_conditioning = prep_info.get("vlm_conditioning", True)
+    if use_vlm_conditioning:
+        proc_img = preprocess_vlm_conditioning(
+            pil_img,
+            clahe_enabled=prep_info.get("clahe_enabled", True),
+            clahe_clip=prep_info.get("clahe_clip", 2.0),
+            white_balance_enabled=prep_info.get("white_balance", True),
+            denoise_method=prep_info.get("denoise_method", "bilateral"),
+            denoise_d=prep_info.get("denoise_d", 5),
+        )
+    else:
+        proc_img = preprocess_color_space(
+            pil_img,
+            white_balance=prep_info.get("white_balance", False),
+        )
+
+    # Resolution scaling / letterbox padding
     enable_resizing = prep_info.get("enable_resizing", True)
-    proc_img, prep_info = preprocess_resolution(
-        pil_img, enabled=enable_resizing, target_short_edge=prep_info.get("max_res", 640)
-    )
+    use_custom_resize = prep_info.get("custom_resize", False)
+    if use_custom_resize:
+        proc_img, prep_info = preprocess_custom_resize(
+            proc_img,
+            target_width=prep_info.get("custom_resize_width", 1024),
+            target_height=prep_info.get("custom_resize_height", 1024),
+        )
+    else:
+        proc_img, prep_info = preprocess_resolution(
+            proc_img,
+            enabled=enable_resizing,
+            target_short_edge=prep_info.get("max_res", 640),
+            pad_to_square=prep_info.get("pad_to_square", False),
+        )
 
     # Apply 0-1000 scale coordinate grid overlay if enabled (matching detection_pipeline)
     if enable_grid:

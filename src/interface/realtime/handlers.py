@@ -13,7 +13,7 @@ try:
 except ImportError:
     cv2 = None
 
-from free_detection.image_preprocessing import preprocess_resolution
+from free_detection.image_preprocessing import preprocess_resolution, triage_frame_check
 from free_detection.trackers import MultiAlgorithmTracker
 from interface.realtime.state import (
     SessionDetector,
@@ -59,25 +59,29 @@ def process_single_frame(
     tracked_boxes = session.update_tracking_only(frame, tracker_algorithm)
     hud = session.last_hud
 
-    # 2) Dispatch background detection when ready
+    # 2) Dispatch background detection when ready using Section B triage pre-filter
     if not session.is_busy():
-        gray_small = to_small_gray(frame)
-        change_ratio_thresh = max(0.0, float(motion_sensitivity_pct or 1.5)) / 100.0
         now = time.time()
         stale = (now - session.last_detect_time) >= max(
             0.5, float(stale_refresh_seconds or 6.0)
         )
-        changed = (
-            scene_has_changed(
-                gray_small,
-                session.reference_gray,
-                change_ratio_thresh=change_ratio_thresh,
-            )
-            if gray_small is not None
-            else True
+
+        # Run Section B triage pre-filter heuristics (traditional CV)
+        should_process, triage_reason, metrics = triage_frame_check(
+            frame,
+            reference_bgr=session._last_submitted_frame,
+            min_laplacian_var=30.0,
+            edge_density_thresh=0.02,
+            entropy_variance_thresh=2.0,
+            reference_diff_thresh=max(0.005, float(motion_sensitivity_pct or 1.5) / 100.0),
+            enable_blur_reject=True,
+            enable_edge_triage=True,
+            enable_entropy_triage=True,
+            enable_ref_triage=True,
         )
 
-        if changed or stale:
+        if (should_process or stale) and not (enable_blur_reject_flag := (metrics.get("laplacian_var", 999.0) < 30.0)):
+            session._last_submitted_frame = frame.copy()
             max_res = int(max_resolution or 640)
             categories = [
                 c.strip() for c in categories_str.split(",") if c.strip()
