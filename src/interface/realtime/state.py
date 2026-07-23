@@ -1,7 +1,3 @@
-"""
-Realtime processing session state and pipeline helper functions.
-"""
-
 import html
 import itertools
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -9,7 +5,14 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Dict, Any, Optional, List, Tuple
 
+import numpy as np
 from openai import OpenAI
+
+try:
+    import cv2 as _cv2
+except ImportError:
+    _cv2 = None
+
 from free_detection.detection_pipeline import ObjectDetectionPipeline
 from free_detection.trackers import MultiAlgorithmTracker
 
@@ -18,6 +21,13 @@ DEFAULT_HUD = '<div class="neo-retro-hud-stat">STATUS: INITIALIZED</div>'
 # Client cache for ObjectDetectionPipeline
 _client_cache: Dict[Tuple[str, str, str], ObjectDetectionPipeline] = {}
 _client_cache_lock = Lock()
+
+
+def _to_bgr(frame: "np.ndarray") -> "np.ndarray":
+    """Convert an RGB numpy frame to BGR for OpenCV tracker calls."""
+    if _cv2 is not None and frame is not None and frame.ndim == 3 and frame.shape[2] == 3:
+        return _cv2.cvtColor(frame, _cv2.COLOR_RGB2BGR)
+    return frame
 
 
 def get_pipeline(
@@ -94,7 +104,10 @@ class SessionDetector:
 
     def _run_and_store(self, frame_id: int, fn: Any, *args: Any) -> None:
         """Background VLM inference — stores raw boxes and drives tracker update."""
-        frame = args[0] if args else None  # first arg to run_vlm_detect is the frame
+        # args[0] is the RGB frame passed from run_vlm_detect; convert to BGR
+        # here so OpenCV tracker init always receives the correct color space.
+        frame_rgb = args[0] if args else None
+        frame_bgr = _to_bgr(frame_rgb) if frame_rgb is not None else None
         try:
             boxes, hud = fn(*args)
         except Exception as e:  # noqa: BLE001
@@ -103,13 +116,14 @@ class SessionDetector:
                 f"ERROR: {html.escape(str(e))}</div>"
             )
         with self.lock:
-            if frame_id >= self.last_applied_frame_id:
+            # Use strict > to avoid an older queued frame overwriting a newer result
+            if frame_id > self.last_applied_frame_id:
                 self.last_applied_frame_id = frame_id
                 if boxes is not None:
                     self.last_raw_boxes = boxes
-                    # Integrate new VLM detections into tracker state
+                    # Integrate new VLM detections into tracker state (BGR frame)
                     self.last_tracked_boxes = self.multi_tracker.update_with_detections(
-                        frame, boxes
+                        frame_bgr, boxes
                     )
                 self.last_hud = hud
 
@@ -119,11 +133,15 @@ class SessionDetector:
 
         Switches algorithm if the UI selection changed since last tick.
         Returns the current tracked boxes (propagated from last VLM result).
+
+        Note: Gradio webcam delivers RGB frames; OpenCV SOT trackers expect BGR.
+        The conversion is done here to avoid double-conversion on every tick.
         """
         with self.lock:
             self.multi_tracker.set_algorithm(algorithm)
+            frame_bgr = _to_bgr(frame) if frame is not None else frame
             self.last_tracked_boxes = self.multi_tracker.track_frame_only(
-                frame, self.last_tracked_boxes
+                frame_bgr, self.last_tracked_boxes
             )
             return list(self.last_tracked_boxes)
 
