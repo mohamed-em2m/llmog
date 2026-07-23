@@ -591,24 +591,6 @@ class ObjectDetectionPipeline:
         if feedback:
             # Build the human-readable feedback section
             prev_dets_section = ""
-            if previous_detections:
-                indexed = [
-                    {
-                        "box_index": f"Box #{i}",
-                        "label": d.get("label"),
-                        "bbox_2d": d.get("bbox_2d"),
-                    }
-                    for i, d in enumerate(previous_detections, 1)
-                ]
-                prev_dets_section = f"""
-
-### Your previous detections (starting point for corrections)
-The following JSON is your output from the last round, indexed by Box Index.
-Apply the Required Actions below to this list, then re-scan the image for anything still missed.
-```json
-{json.dumps(indexed, indent=2)}
-```"""
-
             # Build the structured actions section
             actions_section = ""
             if actions and actions.strip().upper() != "NONE" and actions.strip():
@@ -752,7 +734,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 category_definitions,
                 feedback=feedback,
                 actions=actions,
-                previous_detections=previous_detections,
+                previous_detections="",
                 som_proposals=som_proposals,
             )
 
