@@ -50,22 +50,14 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["categories_input"] = gr.Textbox(
                     value="person, car, dog, bottle, phone",
-                    label="TARGET CATEGORIES (comma-separated)",
+                    label="Target Categories (comma-separated)",
                     info="Leave empty or type * for free/open-vocabulary detection.",
                 )
-
-                # ── Resolution ───────────────────────────────────────────────
-                c["enable_resizing"] = gr.Checkbox(
-                    value=True,
-                    label="ENABLE IMAGE RESIZING",
-                    info="Uncheck to pass native resolution to VLM.",
-                )
-                c["max_resolution"] = gr.Number(
-                    value=1024,
-                    label="MAX FRAME RESOLUTION (PX)",
-                    info="Target short-edge resolution for the VLM input.",
-                    precision=0,
-                    visible=True,
+                c["category_defs_input"] = gr.Textbox(
+                    label="Category Definitions",
+                    placeholder="Write instructions for categories...",
+                    lines=3,
+                    value="",
                 )
 
                 # ── Motion Gate + Refresh ─────────────────────────────────────
@@ -73,7 +65,7 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     value=True,
                     label="⚡ MOTION GATE (Scene-Change Gating)",
                     info="ON: only re-detect when scene changes or stale timer fires. "
-                         "OFF: re-detect as fast as GPU can respond (no scene-change check).",
+                         "OFF: re-detect as fast as GPU can respond.",
                 )
                 c["motion_sensitivity"] = gr.Slider(
                     minimum=0.5,
@@ -89,125 +81,146 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     step=0.5,
                     value=3.0,
                     label="STALE REFRESH FALLBACK (SECONDS)",
-                    info="Re-detect anyway after this long even with no motion. Ignored when Motion Gate is OFF.",
+                    info="Re-detect anyway after this long even with no motion.",
                 )
 
-                # ── Section A: VLM Image Conditioning ────────────────────────
-                with gr.Accordion("🎨 Section A — VLM Image Conditioning", open=False):
-                    gr.HTML(
-                        '<p style="color:#aaa;font-size:12px;margin:2px 0 8px;">'
-                        "Applied to what the model <em>sees</em> — keeps image clean & consistent."
-                        "</p>"
+                with gr.Accordion("Pipeline Parameters", open=False):
+                    c["det_temp_slider"] = gr.Slider(
+                        label="Detector Temperature",
+                        minimum=0.0,
+                        maximum=1.5,
+                        step=0.05,
+                        value=0.9,
                     )
-                    c["vlm_conditioning"] = gr.Checkbox(
-                        value=True,
-                        label="Enable VLM Conditioning Pipeline",
-                        info="Master toggle for CLAHE + White Balance + Bilateral Denoise.",
-                    )
-                    with gr.Group() as c["conditioning_group"]:
-                        c["clahe_enabled"] = gr.Checkbox(
-                            value=True,
-                            label="CLAHE Contrast Normalization",
-                            info="Normalizes uneven lighting (best single win for consistency).",
-                        )
-                        c["clahe_clip"] = gr.Slider(
-                            minimum=0.5, maximum=8.0, step=0.5, value=2.0,
-                            label="CLAHE Clip Limit",
-                            info="Higher = stronger local contrast boost.",
-                        )
-                        c["white_balance"] = gr.Checkbox(
-                            value=True,
-                            label="Gray World White Balance",
-                            info="Corrects color temperature drift between shots.",
-                        )
-                        c["denoise_method"] = gr.Dropdown(
-                            choices=["bilateral", "nlm", "none"],
-                            value="bilateral",
-                            label="Denoise Method",
-                            info="Bilateral preserves defect edges; NLM is stronger but slower.",
-                        )
-                        c["denoise_d"] = gr.Slider(
-                            minimum=3, maximum=15, step=2, value=5,
-                            label="Bilateral Filter Diameter (d)",
-                            info="Larger = stronger smoothing. Keep ≤7 for real-time speed.",
-                        )
 
-                    gr.HTML('<hr style="border-color:#444;margin:8px 0;">')
-                    gr.HTML(
-                        '<p style="color:#aaa;font-size:12px;margin:2px 0 6px;">'
-                        "<b>Pipeline Parity</b> — steps 3 &amp; 4 from detection_pipeline.py"
-                        "</p>"
-                    )
-                    c["contrast_method"] = gr.Dropdown(
-                        choices=["none", "clahe", "gamma", "autocontrast"],
-                        value="none",
-                        label="Contrast Enhancement Method",
-                        info="'clahe' = adaptive equalization; 'gamma' = brightness curve; 'none' = skip.",
-                    )
-                    c["gamma"] = gr.Number(
-                        value=1.0,
-                        label="Gamma Value",
-                        info="< 1.0 = brighten shadows; > 1.0 = darken. Used only when method = gamma.",
-                        precision=2,
-                    )
-                    c["noise_method"] = gr.Dropdown(
-                        choices=["none", "bilateral", "nlm", "gaussian"],
-                        value="none",
-                        label="Noise Filter Method (Step 4)",
-                        info="Applied after contrast. 'none' skips; 'bilateral' best for edge detail.",
-                    )
-                    c["sharpen"] = gr.Checkbox(
+                # ── Preprocessing Accordion (Identical to Batch Tab) ──────────
+                with gr.Accordion("Image Preprocessing & Augmentation", open=False):
+                    c["prep_enabled_chk"] = gr.Checkbox(
+                        label="Enable Preprocessing",
                         value=False,
-                        label="Unsharp Mask Sharpening",
-                        info="Enhances edges after denoising. Useful for crisp defect boundaries.",
+                        info="Master toggle for all preprocessing steps below.",
                     )
 
-                # ── Section B: Pre-Filter Triage ─────────────────────────────
-                with gr.Accordion("🔎 Section B — Pre-Filter Triage (Fast CV)", open=False):
-                    gr.HTML(
-                        '<p style="color:#aaa;font-size:12px;margin:2px 0 8px;">'
-                        "Runs <em>before</em> VLM — reject bad frames fast to save tokens."
-                        "</p>"
-                    )
-                    c["triage_enabled"] = gr.Checkbox(
-                        value=True,
-                        label="Enable Pre-Filter Triage",
-                        info="Master toggle for all triage heuristics below.",
-                    )
-                    with gr.Group() as c["triage_group"]:
-                        c["blur_reject"] = gr.Checkbox(
-                            value=True,
-                            label="Blur Rejection (Laplacian Variance)",
-                            info="Rejects out-of-focus frames before VLM call.",
+                    with gr.Group(visible=False) as prep_options_group:
+                        c["prep_short_edge_slider"] = gr.Slider(
+                            label="Target Short Edge (px)",
+                            minimum=512,
+                            maximum=2048,
+                            step=128,
+                            value=1024,
                         )
-                        c["blur_laplacian_min"] = gr.Slider(
-                            minimum=5.0, maximum=150.0, step=5.0, value=30.0,
-                            label="Min Laplacian Variance (blur threshold)",
-                            info="Frames with var < this are rejected as blurry.",
+                        c["prep_pad_square_chk"] = gr.Checkbox(
+                            label="Pad to Square",
+                            value=False,
                         )
-                        c["edge_triage"] = gr.Checkbox(
-                            value=True,
-                            label="Canny Edge Density Trigger",
-                            info="Trigger VLM if unusual edge structure detected.",
+
+                        c["prep_custom_resize_chk"] = gr.Checkbox(
+                            label="Enable Custom Resize (override short edge)",
+                            value=False,
                         )
-                        c["edge_density_thresh"] = gr.Slider(
-                            minimum=0.005, maximum=0.2, step=0.005, value=0.02,
-                            label="Edge Density Threshold",
+                        with gr.Row(visible=False) as prep_custom_resize_row:
+                            c["prep_custom_resize_width"] = gr.Number(
+                                label="Target Width (px)", value=1024, precision=0
+                            )
+                            c["prep_custom_resize_height"] = gr.Number(
+                                label="Target Height (px)", value=1024, precision=0
+                            )
+
+                        c["prep_contrast_dropdown"] = gr.Dropdown(
+                            label="Contrast Correction Method",
+                            choices=["none", "clahe", "autocontrast"],
+                            value="clahe",
                         )
-                        c["entropy_triage"] = gr.Checkbox(
-                            value=True,
-                            label="Local Texture Entropy Trigger",
-                            info="Detects texture anomalies (holes, snags, stains).",
+                        c["prep_gamma_slider"] = gr.Slider(
+                            label="Gamma Correction",
+                            minimum=0.5, maximum=2.0, step=0.05, value=1.0
                         )
-                        c["entropy_variance_thresh"] = gr.Slider(
-                            minimum=0.5, maximum=20.0, step=0.5, value=2.0,
-                            label="Entropy Variance Threshold",
+                        c["prep_wb_chk"] = gr.Checkbox(
+                            label="Gray World White Balance Correction", value=False
                         )
-                        c["ref_triage"] = gr.Checkbox(
-                            value=True,
-                            label="Difference-from-Reference Trigger",
-                            info="Trigger VLM only when frame differs enough from last submission.",
+
+                        c["prep_denoise_dropdown"] = gr.Dropdown(
+                            label="Denoising Filter",
+                            choices=["none", "bilateral", "nlm"],
+                            value="none",
                         )
+                        c["prep_sharpen_chk"] = gr.Checkbox(
+                            label="Apply Unsharp Mask (Sharpen)", value=False
+                        )
+
+                        c["prep_grid_dropdown"] = gr.Dropdown(
+                            label="Grid Style",
+                            choices=["Standard Red", "transparent", "fine", "none"],
+                            value="Standard Red",
+                        )
+                        c["prep_grid_step_slider"] = gr.Slider(
+                            label="Grid Step Size (px)",
+                            minimum=20, maximum=500, step=10, value=250
+                        )
+                        c["prep_grid_line_width_slider"] = gr.Slider(
+                            label="Grid Line Thickness (px)",
+                            minimum=1, maximum=10, step=1, value=1
+                        )
+                        c["prep_grid_font_size_slider"] = gr.Slider(
+                            label="Grid Label Font Size (0 = Auto)",
+                            minimum=0, maximum=48, step=1, value=0
+                        )
+                        with gr.Row():
+                            c["prep_grid_line_color_dropdown"] = gr.Dropdown(
+                                label="Grid Line Color",
+                                choices=["red", "blue", "green", "white", "black", "yellow", "cyan", "magenta", "custom"],
+                                value="red",
+                            )
+                            c["prep_grid_line_color_custom"] = gr.Textbox(
+                                label="Custom Line Color", value="red", visible=False
+                            )
+                        with gr.Row():
+                            c["prep_grid_text_color_dropdown"] = gr.Dropdown(
+                                label="Grid Text Color",
+                                choices=["white", "black", "red", "blue", "green", "yellow", "cyan", "magenta", "custom"],
+                                value="white",
+                            )
+                            c["prep_grid_text_color_custom"] = gr.Textbox(
+                                label="Custom Text Color", value="white", visible=False
+                            )
+                        with gr.Row():
+                            c["prep_grid_backing_color_dropdown"] = gr.Dropdown(
+                                label="Grid Text Backing Color",
+                                choices=["black", "none", "white", "red", "blue", "green", "custom"],
+                                value="black",
+                            )
+                            c["prep_grid_backing_color_custom"] = gr.Textbox(
+                                label="Custom Backing", value="black", visible=False
+                            )
+
+                        c["prep_som_chk"] = gr.Checkbox(
+                            label="Enable Set-of-Mark (SoM) Prompting", value=False
+                        )
+                        c["prep_tiling_chk"] = gr.Checkbox(
+                            label="Enable Image Tiling", value=False
+                        )
+                        c["prep_tile_size_slider"] = gr.Slider(
+                            label="Tile Size (px)", minimum=256, maximum=1024, step=128, value=512
+                        )
+                        c["prep_tile_overlap_slider"] = gr.Slider(
+                            label="Tile Overlap (%)", minimum=0, maximum=50, step=5, value=20
+                        )
+                        c["prep_cv_chk"] = gr.Checkbox(
+                            label="Enable Crop & Verify Validation", value=False
+                        )
+                        c["prep_cv_padding_slider"] = gr.Slider(
+                            label="Crop Context Padding (%)", minimum=0, maximum=50, step=5, value=15
+                        )
+                        c["prep_send_pixel_bounds_chk"] = gr.Checkbox(
+                            label="Send Pixel Bounds in API Request", value=False
+                        )
+                        with gr.Row(visible=False) as prep_pixel_bounds_row:
+                            c["prep_min_pixels_num"] = gr.Number(label="min_pixels", value=200704, precision=0)
+                            c["prep_max_pixels_num"] = gr.Number(label="max_pixels", value=4194304, precision=0)
+
+                        c["prep_options_group"] = prep_options_group
+                        c["prep_custom_resize_row"] = prep_custom_resize_row
+                        c["prep_pixel_bounds_row"] = prep_pixel_bounds_row
 
                 # ── Video / HUD ───────────────────────────────────────────────
                 c["sample_interval"] = gr.Slider(
@@ -225,8 +238,6 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
 
             with gr.Column(scale=2):
-                # NOTE: Gradio 6.x strips <script> from gr.HTML for security.
-                # Only inject the CSS here; all canvas JS runs in the .change(js=) handler.
                 gr.HTML(
                     """
                     <style>
@@ -264,10 +275,20 @@ def _build_realtime_tab() -> Dict[str, Any]:
 def _wire_realtime_events(
     c_real: Dict[str, Any], c_srv: Dict[str, Any], c_bat: Dict[str, Any]
 ):
-    c_real["enable_resizing"].change(
+    c_real["prep_enabled_chk"].change(
         fn=lambda enabled: gr.update(visible=enabled),
-        inputs=[c_real["enable_resizing"]],
-        outputs=[c_real["max_resolution"]],
+        inputs=[c_real["prep_enabled_chk"]],
+        outputs=[c_real["prep_options_group"]],
+    )
+    c_real["prep_custom_resize_chk"].change(
+        fn=lambda enabled: gr.update(visible=enabled),
+        inputs=[c_real["prep_custom_resize_chk"]],
+        outputs=[c_real["prep_custom_resize_row"]],
+    )
+    c_real["prep_send_pixel_bounds_chk"].change(
+        fn=lambda enabled: gr.update(visible=enabled),
+        inputs=[c_real["prep_send_pixel_bounds_chk"]],
+        outputs=[c_real["prep_pixel_bounds_row"]],
     )
 
     def toggle_mode(mode, session):
@@ -296,41 +317,48 @@ def _wire_realtime_events(
         inputs=[
             c_real["webcam_input"],
             c_real["categories_input"],
+            c_real["category_defs_input"],
             c_srv["server_port_input"],
             c_bat["use_external_api_chk"],
             c_bat["ext_api_url"],
             c_bat["ext_api_key"],
             c_bat["ext_model_name"],
-            gr.State(0.3),               # confidence_thresh (unused, kept for compat)
-            c_real["enable_resizing"],
-            c_real["max_resolution"],
+            c_real["motion_gate_enabled"],
             c_real["motion_sensitivity"],
             c_real["stale_refresh"],
             c_real["tracker_algorithm"],
             c_real["session_state"],
-            # Motion gate master toggle
-            c_real["motion_gate_enabled"],
-            # Section A — VLM Conditioning
-            c_real["vlm_conditioning"],
-            c_real["clahe_enabled"],
-            c_real["clahe_clip"],
-            c_real["white_balance"],
-            c_real["denoise_method"],
-            c_real["denoise_d"],
-            # Pipeline parity — Contrast (step 3) + Noise/Sharpen (step 4)
-            c_real["contrast_method"],
-            c_real["gamma"],
-            c_real["noise_method"],
-            c_real["sharpen"],
-            # Section B — Triage
-            c_real["triage_enabled"],
-            c_real["blur_reject"],
-            c_real["blur_laplacian_min"],
-            c_real["edge_triage"],
-            c_real["edge_density_thresh"],
-            c_real["entropy_triage"],
-            c_real["entropy_variance_thresh"],
-            c_real["ref_triage"],
+            c_real["prep_enabled_chk"],
+            c_real["prep_short_edge_slider"],
+            c_real["prep_pad_square_chk"],
+            c_real["prep_contrast_dropdown"],
+            c_real["prep_gamma_slider"],
+            c_real["prep_denoise_dropdown"],
+            c_real["prep_sharpen_chk"],
+            c_real["prep_wb_chk"],
+            c_real["prep_grid_dropdown"],
+            c_real["prep_som_chk"],
+            c_real["prep_tiling_chk"],
+            c_real["prep_tile_size_slider"],
+            c_real["prep_tile_overlap_slider"],
+            c_real["prep_cv_chk"],
+            c_real["prep_cv_padding_slider"],
+            c_real["prep_grid_step_slider"],
+            c_real["prep_grid_line_width_slider"],
+            c_real["prep_grid_font_size_slider"],
+            c_real["prep_grid_line_color_dropdown"],
+            c_real["prep_grid_line_color_custom"],
+            c_real["prep_grid_text_color_dropdown"],
+            c_real["prep_grid_text_color_custom"],
+            c_real["prep_grid_backing_color_dropdown"],
+            c_real["prep_grid_backing_color_custom"],
+            c_real["prep_send_pixel_bounds_chk"],
+            c_real["prep_min_pixels_num"],
+            c_real["prep_max_pixels_num"],
+            c_real["prep_custom_resize_chk"],
+            c_real["prep_custom_resize_width"],
+            c_real["prep_custom_resize_height"],
+            c_real["det_temp_slider"],
         ],
         outputs=[
             c_real["boxes_json_state"],
@@ -437,13 +465,43 @@ def _wire_realtime_events(
             c_real["video_input"],
             c_real["sample_interval"],
             c_real["categories_input"],
+            c_real["category_defs_input"],
             c_srv["server_port_input"],
             c_bat["use_external_api_chk"],
             c_bat["ext_api_url"],
             c_bat["ext_api_key"],
             c_bat["ext_model_name"],
-            c_real["enable_resizing"],
-            c_real["max_resolution"],
+            c_real["prep_enabled_chk"],
+            c_real["prep_short_edge_slider"],
+            c_real["prep_pad_square_chk"],
+            c_real["prep_contrast_dropdown"],
+            c_real["prep_gamma_slider"],
+            c_real["prep_denoise_dropdown"],
+            c_real["prep_sharpen_chk"],
+            c_real["prep_wb_chk"],
+            c_real["prep_grid_dropdown"],
+            c_real["prep_som_chk"],
+            c_real["prep_tiling_chk"],
+            c_real["prep_tile_size_slider"],
+            c_real["prep_tile_overlap_slider"],
+            c_real["prep_cv_chk"],
+            c_real["prep_cv_padding_slider"],
+            c_real["prep_grid_step_slider"],
+            c_real["prep_grid_line_width_slider"],
+            c_real["prep_grid_font_size_slider"],
+            c_real["prep_grid_line_color_dropdown"],
+            c_real["prep_grid_line_color_custom"],
+            c_real["prep_grid_text_color_dropdown"],
+            c_real["prep_grid_text_color_custom"],
+            c_real["prep_grid_backing_color_dropdown"],
+            c_real["prep_grid_backing_color_custom"],
+            c_real["prep_send_pixel_bounds_chk"],
+            c_real["prep_min_pixels_num"],
+            c_real["prep_max_pixels_num"],
+            c_real["prep_custom_resize_chk"],
+            c_real["prep_custom_resize_width"],
+            c_real["prep_custom_resize_height"],
+            c_real["det_temp_slider"],
             c_real["tracker_algorithm"],
         ],
         outputs=[c_real["video_gallery_output"], c_real["hud_status"]],

@@ -1,8 +1,11 @@
 """
-Realtime image processing, motion gating, OpenCV drawing, grid drawing, and VLM detection utilities.
+Realtime image processing, OpenCV drawing, and VLM detection utilities.
 """
 
 import time
+import tempfile
+import os
+from pathlib import Path
 from typing import List, Tuple, Any, Optional
 from PIL import Image
 import numpy as np
@@ -13,53 +16,15 @@ except ImportError:
     cv2 = None
 
 from free_detection.detection_pipeline import (
+    ObjectDetectionPipeline,
     pil_to_data_uri,
     parse_detections,
     validate_detections,
     draw_grid,
     get_realtime_prompt,
 )
-from free_detection.image_preprocessing import (
-    preprocess_color_space,
-    preprocess_custom_resize,
-    preprocess_resolution,
-    preprocess_contrast,
-    preprocess_noise_sharpness,
-    preprocess_vlm_conditioning,
-    triage_frame_check,
-    map_bbox_to_original,
-)
+from free_detection.image_preprocessing import map_bbox_to_original
 from interface.realtime.state import get_pipeline
-
-
-def to_small_gray(
-    frame_rgb: np.ndarray, size: Tuple[int, int] = (160, 120)
-) -> Optional[np.ndarray]:
-    """Downscaled, blurred grayscale version of a frame, cheap to diff."""
-    if cv2 is None:
-        return None
-    small = cv2.resize(frame_rgb, size, interpolation=cv2.INTER_AREA)
-    gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    return gray
-
-
-def scene_has_changed(
-    current_gray: np.ndarray,
-    reference_gray: Optional[np.ndarray],
-    pixel_diff_thresh: int = 25,
-    change_ratio_thresh: float = 0.015,
-) -> bool:
-    """Compares current frame against last detected frame for motion gating."""
-    if reference_gray is None:
-        return True
-    if cv2 is None:
-        return True
-    diff = cv2.absdiff(current_gray, reference_gray)
-    _, thresholded = cv2.threshold(diff, pixel_diff_thresh, 255, cv2.THRESH_BINARY)
-    changed_pixels = cv2.countNonZero(thresholded)
-    total_pixels = thresholded.shape[0] * thresholded.shape[1]
-    return (changed_pixels / total_pixels) > change_ratio_thresh
 
 
 def draw_boxes_opencv(image_np: np.ndarray, boxes: List[Any]) -> np.ndarray:
@@ -102,139 +67,58 @@ def draw_boxes_opencv(image_np: np.ndarray, boxes: List[Any]) -> np.ndarray:
 def run_vlm_detect(
     frame: np.ndarray,
     categories: list,
+    category_definitions: str,
     base_url: str,
     api_key: str,
     model_name: str,
-    prep_info: dict,
-    enable_grid: bool = True,
-    grid_step: int = 250,
-    grid_style: str = "standard",
-    grid_line_color: str = "red",
-    grid_line_width: int = 1,
-    grid_font_size: int = 0,
-    grid_text_color: str = "white",
-    grid_backing_color: str = "black",
+    prep_config: dict,
+    pipeline_params: dict = None,
     free_detection: bool = False,
 ) -> Tuple[List[Any], str]:
     """
-    Runs VLM detection on a single frame using the detection pipeline preprocessing,
-    optional coordinate grid overlay, and bounding box mapping.
-
-    When ``free_detection=True`` (or ``categories`` is empty / ``["*"]``), uses the
-    dedicated ``realtime_detector`` open-vocabulary prompt so the model can name
-    any object it sees without a predefined category list.
+    Runs VLM detection on a single frame by instantiating/retrieving ObjectDetectionPipeline
+    and running its full preprocessing pipeline & inference.
     """
     start_time = time.time()
-    pil_img = Image.fromarray(frame).convert("RGB")
+    orig_h, orig_w = frame.shape[0], frame.shape[1]
 
-    # Section A: Advanced VLM Image Conditioning (CLAHE, White Balance, Bilateral Denoise)
-    use_vlm_conditioning = prep_info.get("vlm_conditioning", True)
-    if use_vlm_conditioning:
-        proc_img = preprocess_vlm_conditioning(
-            pil_img,
-            clahe_enabled=prep_info.get("clahe_enabled", True),
-            clahe_clip=prep_info.get("clahe_clip", 2.0),
-            white_balance_enabled=prep_info.get("white_balance", True),
-            denoise_method=prep_info.get("denoise_method", "bilateral"),
-            denoise_d=prep_info.get("denoise_d", 5),
-        )
-    else:
-        proc_img = preprocess_color_space(
-            pil_img,
-            white_balance=prep_info.get("white_balance", False),
-        )
+    pipeline_params = pipeline_params or {}
 
-    # Resolution scaling / letterbox padding
-    enable_resizing = prep_info.get("enable_resizing", True)
-    use_custom_resize = prep_info.get("custom_resize", False)
-    if use_custom_resize:
-        proc_img, prep_info = preprocess_custom_resize(
-            proc_img,
-            target_width=prep_info.get("custom_resize_width", 1024),
-            target_height=prep_info.get("custom_resize_height", 1024),
-        )
-    else:
-        proc_img, prep_info = preprocess_resolution(
-            proc_img,
-            enabled=enable_resizing,
-            target_short_edge=prep_info.get("max_res", 640),
-            pad_to_square=prep_info.get("pad_to_square", False),
-        )
-
-    # Apply 0-1000 scale coordinate grid overlay if enabled (matching detection_pipeline)
-    # Step 3: Contrast enhancement (gamma / CLAHE-contrast) — same as pipeline step 3
-    contrast_method = prep_info.get("contrast_method", "none")
-    gamma_val = float(prep_info.get("gamma", 1.0))
-    clahe_clip_for_contrast = float(prep_info.get("clahe_clip", 2.0))
-    proc_img = preprocess_contrast(
-        proc_img,
-        method=contrast_method,
-        clip_limit=clahe_clip_for_contrast,
-        gamma=gamma_val,
+    # Get pipeline instance configured with model and preprocessing_config
+    pipeline = get_pipeline(
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        detector_temperature=pipeline_params.get("detector_temperature", 0.9),
+        detector_max_tokens=pipeline_params.get("detector_max_tokens", 4096),
+        preprocessing_config=prep_config,
     )
 
-    # Step 4: Noise filtering and optional sharpening — same as pipeline step 4
-    noise_method = prep_info.get("noise_method", "none")
-    sharpen = bool(prep_info.get("sharpen", False))
-    proc_img = preprocess_noise_sharpness(
-        proc_img,
-        method=noise_method,
-        sharpen=sharpen,
-    )
+    # Save numpy frame temporarily to pass to pipeline.run or run preprocessing directly
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        tmp_path = tmp.name
+        Image.fromarray(frame).save(tmp_path)
 
-    # Step 5: Grid overlay
-    if enable_grid:
-        input_img = draw_grid(
-            proc_img,
-            step=grid_step,
-            style=grid_style,
-            line_color=grid_line_color,
-            line_width=grid_line_width,
-            font_size=grid_font_size,
-            text_color=grid_text_color,
-            backing_color=grid_backing_color,
-        )
-    else:
-        input_img = proc_img
-
-    pipeline = get_pipeline(base_url, api_key, model_name)
-    img_uri = pil_to_data_uri(input_img)
-
-    # Determine whether to use free (open-vocabulary) or targeted detection
-    is_free = free_detection or not categories or categories == ["*"]
-    if is_free:
-        # Build the realtime open-vocabulary prompt via DynaPrompt
-        realtime_cats = None if is_free and (not categories or categories == ["*"]) else categories
-        prompt_text = get_realtime_prompt(realtime_cats)
-        raw_output = pipeline.run_inference(
-            image_uris=img_uri,
+    try:
+        # Run detection using ObjectDetectionPipeline
+        best, _ = pipeline.run(
+            image_path=tmp_path,
             categories=categories or ["object"],
-            category_definitions="",
-            custom_prompt=prompt_text,
+            category_definitions=category_definitions or "",
+            show_plot=False,
+            output_dir=None,
         )
-    else:
-        raw_output = pipeline.run_inference(
-            image_uris=img_uri,
-            categories=categories,
-            category_definitions="",
-        )
-    parsed_dets = parse_detections(raw_output)
-    # In free-detection mode there's no fixed category filter — accept all labels
-    # the model emits. Pass the actual detected labels so bbox validation still runs.
-    if is_free:
-        detected_labels = list({d.get("label", "") for d in parsed_dets if d.get("label")})
-        valid_dets = validate_detections(parsed_dets, detected_labels)
-    else:
-        valid_dets = validate_detections(parsed_dets, categories)
+        valid_dets = best.get("detections") or []
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
-    orig_w = prep_info["orig_w"]
-    orig_h = prep_info["orig_h"]
     boxes = []
     for d in valid_dets:
         bbox = d.get("bbox_2d", [])
         lbl = d.get("label", "")
         if len(bbox) == 4:
-            x1, y1, x2, y2 = map_bbox_to_original(list(bbox), prep_info)
+            x1, y1, x2, y2 = bbox
             ymin = y1 * orig_h / 1000.0
             xmin = x1 * orig_w / 1000.0
             ymax = y2 * orig_h / 1000.0

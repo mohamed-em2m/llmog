@@ -13,7 +13,6 @@ try:
 except ImportError:
     cv2 = None
 
-from free_detection.image_preprocessing import preprocess_resolution, triage_frame_check
 from free_detection.trackers import MultiAlgorithmTracker
 from interface.realtime.state import (
     SessionDetector,
@@ -21,8 +20,6 @@ from interface.realtime.state import (
     resolve_endpoint,
 )
 from interface.realtime.utils import (
-    to_small_gray,
-    scene_has_changed,
     run_vlm_detect,
     draw_boxes_opencv,
 )
@@ -31,41 +28,48 @@ from interface.realtime.utils import (
 def process_single_frame(
     frame: np.ndarray,
     categories_str: str,
+    category_definitions: str,
     server_port: int,
     use_external_api: bool,
     ext_api_url: str,
     ext_api_key: str,
     ext_model_name: str,
-    confidence_thresh: float,
-    enable_resizing: bool,
-    max_resolution: int,
+    motion_gate_enabled: bool,
     motion_sensitivity_pct: float,
     stale_refresh_seconds: float,
     tracker_algorithm: str,
     session: SessionDetector,
-    # Motion gate master toggle
-    motion_gate_enabled: bool = True,
-    # Section A — VLM Conditioning
-    vlm_conditioning: bool = True,
-    clahe_enabled: bool = True,
-    clahe_clip: float = 2.0,
-    white_balance: bool = True,
-    denoise_method: str = "bilateral",
-    denoise_d: int = 5,
-    # Pipeline parity — contrast + noise (same as detection_pipeline.py steps 3 & 4)
-    contrast_method: str = "none",
-    gamma: float = 1.0,
-    noise_method: str = "none",
-    sharpen: bool = False,
-    # Section B — Triage
-    triage_enabled: bool = True,
-    blur_reject: bool = True,
-    blur_laplacian_min: float = 30.0,
-    edge_triage: bool = True,
-    edge_density_thresh: float = 0.02,
-    entropy_triage: bool = True,
-    entropy_variance_thresh: float = 2.0,
-    ref_triage: bool = True,
+    prep_enabled: bool,
+    prep_short_edge: float,
+    prep_pad_square: bool,
+    prep_contrast_method: str,
+    prep_gamma: float,
+    prep_denoise_method: str,
+    prep_sharpen: bool,
+    prep_white_balance: bool,
+    prep_grid_style: str,
+    prep_som_enabled: bool,
+    prep_tiling_enabled: bool,
+    prep_tile_size: float,
+    prep_tile_overlap: float,
+    prep_crop_verify_enabled: bool,
+    prep_crop_padding: float,
+    prep_grid_step: float,
+    prep_grid_line_width: float,
+    prep_grid_font_size: float,
+    prep_grid_line_color: str,
+    prep_grid_line_color_custom: str,
+    prep_grid_text_color: str,
+    prep_grid_text_color_custom: str,
+    prep_grid_backing_color: str,
+    prep_grid_backing_color_custom: str,
+    prep_send_pixel_bounds: bool,
+    prep_min_pixels: float,
+    prep_max_pixels: float,
+    prep_custom_resize_enabled: bool,
+    prep_custom_resize_width: float,
+    prep_custom_resize_height: float,
+    detector_temp: float = 0.9,
 ) -> Tuple[dict, str, SessionDetector]:
     """Continuous Live Streaming Processor called on stream ticks."""
     if session is None:
@@ -75,7 +79,6 @@ def process_single_frame(
         boxes, hud = session.snapshot()
         return {"boxes": boxes, "frame_w": 0, "frame_h": 0}, hud, session
 
-    pil_img = Image.fromarray(frame).convert("RGB")
     frame_h, frame_w = frame.shape[0], frame.shape[1]
 
     # 1) Execute chosen tracker update for continuous frame tracking
@@ -85,76 +88,91 @@ def process_single_frame(
     # 2) Dispatch background detection when ready
     if not session.is_busy():
         now = time.time()
-        stale_secs = max(0.5, float(stale_refresh_seconds or 6.0))
+        stale_secs = max(0.5, float(stale_refresh_seconds or 3.0))
         stale = (now - session.last_detect_time) >= stale_secs
 
-        # Check if a fresh VLM result just arrived — re-detect immediately regardless of triage/stale
+        # Check if a fresh VLM result just arrived — re-detect immediately
         fresh_result = session.consume_force_redetect()
 
-        if fresh_result:
-            # Immediately re-detect: skip triage and stale checks
-            should_dispatch = True
-        elif not motion_gate_enabled:
-            # Motion gate OFF — always dispatch (rate limited only by server response time)
-            should_dispatch = stale  # still respect stale to avoid hammering on startup
-        else:
-            # Section B: Fast CV triage pre-filter
-            if triage_enabled:
-                should_process, triage_reason, metrics = triage_frame_check(
-                    frame,
-                    reference_bgr=session._last_submitted_frame,
-                    min_laplacian_var=float(blur_laplacian_min or 30.0),
-                    edge_density_thresh=float(edge_density_thresh or 0.02),
-                    entropy_variance_thresh=float(entropy_variance_thresh or 2.0),
-                    reference_diff_thresh=max(0.005, float(motion_sensitivity_pct or 1.5) / 100.0),
-                    enable_blur_reject=bool(blur_reject),
-                    enable_edge_triage=bool(edge_triage),
-                    enable_entropy_triage=bool(entropy_triage),
-                    enable_ref_triage=bool(ref_triage),
-                )
-            else:
-                should_process, triage_reason, metrics = True, "Triage disabled", {}
-            should_dispatch = should_process or stale
-
-        if should_dispatch:
+        if fresh_result or not motion_gate_enabled or stale:
             session._last_submitted_frame = frame.copy()
-            max_res = int(max_resolution or 640)
             categories = [
                 c.strip() for c in categories_str.split(",") if c.strip()
             ] or ["object"]
             base_url, api_key, model_name = resolve_endpoint(
                 server_port, use_external_api, ext_api_url, ext_api_key, ext_model_name
             )
-            prep_info = {
-                "enable_resizing": enable_resizing,
-                "max_res": max_res,
-                "orig_w": frame_w,
-                "orig_h": frame_h,
-                # Section A conditioning params
-                "vlm_conditioning": vlm_conditioning,
-                "clahe_enabled": clahe_enabled,
-                "clahe_clip": clahe_clip,
-                "white_balance": white_balance,
-                "denoise_method": denoise_method,
-                "denoise_d": denoise_d,
-                # Pipeline parity params (steps 3 & 4)
-                "contrast_method": contrast_method,
-                "gamma": gamma,
-                "noise_method": noise_method,
-                "sharpen": sharpen,
-            }
+
+            # Build unified preprocessing config (identical schema to tab_batch.py)
+            if not prep_enabled:
+                prep_config = {
+                    "resolution_enabled": False,
+                    "contrast_method": "none",
+                    "denoise_method": "none",
+                    "som_enabled": False,
+                    "tiling_enabled": False,
+                    "crop_verify_enabled": False,
+                    "grid_style": "standard",
+                    "grid_step": 100,
+                    "grid_line_width": 1,
+                    "grid_font_size": 0,
+                    "grid_line_color": "red",
+                    "grid_text_color": "white",
+                    "grid_backing_color": "black",
+                    "send_pixel_bounds": False,
+                    "min_pixels": 200704,
+                    "max_pixels": 4194304,
+                    "custom_resize": False,
+                    "custom_resize_width": 1024,
+                    "custom_resize_height": 1024,
+                }
+            else:
+                use_custom_resize = bool(prep_custom_resize_enabled)
+                prep_config = {
+                    "resolution_enabled": not use_custom_resize,
+                    "target_short_edge": int(prep_short_edge or 1024),
+                    "pad_to_square": bool(prep_pad_square),
+                    "contrast_method": prep_contrast_method,
+                    "clip_limit": 2.0,
+                    "gamma": float(prep_gamma or 1.0),
+                    "denoise_method": prep_denoise_method,
+                    "sharpen": bool(prep_sharpen),
+                    "white_balance": bool(prep_white_balance),
+                    "grid_style": prep_grid_style if prep_grid_style != "Standard Red" else "standard",
+                    "som_enabled": bool(prep_som_enabled),
+                    "tiling_enabled": bool(prep_tiling_enabled),
+                    "tile_size": int(prep_tile_size or 512),
+                    "tile_overlap": float(prep_tile_overlap or 20) / 100.0,
+                    "crop_verify_enabled": bool(prep_crop_verify_enabled),
+                    "crop_padding": float(prep_crop_padding or 15) / 100.0,
+                    "grid_step": int(prep_grid_step or 250),
+                    "grid_line_width": int(prep_grid_line_width or 1),
+                    "grid_font_size": int(prep_grid_font_size or 0),
+                    "grid_line_color": prep_grid_line_color if prep_grid_line_color != "custom" else prep_grid_line_color_custom,
+                    "grid_text_color": prep_grid_text_color if prep_grid_text_color != "custom" else prep_grid_text_color_custom,
+                    "grid_backing_color": prep_grid_backing_color if prep_grid_backing_color != "custom" else prep_grid_backing_color_custom,
+                    "send_pixel_bounds": bool(prep_send_pixel_bounds),
+                    "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
+                    "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,
+                    "custom_resize": use_custom_resize,
+                    "custom_resize_width": int(prep_custom_resize_width or 1024),
+                    "custom_resize_height": int(prep_custom_resize_height or 1024),
+                }
+
+            pipeline_params = {"detector_temperature": float(detector_temp or 0.9)}
+
             frame_id = session.next_frame_id()
             session.submit(
                 frame_id,
                 run_vlm_detect,
                 frame,
                 categories,
+                category_definitions,
                 base_url,
                 api_key,
                 model_name,
-                prep_info,
-                True,   # enable_grid
-                100,    # grid_step
+                prep_config,
+                pipeline_params,
             )
             session.last_detect_time = now
 
@@ -169,13 +187,43 @@ def process_video_frames(
     video_path: str,
     sample_interval: float,
     categories_str: str,
+    category_definitions: str,
     server_port: int,
     use_external_api: bool,
     ext_api_url: str,
     ext_api_key: str,
     ext_model_name: str,
-    enable_resizing: bool = True,
-    max_resolution: int = 640,
+    prep_enabled: bool,
+    prep_short_edge: float,
+    prep_pad_square: bool,
+    prep_contrast_method: str,
+    prep_gamma: float,
+    prep_denoise_method: str,
+    prep_sharpen: bool,
+    prep_white_balance: bool,
+    prep_grid_style: str,
+    prep_som_enabled: bool,
+    prep_tiling_enabled: bool,
+    prep_tile_size: float,
+    prep_tile_overlap: float,
+    prep_crop_verify_enabled: bool,
+    prep_crop_padding: float,
+    prep_grid_step: float,
+    prep_grid_line_width: float,
+    prep_grid_font_size: float,
+    prep_grid_line_color: str,
+    prep_grid_line_color_custom: str,
+    prep_grid_text_color: str,
+    prep_grid_text_color_custom: str,
+    prep_grid_backing_color: str,
+    prep_grid_backing_color_custom: str,
+    prep_send_pixel_bounds: bool,
+    prep_min_pixels: float,
+    prep_max_pixels: float,
+    prep_custom_resize_enabled: bool,
+    prep_custom_resize_width: float,
+    prep_custom_resize_height: float,
+    detector_temp: float = 0.9,
     tracker_algorithm: str = "ByteTrack",
     progress=gr.Progress(),
 ) -> Tuple[List[np.ndarray], str]:
@@ -211,7 +259,63 @@ def process_video_frames(
     base_url, api_key, model_name = resolve_endpoint(
         server_port, use_external_api, ext_api_url, ext_api_key, ext_model_name
     )
-    max_res = int(max_resolution or 640)
+
+    if not prep_enabled:
+        prep_config = {
+            "resolution_enabled": False,
+            "contrast_method": "none",
+            "denoise_method": "none",
+            "som_enabled": False,
+            "tiling_enabled": False,
+            "crop_verify_enabled": False,
+            "grid_style": "standard",
+            "grid_step": 100,
+            "grid_line_width": 1,
+            "grid_font_size": 0,
+            "grid_line_color": "red",
+            "grid_text_color": "white",
+            "grid_backing_color": "black",
+            "send_pixel_bounds": False,
+            "min_pixels": 200704,
+            "max_pixels": 4194304,
+            "custom_resize": False,
+            "custom_resize_width": 1024,
+            "custom_resize_height": 1024,
+        }
+    else:
+        use_custom_resize = bool(prep_custom_resize_enabled)
+        prep_config = {
+            "resolution_enabled": not use_custom_resize,
+            "target_short_edge": int(prep_short_edge or 1024),
+            "pad_to_square": bool(prep_pad_square),
+            "contrast_method": prep_contrast_method,
+            "clip_limit": 2.0,
+            "gamma": float(prep_gamma or 1.0),
+            "denoise_method": prep_denoise_method,
+            "sharpen": bool(prep_sharpen),
+            "white_balance": bool(prep_white_balance),
+            "grid_style": prep_grid_style if prep_grid_style != "Standard Red" else "standard",
+            "som_enabled": bool(prep_som_enabled),
+            "tiling_enabled": bool(prep_tiling_enabled),
+            "tile_size": int(prep_tile_size or 512),
+            "tile_overlap": float(prep_tile_overlap or 20) / 100.0,
+            "crop_verify_enabled": bool(prep_crop_verify_enabled),
+            "crop_padding": float(prep_crop_padding or 15) / 100.0,
+            "grid_step": int(prep_grid_step or 250),
+            "grid_line_width": int(prep_grid_line_width or 1),
+            "grid_font_size": int(prep_grid_font_size or 0),
+            "grid_line_color": prep_grid_line_color if prep_grid_line_color != "custom" else prep_grid_line_color_custom,
+            "grid_text_color": prep_grid_text_color if prep_grid_text_color != "custom" else prep_grid_text_color_custom,
+            "grid_backing_color": prep_grid_backing_color if prep_grid_backing_color != "custom" else prep_grid_backing_color_custom,
+            "send_pixel_bounds": bool(prep_send_pixel_bounds),
+            "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
+            "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,
+            "custom_resize": use_custom_resize,
+            "custom_resize_width": int(prep_custom_resize_width or 1024),
+            "custom_resize_height": int(prep_custom_resize_height or 1024),
+        }
+
+    pipeline_params = {"detector_temperature": float(detector_temp or 0.9)}
 
     tracker = MultiAlgorithmTracker(tracker_algorithm)
     annotated_frames = []
@@ -220,15 +324,16 @@ def process_video_frames(
         progress(
             (idx + 1) / len(frames), desc=f"Detecting frame {idx + 1}/{len(frames)}"
         )
-        prep_info = {
-            "enable_resizing": enable_resizing,
-            "max_res": max_res,
-            "orig_w": f.shape[1],
-            "orig_h": f.shape[0],
-        }
         try:
             boxes, _hud = run_vlm_detect(
-                f, categories, base_url, api_key, model_name, prep_info, True, 250
+                f,
+                categories,
+                category_definitions,
+                base_url,
+                api_key,
+                model_name,
+                prep_config,
+                pipeline_params,
             )
             tracked_boxes = boxes
         except Exception:

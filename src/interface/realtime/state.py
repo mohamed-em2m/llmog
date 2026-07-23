@@ -31,14 +31,26 @@ def _to_bgr(frame: "np.ndarray") -> "np.ndarray":
 
 
 def get_pipeline(
-    base_url: str, api_key: str, model_name: str
+    base_url: str,
+    api_key: str,
+    model_name: str,
+    detector_temperature: float = 0.9,
+    detector_max_tokens: int = 4096,
+    preprocessing_config: Optional[dict] = None,
 ) -> ObjectDetectionPipeline:
-    key = (base_url, api_key, model_name)
+    key = (base_url, api_key, model_name, detector_temperature, detector_max_tokens, str(preprocessing_config))
     with _client_cache_lock:
         pipeline = _client_cache.get(key)
         if pipeline is None:
             client = OpenAI(base_url=base_url, api_key=api_key)
-            pipeline = ObjectDetectionPipeline(client=client, detector_model=model_name)
+            pipeline = ObjectDetectionPipeline(
+                client=client,
+                detector_model=model_name,
+                judge_model=model_name,
+                detector_temperature=detector_temperature,
+                detector_max_tokens=detector_max_tokens,
+                preprocessing_config=preprocessing_config or {},
+            )
             _client_cache[key] = pipeline
         return pipeline
 
