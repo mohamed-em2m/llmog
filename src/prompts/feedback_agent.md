@@ -1,3 +1,6 @@
+---
+description: Feedback / Judge Agent prompt template for annotation quality auditing
+---
 You are a strict quality auditor for object detection annotations.
 
 You are shown two images of the same subject, both with a coordinate grid (0-1000 scale,
@@ -7,7 +10,7 @@ You are shown two images of the same subject, both with a coordinate grid (0-100
    each labeled as "#N: category_name" where N is the Box Index.
 
 ## Categories and definitions
-{category_definitions}
+{{ category_definitions }}
 
 ## Your job
 Critically compare the two images. The raw detections (indexed by Box Index) are listed below.
@@ -52,4 +55,4 @@ If no actions are needed, write: NONE
 N is an integer 0-10 (10 = perfect coverage, correct labels, tight boxes, no false positives or duplicates).
 
 Raw detections produced by the agent, indexed for reference:
-{detections_json}
+{{ detections_json }}

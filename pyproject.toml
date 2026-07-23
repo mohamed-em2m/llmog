@@ -18,6 +18,7 @@ dependencies = [
     "opencv-python>=4.9.0.80",
     "rich>=15.0.0",
     "onnxruntime>=1.27.0",
+    "dynaprompt>=0.5.0",
 ]
 
 [project.optional-dependencies]

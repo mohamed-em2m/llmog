@@ -17,6 +17,7 @@ from free_detection.detection_pipeline import (
     parse_detections,
     validate_detections,
     draw_grid,
+    get_realtime_prompt,
 )
 from free_detection.image_preprocessing import (
     preprocess_resolution,
@@ -107,10 +108,15 @@ def run_vlm_detect(
     grid_font_size: int = 0,
     grid_text_color: str = "white",
     grid_backing_color: str = "black",
+    free_detection: bool = False,
 ) -> Tuple[List[Any], str]:
     """
     Runs VLM detection on a single frame using the detection pipeline preprocessing,
     optional coordinate grid overlay, and bounding box mapping.
+
+    When ``free_detection=True`` (or ``categories`` is empty / ``["*"]``), uses the
+    dedicated ``realtime_detector`` open-vocabulary prompt so the model can name
+    any object it sees without a predefined category list.
     """
     start_time = time.time()
     pil_img = Image.fromarray(frame).convert("RGB")
@@ -137,13 +143,33 @@ def run_vlm_detect(
 
     pipeline = get_pipeline(base_url, api_key, model_name)
     img_uri = pil_to_data_uri(input_img)
-    raw_output = pipeline.run_inference(
-        image_uris=img_uri,
-        categories=categories,
-        category_definitions="",
-    )
+
+    # Determine whether to use free (open-vocabulary) or targeted detection
+    is_free = free_detection or not categories or categories == ["*"]
+    if is_free:
+        # Build the realtime open-vocabulary prompt via DynaPrompt
+        realtime_cats = None if is_free and (not categories or categories == ["*"]) else categories
+        prompt_text = get_realtime_prompt(realtime_cats)
+        raw_output = pipeline.run_inference(
+            image_uris=img_uri,
+            categories=categories or ["object"],
+            category_definitions="",
+            custom_prompt=prompt_text,
+        )
+    else:
+        raw_output = pipeline.run_inference(
+            image_uris=img_uri,
+            categories=categories,
+            category_definitions="",
+        )
     parsed_dets = parse_detections(raw_output)
-    valid_dets = validate_detections(parsed_dets, categories)
+    # In free-detection mode there's no fixed category filter — accept all labels
+    # the model emits. Pass the actual detected labels so bbox validation still runs.
+    if is_free:
+        detected_labels = list({d.get("label", "") for d in parsed_dets if d.get("label")})
+        valid_dets = validate_detections(parsed_dets, detected_labels)
+    else:
+        valid_dets = validate_detections(parsed_dets, categories)
 
     orig_w = prep_info["orig_w"]
     orig_h = prep_info["orig_h"]

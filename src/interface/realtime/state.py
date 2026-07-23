@@ -50,6 +50,13 @@ def resolve_endpoint(
 class SessionDetector:
     """
     Per-browser-session detector and tracking state.
+
+    The ``multi_tracker`` is kept live across the entire session.
+    On each stream tick:
+      - ``update_tracking_only`` drives the tracker with the current frame.
+    When a background VLM inference completes:
+      - ``_run_and_store`` feeds new detections into the tracker via
+        ``update_with_detections``, merging and re-initialising instances.
     """
 
     lock: Lock = field(default_factory=Lock)
@@ -59,7 +66,9 @@ class SessionDetector:
         )
     )
     future: Optional[Future] = None
-    multi_tracker: MultiAlgorithmTracker = field(default_factory=MultiAlgorithmTracker)
+    multi_tracker: MultiAlgorithmTracker = field(
+        default_factory=lambda: MultiAlgorithmTracker()
+    )
     last_raw_boxes: List[Any] = field(default_factory=list)
     last_tracked_boxes: List[Any] = field(default_factory=list)
     last_hud: str = DEFAULT_HUD
@@ -84,6 +93,8 @@ class SessionDetector:
             self.future = self.executor.submit(self._run_and_store, frame_id, fn, *args)
 
     def _run_and_store(self, frame_id: int, fn: Any, *args: Any) -> None:
+        """Background VLM inference — stores raw boxes and drives tracker update."""
+        frame = args[0] if args else None  # first arg to run_vlm_detect is the frame
         try:
             boxes, hud = fn(*args)
         except Exception as e:  # noqa: BLE001
@@ -96,11 +107,24 @@ class SessionDetector:
                 self.last_applied_frame_id = frame_id
                 if boxes is not None:
                     self.last_raw_boxes = boxes
-                    self.last_tracked_boxes = boxes
+                    # Integrate new VLM detections into tracker state
+                    self.last_tracked_boxes = self.multi_tracker.update_with_detections(
+                        frame, boxes
+                    )
                 self.last_hud = hud
 
     def update_tracking_only(self, frame: Optional[Any], algorithm: str) -> List[Any]:
+        """
+        Drive the tracker for a single video frame tick (between VLM calls).
+
+        Switches algorithm if the UI selection changed since last tick.
+        Returns the current tracked boxes (propagated from last VLM result).
+        """
         with self.lock:
+            self.multi_tracker.set_algorithm(algorithm)
+            self.last_tracked_boxes = self.multi_tracker.track_frame_only(
+                frame, self.last_tracked_boxes
+            )
             return list(self.last_tracked_boxes)
 
     def snapshot(self) -> Tuple[List[Any], str]:

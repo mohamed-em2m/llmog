@@ -24,7 +24,8 @@ Key features:
 
 from __future__ import annotations
 import os
-os.environ['MPLBACKEND'] = 'Agg'
+
+os.environ["MPLBACKEND"] = "Agg"
 import json
 import logging
 import re
@@ -67,10 +68,18 @@ if not logger.handlers:
 
 
 # ---------------------------------------------------------------------------
-# Prompt Templates — loaded from prompts/ directory, with fallbacks
+# Prompt Management using DynaPrompt
 # ---------------------------------------------------------------------------
 
-PROMPTS_DIR = Path(__file__).parent / "prompts"
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
+
+try:
+    from dynaprompt import DynaPrompt
+
+    _dynaprompt_instance = DynaPrompt(settings_files=[str(PROMPTS_DIR)])
+except Exception as _exc:
+    logger.warning("Failed to initialize DynaPrompt from %s: %s", PROMPTS_DIR, _exc)
+    _dynaprompt_instance = None
 
 
 def _load_prompt_template(filename: str, fallback: str) -> str:
@@ -79,93 +88,54 @@ def _load_prompt_template(filename: str, fallback: str) -> str:
         try:
             return path.read_text(encoding="utf-8").strip()
         except Exception as exc:
-            logger.warning("Failed to load prompt from %s, using fallback: %s", path, exc)
+            logger.warning(
+                "Failed to load prompt from %s, using fallback: %s", path, exc
+            )
     return fallback
 
 
-DEFAULT_DETECTOR_FALLBACK = """
-You are a meticulous annotation assistant performing object detection.
+DEFAULT_DETECTOR_TEMPLATE = _dynaprompt_instance.detector_agent.text
+DEFAULT_JUDGE_TEMPLATE = _dynaprompt_instance.feedback_agent.text
+DEFAULT_REALTIME_TEMPLATE = _dynaprompt_instance.realtime_detector.text
 
-## Categories to detect
-{categories_list}
 
-## Category definitions (use these to disambiguate visually similar categories)
-{category_definitions}
-{feedback_block}
+def get_realtime_prompt(categories: list[str] | None = None) -> str:
+    """Render the real-time free-detection prompt.
 
-## Task
-Analyze the image and detect every visible instance of the categories above. Work through the following steps internally before producing your final answer:
+    Args:
+        categories: Optional list of target category names. Pass ``None`` or an
+            empty list for fully free / open-vocabulary detection (the model
+            chooses its own labels).  Pass ``["*"]`` to also trigger free mode.
 
-1. Systematic scan: Mentally divide the image into a grid (e.g. top-left, top-right, center, bottom-left, bottom-right, and any remaining regions) and inspect each region in turn for target categories.
-2. Candidate identification: For each candidate object found, note its approximate location and visual characteristics (shape, color, boundaries, texture).
-3. Classification: Match each candidate against the category definitions above. If a candidate could fit two categories, use the distinguishing details to pick the single best label. Discard candidates that don't clearly match any category.
-4. Bounding box estimation: Using the image's grid and axis labels as reference, estimate a TIGHT bounding box around each confirmed object on a 0-1000 scale, where (0,0) is top-left and (1000,1000) is bottom-right. The box should hug the visible extent of the target, not surrounding background.
-5. Deduplication check: Verify no single object is reported twice with overlapping/near-identical boxes, and verify no region was skipped.
-6. Final compilation: List only the objects you are confident are genuinely present and visible. If none are found for a category, omit it entirely. If no targets are visible at all, the final array should be empty.
+    Returns:
+        Rendered prompt string ready to send to the VLM.
+    """
+    cats_str = ", ".join(categories) if categories else "*"
 
-## Output format
-Respond in exactly two parts, in this order:
+    # Prefer DynaPrompt when available and template hasn't been customised
+    if _dynaprompt_instance is not None:
+        try:
+            return _dynaprompt_instance.realtime_detector.render(
+                {"categories_list": cats_str}
+            ).text
+        except Exception as exc:
+            logger.warning(
+                "DynaPrompt realtime rendering failed, falling back: %s", exc
+            )
 
-<answer>
-[
-  {{
-    "label": "category_name",
-    "bbox_2d": [x1, y1, x2, y2]
-  }}
-]
-</answer>
+    # Jinja2 / string fallback
+    try:
+        from jinja2 import Template
 
-## Rules
-- Coordinates must be integers on a 0-1000 scale, with x1 < x2 and y1 < y2.
-- "label" must be exactly one of: {categories_list}.
-- The content inside <answer> must be ONLY valid JSON (a JSON array, possibly empty: []) — no comments, no trailing commas, no extra text, and NOT wrapped in code fences.
-- Do not invent or guess at objects that are not clearly visible; when uncertain, exclude the candidate.
-- Do not include the <analysis> reasoning inside the <answer> block.
-"""
-
-DEFAULT_JUDGE_FALLBACK = """
-You are a strict quality auditor for object detection annotations.
-
-You are shown two images of the same subject, both with a red coordinate grid (0-1000 scale,
-(0,0) top-left, (1000,1000) bottom-right):
-1. The ORIGINAL image (no boxes drawn) — use this to judge what target objects actually exist.
-2. The ANNOTATED image, where a detection agent has drawn lime-green bounding boxes with labels.
-
-## Categories and definitions
-{category_definitions}
-
-## Your job
-Critically compare the two images and evaluate the annotated image's quality:
-1. Coverage: are there visible target objects in the original image that were NOT detected? List each with its approximate (x,y) grid location.
-2. Correctness: for each detected box, is the label correct given the definitions above? Check the box indices provided in the reference JSON list and identify any mislabeled ones.
-3. False positives: any boxes drawn over background with no real target object? Identify them by their box index.
-4. Bounding box quality: for each box, is it tight around the object, or too loose / too tight / offset? Reference the box indices and give specific fixes.
-5. Duplicates: any single object annotated more than once with overlapping boxes?
-
-## Output
-Respond in exactly this format, nothing else:
-
-<score>N</score>
-<feedback>
-A concise, actionable bullet list of concrete fixes for the next detection attempt.
-For any modifications or deletions of existing detections, ALWAYS reference them by their Box Index (e.g. "Box #1 is mislabeled; should be 'weaving_defect'", "Box #3 is too loose; pull the right edge in by ~30px", "Remove false positive Box #5").
-For missed objects, specify their approximate coordinates (e.g. "Missed a small target near (650,300)").
-If the annotation is already excellent, state that explicitly and say no changes are needed.
-</feedback>
-
-N is an integer 0-10 (10 = perfect coverage, correct labels, tight boxes, no false positives or duplicates).
-
-Raw detections produced by the agent, indexed for reference:
-{detections_json}
-"""
-
-DEFAULT_DETECTOR_TEMPLATE = _load_prompt_template("detector_agent.md", DEFAULT_DETECTOR_FALLBACK)
-DEFAULT_JUDGE_TEMPLATE = _load_prompt_template("feedback_agent.md", DEFAULT_JUDGE_FALLBACK)
+        return Template(DEFAULT_REALTIME_TEMPLATE).render(categories_list=cats_str)
+    except Exception:
+        return DEFAULT_REALTIME_TEMPLATE.replace("{{ categories_list }}", cats_str)
 
 
 # ---------------------------------------------------------------------------
 # Image / font helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
     """Try a few common truetype fonts, fall back to PIL's default bitmap font."""
@@ -183,7 +153,9 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def _text_with_backing(draw: ImageDraw.ImageDraw, xy, text, font, fill, backing="black", pad=2):
+def _text_with_backing(
+    draw: ImageDraw.ImageDraw, xy, text, font, fill, backing="black", pad=2
+):
     """Draw text with a solid backing rectangle so it stays legible over photos."""
     x, y = xy
     bbox = draw.textbbox((x, y), text, font=font)
@@ -202,7 +174,7 @@ def draw_grid(
     line_width: int = 1,
     font_size: int = 0,
     text_color: str = "white",
-    backing_color: str = "black"
+    backing_color: str = "black",
 ) -> Image.Image:
     """Overlay a 0-1000 scale coordinate grid with readable axis labels and custom colors/sizes."""
     return draw_premium_grid(
@@ -213,7 +185,7 @@ def draw_grid(
         line_width=line_width,
         font_size=font_size,
         text_color=text_color,
-        backing_color=backing_color
+        backing_color=backing_color,
     )
 
 
@@ -264,6 +236,7 @@ def pil_to_data_uri(img: Image.Image, fmt: str = "JPEG") -> str:
 # Parsing & validation
 # ---------------------------------------------------------------------------
 
+
 def _strip_think_blocks(text: str) -> str:
     """Remove <think>...</think> blocks emitted by thinking-mode models."""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
@@ -300,7 +273,7 @@ def _extract_balanced_array(text: str) -> str:
             if depth > 0:
                 depth -= 1
             if depth == 0 and start is not None:
-                return text[start: i + 1]
+                return text[start : i + 1]
     return text
 
 
@@ -350,7 +323,9 @@ def parse_detections(raw_text: str) -> list[dict]:
                     break
 
     if not isinstance(parsed, list):
-        raise ValueError(f"Expected a JSON array of detections, got: {type(parsed).__name__}")
+        raise ValueError(
+            f"Expected a JSON array of detections, got: {type(parsed).__name__}"
+        )
     return parsed
 
 
@@ -373,13 +348,17 @@ def validate_detections(detections: list[dict], categories: list[str]) -> list[d
 
         bbox = item.get("bbox_2d")
         if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
-            logger.warning("Dropping detection #%d (%s): malformed bbox %r", i, label, bbox)
+            logger.warning(
+                "Dropping detection #%d (%s): malformed bbox %r", i, label, bbox
+            )
             continue
 
         try:
             x1, y1, x2, y2 = (float(v) for v in bbox)
         except (TypeError, ValueError):
-            logger.warning("Dropping detection #%d (%s): non-numeric bbox %r", i, label, bbox)
+            logger.warning(
+                "Dropping detection #%d (%s): non-numeric bbox %r", i, label, bbox
+            )
             continue
 
         x1, x2 = sorted((x1, x2))
@@ -388,10 +367,17 @@ def validate_detections(detections: list[dict], categories: list[str]) -> list[d
         y1, y2 = max(0, min(1000, y1)), max(0, min(1000, y2))
 
         if x2 - x1 < 1 or y2 - y1 < 1:
-            logger.warning("Dropping detection #%d (%s): degenerate bbox after clamping %r", i, label, bbox)
+            logger.warning(
+                "Dropping detection #%d (%s): degenerate bbox after clamping %r",
+                i,
+                label,
+                bbox,
+            )
             continue
 
-        cleaned.append({"label": label, "bbox_2d": [int(x1), int(y1), int(x2), int(y2)]})
+        cleaned.append(
+            {"label": label, "bbox_2d": [int(x1), int(y1), int(x2), int(y2)]}
+        )
     return cleaned
 
 
@@ -399,7 +385,10 @@ def validate_detections(detections: list[dict], categories: list[str]) -> list[d
 # Retry helper for API calls
 # ---------------------------------------------------------------------------
 
-def _call_with_retries(fn, *, retries: int = 3, base_delay: float = 1.5, what: str = "API call"):
+
+def _call_with_retries(
+    fn, *, retries: int = 3, base_delay: float = 1.5, what: str = "API call"
+):
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
@@ -416,6 +405,7 @@ def _call_with_retries(fn, *, retries: int = 3, base_delay: float = 1.5, what: s
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class RoundResult:
     round: int
@@ -430,6 +420,7 @@ class RoundResult:
 # ---------------------------------------------------------------------------
 # Tiling helpers
 # ---------------------------------------------------------------------------
+
 
 def _filter_and_translate_feedback_for_tile(
     feedback: str,
@@ -467,8 +458,12 @@ def _filter_and_translate_feedback_for_tile(
                 keep_line = True
                 tx = int(round((px - tile_x) * 1000 / tile_w))
                 ty = int(round((py - tile_y) * 1000 / tile_h))
-                translated_line = translated_line.replace(f"({x_str},{y_str})", f"({tx},{ty})")
-                translated_line = translated_line.replace(f"({x_str}, {y_str})", f"({tx},{ty})")
+                translated_line = translated_line.replace(
+                    f"({x_str},{y_str})", f"({tx},{ty})"
+                )
+                translated_line = translated_line.replace(
+                    f"({x_str}, {y_str})", f"({tx},{ty})"
+                )
 
         if keep_line:
             new_lines.append(translated_line)
@@ -479,6 +474,7 @@ def _filter_and_translate_feedback_for_tile(
 # ---------------------------------------------------------------------------
 # Object Detection Pipeline
 # ---------------------------------------------------------------------------
+
 
 class ObjectDetectionPipeline:
     def __init__(
@@ -552,7 +548,9 @@ class ObjectDetectionPipeline:
         """Log once, at construction time, if local-backend-only settings will be silently ignored."""
         ignored = []
         if self.preprocessing_config.get("send_pixel_bounds"):
-            ignored.append("preprocessing_config['send_pixel_bounds'] (min_pixels/max_pixels)")
+            ignored.append(
+                "preprocessing_config['send_pixel_bounds'] (min_pixels/max_pixels)"
+            )
         if self.judge_enable_thinking:
             ignored.append("judge_enable_thinking")
         if ignored:
@@ -595,7 +593,11 @@ class ObjectDetectionPipeline:
             prev_dets_section = ""
             if previous_detections:
                 indexed = [
-                    {"box_index": f"Box #{i}", "label": d.get("label"), "bbox_2d": d.get("bbox_2d")}
+                    {
+                        "box_index": f"Box #{i}",
+                        "label": d.get("label"),
+                        "bbox_2d": d.get("bbox_2d"),
+                    }
                     for i, d in enumerate(previous_detections, 1)
                 ]
                 prev_dets_section = f"""
@@ -644,26 +646,84 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 som_block += f"- Candidate #{prop['id']}: label proposals around bbox_2d: {prop['bbox_2d']}\n"
             som_block += "\nYou can either refer to these candidates or output standard bounding boxes."
 
-        return self.detector_template.format(
-            categories_list=", ".join(categories),
-            category_definitions=category_definitions + som_block,
-            feedback_block=feedback_block,
-        )
+        # If using default template and DynaPrompt is available, use DynaPrompt rendering
+        if (
+            self.detector_template == DEFAULT_DETECTOR_TEMPLATE
+            and _dynaprompt_instance is not None
+        ):
+            try:
+                return _dynaprompt_instance.detector_agent.render(
+                    {
+                        "categories_list": ", ".join(categories),
+                        "category_definitions": category_definitions + som_block,
+                        "feedback_block": feedback_block,
+                    }
+                ).text
+            except Exception as exc:
+                logger.warning(
+                    "DynaPrompt detector rendering failed, falling back: %s", exc
+                )
+
+        # Jinja2 / string format fallback
+        try:
+            from jinja2 import Template
+
+            return Template(self.detector_template).render(
+                categories_list=", ".join(categories),
+                category_definitions=category_definitions + som_block,
+                feedback_block=feedback_block,
+            )
+        except Exception:
+            return self.detector_template.format(
+                categories_list=", ".join(categories),
+                category_definitions=category_definitions + som_block,
+                feedback_block=feedback_block,
+            )
 
     def get_judge_prompt(self, category_definitions, detections):
         # Format detections list with Box Indices to help the judge easily reference them
         indexed_detections = []
         for idx, det in enumerate(detections, 1):
-            indexed_detections.append({
-                "box_index": f"Box #{idx}",
-                "label": det.get("label"),
-                "bbox_2d": det.get("bbox_2d")
-            })
+            indexed_detections.append(
+                {
+                    "box_index": f"Box #{idx}",
+                    "label": det.get("label"),
+                    "bbox_2d": det.get("bbox_2d"),
+                }
+            )
 
-        return self.judge_template.format(
-            category_definitions=category_definitions,
-            detections_json=json.dumps(indexed_detections, indent=2),
-        )
+        dets_json = json.dumps(indexed_detections, indent=2)
+
+        # If using default template and DynaPrompt is available, use DynaPrompt rendering
+        if (
+            self.judge_template == DEFAULT_JUDGE_TEMPLATE
+            and _dynaprompt_instance is not None
+        ):
+            try:
+                return _dynaprompt_instance.feedback_agent.render(
+                    {
+                        "category_definitions": category_definitions,
+                        "detections_json": dets_json,
+                    }
+                ).text
+            except Exception as exc:
+                logger.warning(
+                    "DynaPrompt judge rendering failed, falling back: %s", exc
+                )
+
+        # Jinja2 / string format fallback
+        try:
+            from jinja2 import Template
+
+            return Template(self.judge_template).render(
+                category_definitions=category_definitions,
+                detections_json=dets_json,
+            )
+        except Exception:
+            return self.judge_template.format(
+                category_definitions=category_definitions,
+                detections_json=dets_json,
+            )
 
     def run_inference(
         self,
@@ -674,15 +734,27 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
         actions=None,
         previous_detections=None,
         som_proposals=None,
+        custom_prompt: str | None = None,
     ) -> str:
-        prompt = self.get_detector_prompt(
-            categories,
-            category_definitions,
-            feedback=feedback,
-            actions=actions,
-            previous_detections=previous_detections,
-            som_proposals=som_proposals,
-        )
+        """Run a single VLM inference call.
+
+        Args:
+            custom_prompt: When supplied, this string is used as the prompt
+                verbatim, bypassing ``get_detector_prompt()``. Useful for the
+                real-time free-detection path which uses the dedicated
+                ``realtime_detector`` template.
+        """
+        if custom_prompt is not None:
+            prompt = custom_prompt
+        else:
+            prompt = self.get_detector_prompt(
+                categories,
+                category_definitions,
+                feedback=feedback,
+                actions=actions,
+                previous_detections=previous_detections,
+                som_proposals=som_proposals,
+            )
 
         # Non-standard sampling/vision hints (Qwen-VL min/max pixels) are only
         # ever sent to local/self-hosted OpenAI-compatible backends, never to
@@ -693,7 +765,11 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
         if isinstance(image_uris, list):
             for i, uri in enumerate(image_uris):
                 if len(image_uris) > 1:
-                    lbl = "Original image with grid:" if i == 0 else "Previous annotated image with grid (for visual feedback of last round):"
+                    lbl = (
+                        "Original image with grid:"
+                        if i == 0
+                        else "Previous annotated image with grid (for visual feedback of last round):"
+                    )
                     content_list.append({"type": "text", "text": lbl})
                 content_list.append({"type": "image_url", "image_url": {"url": uri}})
         else:
@@ -718,7 +794,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 kwargs["top_p"] = self.detector_top_p
             return self.detector_client.chat.completions.create(**kwargs)
 
-        response = _call_with_retries(_do_call, retries=self.api_retries, what="Detector call")
+        response = _call_with_retries(
+            _do_call, retries=self.api_retries, what="Detector call"
+        )
         return response.choices[0].message.content
 
     def verify_crop(self, crop_image: Image.Image, label: str) -> bool:
@@ -751,7 +829,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             return self.detector_client.chat.completions.create(**kwargs)
 
         try:
-            response = _call_with_retries(_do_call, retries=self.api_retries, what="Crop verification call")
+            response = _call_with_retries(
+                _do_call, retries=self.api_retries, what="Crop verification call"
+            )
             text = response.choices[0].message.content.strip()
             logger.info("Verification response for label '%s': %s", label, text)
             match = re.search(r"<present>\s*(YES|NO)\s*</present>", text, re.IGNORECASE)
@@ -759,10 +839,16 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 return match.group(1).upper() == "YES"
             return "YES" in text.upper()
         except Exception as e:
-            logger.warning("Crop verification failed for label '%s', keeping detection: %s", label, e)
+            logger.warning(
+                "Crop verification failed for label '%s', keeping detection: %s",
+                label,
+                e,
+            )
             return True  # Fallback to keeping it if API fails
 
-    def judge_detections(self, original_grid_uri, annotated_grid_uri, detections, category_definitions):
+    def judge_detections(
+        self, original_grid_uri, annotated_grid_uri, detections, category_definitions
+    ):
         prompt = self.get_judge_prompt(category_definitions, detections)
 
         # `enable_thinking` is a vLLM-only extra_body flag — never sent to the
@@ -780,10 +866,22 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {"type": "text", "text": "Original image (grid, no boxes):"},
-                            {"type": "image_url", "image_url": {"url": original_grid_uri}},
-                            {"type": "text", "text": "Annotated image (grid + detected boxes):"},
-                            {"type": "image_url", "image_url": {"url": annotated_grid_uri}},
+                            {
+                                "type": "text",
+                                "text": "Original image (grid, no boxes):",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": original_grid_uri},
+                            },
+                            {
+                                "type": "text",
+                                "text": "Annotated image (grid + detected boxes):",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": annotated_grid_uri},
+                            },
                         ],
                     }
                 ],
@@ -793,7 +891,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 kwargs["temperature"] = self.judge_temperature
             return self.judge_client.chat.completions.create(**kwargs)
 
-        response = _call_with_retries(_do_call, retries=self.api_retries, what="Judge call")
+        response = _call_with_retries(
+            _do_call, retries=self.api_retries, what="Judge call"
+        )
         text = _strip_think_blocks(response.choices[0].message.content)
 
         score_match = re.search(r"<score>\s*(\d+)\s*</score>", text)
@@ -802,13 +902,17 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
 
         score = int(score_match.group(1)) if score_match else 0
         score = max(0, min(10, score))
-        feedback_text = feedback_match.group(1).strip() if feedback_match else text.strip()
+        feedback_text = (
+            feedback_match.group(1).strip() if feedback_match else text.strip()
+        )
         actions_text = actions_match.group(1).strip() if actions_match else ""
 
         if actions_text:
             logger.info("Judge structured actions:\n%s", actions_text)
         else:
-            logger.info("Judge produced no structured <actions> block; falling back to text-only feedback.")
+            logger.info(
+                "Judge produced no structured <actions> block; falling back to text-only feedback."
+            )
 
         return score, feedback_text, actions_text
 
@@ -833,7 +937,10 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
 
         # 1. Load original image and correct color space / exif rotation
         base_image_raw = Image.open(path)
-        base_image_raw = preprocess_color_space(base_image_raw, white_balance=self.preprocessing_config.get("white_balance", False))
+        base_image_raw = preprocess_color_space(
+            base_image_raw,
+            white_balance=self.preprocessing_config.get("white_balance", False),
+        )
         orig_w, orig_h = base_image_raw.size
 
         # 2. Apply custom resize OR resolution scaling and padding
@@ -842,16 +949,16 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             custom_width = self.preprocessing_config.get("custom_resize_width", 1024)
             custom_height = self.preprocessing_config.get("custom_resize_height", 1024)
             preprocessed_image, prep_info = preprocess_custom_resize(
-                base_image_raw,
-                target_width=custom_width,
-                target_height=custom_height
+                base_image_raw, target_width=custom_width, target_height=custom_height
             )
         else:
             preprocessed_image, prep_info = preprocess_resolution(
                 base_image_raw,
                 enabled=self.preprocessing_config.get("resolution_enabled", False),
-                target_short_edge=self.preprocessing_config.get("target_short_edge", 1024),
-                pad_to_square=self.preprocessing_config.get("pad_to_square", False)
+                target_short_edge=self.preprocessing_config.get(
+                    "target_short_edge", 1024
+                ),
+                pad_to_square=self.preprocessing_config.get("pad_to_square", False),
             )
         prep_w, prep_h = preprocessed_image.size
 
@@ -860,14 +967,14 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             preprocessed_image,
             method=self.preprocessing_config.get("contrast_method", "none"),
             clip_limit=self.preprocessing_config.get("clip_limit", 2.0),
-            gamma=self.preprocessing_config.get("gamma", 1.0)
+            gamma=self.preprocessing_config.get("gamma", 1.0),
         )
 
         # 4. Apply noise filtering and sharpening
         preprocessed_image = preprocess_noise_sharpness(
             preprocessed_image,
             method=self.preprocessing_config.get("denoise_method", "none"),
-            sharpen=self.preprocessing_config.get("sharpen", False)
+            sharpen=self.preprocessing_config.get("sharpen", False),
         )
 
         # 5. Determine grid overlay style and properties
@@ -877,11 +984,15 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
         grid_line_width = self.preprocessing_config.get("grid_line_width", 1)
         grid_font_size = self.preprocessing_config.get("grid_font_size", 0)
         grid_text_color = self.preprocessing_config.get("grid_text_color", "white")
-        grid_backing_color = self.preprocessing_config.get("grid_backing_color", "black")
+        grid_backing_color = self.preprocessing_config.get(
+            "grid_backing_color", "black"
+        )
 
         feedback = None
         judge_actions = None
-        previous_detections_prep = None  # detections in preprocessed coordinate space from prior round
+        previous_detections_prep = (
+            None  # detections in preprocessed coordinate space from prior round
+        )
         history: list[RoundResult] = []
         best = {"score": -1, "annotated": None, "detections": None, "round": 0}
 
@@ -900,7 +1011,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             annotated_prep_image = None
             if round_num > 1 and previous_detections_prep is not None:
                 if self.feedback_image_mode in ("annotated", "both"):
-                    annotated_prep_image = render_detections(preprocessed_image, previous_detections_prep)
+                    annotated_prep_image = render_detections(
+                        preprocessed_image, previous_detections_prep
+                    )
                     annotated_prep_with_grid = draw_premium_grid(
                         annotated_prep_image,
                         style=grid_style,
@@ -909,28 +1022,39 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                         line_width=grid_line_width,
                         font_size=grid_font_size,
                         text_color=grid_text_color,
-                        backing_color=grid_backing_color
+                        backing_color=grid_backing_color,
                     )
                     annotated_prep_uri = pil_to_data_uri(annotated_prep_with_grid)
 
             if tiling_enabled:
-                logger.info("Tiling enabled: dividing image of size %dx%d into tiles of size %d", prep_w, prep_h, tile_size)
-                tiles = get_image_tiles(preprocessed_image, tile_size=tile_size, overlap_pct=tile_overlap)
+                logger.info(
+                    "Tiling enabled: dividing image of size %dx%d into tiles of size %d",
+                    prep_w,
+                    prep_h,
+                    tile_size,
+                )
+                tiles = get_image_tiles(
+                    preprocessed_image, tile_size=tile_size, overlap_pct=tile_overlap
+                )
                 logger.info("Generated %d tiles", len(tiles))
 
                 all_tile_detections = []
 
                 def process_tile(tile_item):
                     idx, tile = tile_item
-                    tile_feedback = _filter_and_translate_feedback_for_tile(
-                        feedback,
-                        tile_x=tile["tile_x"],
-                        tile_y=tile["tile_y"],
-                        tile_w=tile["tile_w"],
-                        tile_h=tile["tile_h"],
-                        orig_w=prep_w,
-                        orig_h=prep_h
-                    ) if feedback else None
+                    tile_feedback = (
+                        _filter_and_translate_feedback_for_tile(
+                            feedback,
+                            tile_x=tile["tile_x"],
+                            tile_y=tile["tile_y"],
+                            tile_w=tile["tile_w"],
+                            tile_h=tile["tile_h"],
+                            orig_w=prep_w,
+                            orig_h=prep_h,
+                        )
+                        if feedback
+                        else None
+                    )
 
                     tile_img_with_grid = draw_premium_grid(
                         tile["tile_image"],
@@ -940,18 +1064,20 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                         line_width=grid_line_width,
                         font_size=grid_font_size,
                         text_color=grid_text_color,
-                        backing_color=grid_backing_color
+                        backing_color=grid_backing_color,
                     )
                     tile_uri = pil_to_data_uri(tile_img_with_grid)
 
                     detector_images = [tile_uri]
                     if round_num > 1 and annotated_prep_image is not None:
-                        annotated_tile_crop = annotated_prep_image.crop((
-                            tile["tile_x"],
-                            tile["tile_y"],
-                            tile["tile_x"] + tile["tile_w"],
-                            tile["tile_y"] + tile["tile_h"]
-                        ))
+                        annotated_tile_crop = annotated_prep_image.crop(
+                            (
+                                tile["tile_x"],
+                                tile["tile_y"],
+                                tile["tile_x"] + tile["tile_w"],
+                                tile["tile_y"] + tile["tile_h"],
+                            )
+                        )
                         annotated_tile_with_grid = draw_premium_grid(
                             annotated_tile_crop,
                             style=grid_style,
@@ -960,7 +1086,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                             line_width=grid_line_width,
                             font_size=grid_font_size,
                             text_color=grid_text_color,
-                            backing_color=grid_backing_color
+                            backing_color=grid_backing_color,
                         )
                         annotated_tile_uri = pil_to_data_uri(annotated_tile_with_grid)
 
@@ -969,7 +1095,13 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                         elif self.feedback_image_mode == "both":
                             detector_images = [tile_uri, annotated_tile_uri]
 
-                    logger.info("Running parallel detection on Tile %d/%d (at x=%d, y=%d)...", idx, len(tiles), tile["tile_x"], tile["tile_y"])
+                    logger.info(
+                        "Running parallel detection on Tile %d/%d (at x=%d, y=%d)...",
+                        idx,
+                        len(tiles),
+                        tile["tile_x"],
+                        tile["tile_y"],
+                    )
                     try:
                         tile_raw_text = self.run_inference(
                             image_uris=detector_images,
@@ -977,9 +1109,11 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                             category_definitions=category_definitions,
                             feedback=tile_feedback,
                             actions=judge_actions,
-                            som_proposals=None
+                            som_proposals=None,
                         )
-                        tile_dets = validate_detections(parse_detections(tile_raw_text), categories)
+                        tile_dets = validate_detections(
+                            parse_detections(tile_raw_text), categories
+                        )
 
                         mapped_dets = []
                         for det in tile_dets:
@@ -990,7 +1124,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                                 tile_w=tile["tile_w"],
                                 tile_h=tile["tile_h"],
                                 orig_w=prep_w,
-                                orig_h=prep_h
+                                orig_h=prep_h,
                             )
                             det["bbox_2d"] = mapped
                             mapped_dets.append(det)
@@ -1005,11 +1139,17 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 tile_results.sort(key=lambda x: x[0])
                 for idx, tile_raw_text, mapped_dets, err in tile_results:
                     if tile_raw_text:
-                        raw_outputs_collected.append(f"Tile {idx} (x={tiles[idx-1]['tile_x']}, y={tiles[idx-1]['tile_y']}):\n{tile_raw_text}")
+                        raw_outputs_collected.append(
+                            f"Tile {idx} (x={tiles[idx-1]['tile_x']}, y={tiles[idx-1]['tile_y']}):\n{tile_raw_text}"
+                        )
                     if mapped_dets:
                         all_tile_detections.extend(mapped_dets)
                     if err:
-                        parse_error = str(err) if not parse_error else parse_error + f"; Tile {idx}: {err}"
+                        parse_error = (
+                            str(err)
+                            if not parse_error
+                            else parse_error + f"; Tile {idx}: {err}"
+                        )
 
                 # Merge tile detections using Non-Maximum Suppression
                 detections_prep = apply_nms(all_tile_detections, iou_threshold=0.5)
@@ -1025,15 +1165,19 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                     line_width=grid_line_width,
                     font_size=grid_font_size,
                     text_color=grid_text_color,
-                    backing_color=grid_backing_color
+                    backing_color=grid_backing_color,
                 )
 
                 # Overlay Set-of-Mark proposals if enabled
                 som_proposals = None
                 if self.preprocessing_config.get("som_enabled", False):
-                    logger.info("Set-of-Mark (SoM) prompting enabled. Generating candidate regions...")
+                    logger.info(
+                        "Set-of-Mark (SoM) prompting enabled. Generating candidate regions..."
+                    )
                     grid_img, som_proposals = generate_som_proposals(grid_img)
-                    logger.info("Generated %d candidate proposal regions", len(som_proposals))
+                    logger.info(
+                        "Generated %d candidate proposal regions", len(som_proposals)
+                    )
 
                 grid_uri = pil_to_data_uri(grid_img)
 
@@ -1051,11 +1195,13 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                     feedback=feedback,
                     actions=judge_actions,
                     previous_detections=previous_detections_prep,
-                    som_proposals=som_proposals
+                    som_proposals=som_proposals,
                 )
 
                 try:
-                    detections_prep = validate_detections(parse_detections(raw_text), categories)
+                    detections_prep = validate_detections(
+                        parse_detections(raw_text), categories
+                    )
                 except ValueError as exc:
                     logger.error("Detector output parsing failed: %s", exc)
                     logger.debug(traceback.format_exc())
@@ -1063,9 +1209,14 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                     parse_error = str(exc)
 
             # 6. Apply Crop & Verify second-pass validation if enabled
-            if detections_prep and self.preprocessing_config.get("crop_verify_enabled", False):
+            if detections_prep and self.preprocessing_config.get(
+                "crop_verify_enabled", False
+            ):
                 crop_padding = self.preprocessing_config.get("crop_padding", 0.15)
-                logger.info("Crop & Verify validation enabled. Validating %d detections...", len(detections_prep))
+                logger.info(
+                    "Crop & Verify validation enabled. Validating %d detections...",
+                    len(detections_prep),
+                )
 
                 verified_detections = []
 
@@ -1094,13 +1245,19 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                     return det, is_valid
 
                 with ThreadPoolExecutor(max_workers=4) as executor:
-                    verification_results = list(executor.map(verify_single, detections_prep))
+                    verification_results = list(
+                        executor.map(verify_single, detections_prep)
+                    )
 
                 for det, is_valid in verification_results:
                     if is_valid:
                         verified_detections.append(det)
                     else:
-                        logger.info("Crop & Verify: discarded detection box %s for label '%s'", det["bbox_2d"], det["label"])
+                        logger.info(
+                            "Crop & Verify: discarded detection box %s for label '%s'",
+                            det["bbox_2d"],
+                            det["label"],
+                        )
 
                 detections_prep = verified_detections
 
@@ -1123,7 +1280,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 line_width=grid_line_width,
                 font_size=grid_font_size,
                 text_color=grid_text_color,
-                backing_color=grid_backing_color
+                backing_color=grid_backing_color,
             )
             annotated_prep_uri = pil_to_data_uri(annotated_prep_with_grid)
 
@@ -1136,7 +1293,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 line_width=grid_line_width,
                 font_size=grid_font_size,
                 text_color=grid_text_color,
-                backing_color=grid_backing_color
+                backing_color=grid_backing_color,
             )
             grid_original_prep_uri = pil_to_data_uri(grid_original_prep)
 
@@ -1165,13 +1322,24 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
                 try:
                     progress_callback(round_result, annotated_orig)
                 except Exception:
-                    logger.warning("progress_callback raised an exception", exc_info=True)
+                    logger.warning(
+                        "progress_callback raised an exception", exc_info=True
+                    )
 
             if score > best["score"]:
-                best = {"score": score, "annotated": annotated_orig, "detections": detections_orig, "round": round_num}
+                best = {
+                    "score": score,
+                    "annotated": annotated_orig,
+                    "detections": detections_orig,
+                    "round": round_num,
+                }
 
             if score >= self.score_threshold:
-                logger.info("Score threshold (%d) reached at round %d, stopping.", self.score_threshold, round_num)
+                logger.info(
+                    "Score threshold (%d) reached at round %d, stopping.",
+                    self.score_threshold,
+                    round_num,
+                )
                 break
 
             feedback = judge_feedback
@@ -1179,7 +1347,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             # as its starting point when applying the judge's structured corrections
             previous_detections_prep = detections_prep
 
-        logger.info("Best result: round %d with score %d/10", best["round"], best["score"])
+        logger.info(
+            "Best result: round %d with score %d/10", best["round"], best["score"]
+        )
 
         if output_dir:
             self._persist(output_dir, base_image_raw, best, history)
@@ -1188,20 +1358,26 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
             plt.figure(figsize=(10, 10))
             plt.imshow(best["annotated"])
             plt.axis("off")
-            plt.title(f"Best detections (round {best['round']}, score {best['score']}/10)")
+            plt.title(
+                f"Best detections (round {best['round']}, score {best['score']}/10)"
+            )
             plt.show()
 
         return best, history
 
     @staticmethod
-    def _persist(output_dir: str, base_image: Image.Image, best: dict, history: list[RoundResult]):
+    def _persist(
+        output_dir: str, base_image: Image.Image, best: dict, history: list[RoundResult]
+    ):
         out = Path(output_dir)
         out.mkdir(parents=True, exist_ok=True)
 
         if best["annotated"] is not None:
             best["annotated"].save(out / "best_annotated.jpg")
 
-        (out / "best_detections.json").write_text(json.dumps(best["detections"], indent=2))
+        (out / "best_detections.json").write_text(
+            json.dumps(best["detections"], indent=2)
+        )
 
         history_payload = [
             {

@@ -39,9 +39,14 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["tracker_algorithm"] = gr.Dropdown(
                     choices=MultiAlgorithmTracker.SUPPORTED_ALGOS,
-                    value="ByteTrack",
+                    value="CSRT (TrackerCSRT)",
                     label="REAL-TIME TRACKING ALGORITHM",
-                    info="Choose tracker engine: ByteTrack, SiamONNX, MOSSE, KCF, CSRT, or VitTracker.",
+                    info=(
+                        "None = show raw VLM boxes. "
+                        "MOSSE/KCF/CSRT/VitTracker = OpenCV single-object trackers "
+                        "that propagate boxes between VLM calls. "
+                        "ByteTrack = multi-object Kalman IoU tracker."
+                    ),
                 )
                 c["categories_input"] = gr.Textbox(
                     value="person, car, dog, bottle, phone",
