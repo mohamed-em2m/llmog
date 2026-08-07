@@ -300,12 +300,13 @@ class LlamaCppPythonManager:
                     f"while waiting for health check. Last logs:\n{self.get_logs()[-2000:]}"
                 )
             try:
-                r = requests.get(f"{self.server_url}/health", timeout=2)
+                # llama_cpp.server exposes no `/health` route (404); the OpenAI
+                # `/v1/models` endpoint is the correct readiness probe and is
+                # unauthenticated when no `api_key` is configured.
+                r = requests.get(f"{self.server_url}/v1/models", timeout=2)
                 if r.status_code == 200:
-                    data = r.json()
-                    if data.get("status") == "ok":
-                        print(f"✅ Server ready at {self.server_url}")
-                        return True
+                    print(f"✅ Server ready at {self.server_url}")
+                    return True
             except Exception:
                 pass
             time.sleep(1)
@@ -385,10 +386,8 @@ class LlamaCppPythonManager:
         if self.process is None or self.process.poll() is not None:
             return False
         try:
-            r = requests.get(f"{self.server_url}/health", timeout=1)
-            if r.status_code == 200:
-                data = r.json()
-                return data.get("status") == "ok"
+            r = requests.get(f"{self.server_url}/v1/models", timeout=1)
+            return r.status_code == 200
         except Exception:
             pass
         return False
