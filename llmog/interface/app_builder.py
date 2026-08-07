@@ -16,10 +16,11 @@ from interface.tab_batch import (
     _build_batch_tab,
     toggle_external_api,
     toggle_run_btn,
-    run_batch_detection_gui,
+    run_batch_dispatcher,
     cancel_pipeline,
     on_explorer_image_change,
     on_explorer_round_change,
+    TASK_RECLASSIFICATION,
 )
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
@@ -27,6 +28,30 @@ from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 
 def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     """Wire all event handlers across server, batch, and prompt tabs."""
+
+    # ── Batch tab — task type toggle handles ──────────────────────────────
+    _free_panels = [
+        c_bat["input_images"],
+        c_bat["categories_input"],
+        c_bat["category_defs_input"],
+        c_bat["rounds_accordion"],
+        c_bat["prep_accordion"],
+        c_bat["advanced_accordion"],
+    ]
+
+    def toggle_task_panels(task):
+        is_recls = task == TASK_RECLASSIFICATION
+        # one update per combined output element
+        return tuple(
+            [gr.update(visible=is_recls)]  # recls_group
+            + [gr.update(visible=not is_recls)] * len(_free_panels)
+        )
+
+    c_bat["task_type"].change(
+        toggle_task_panels,
+        inputs=[c_bat["task_type"]],
+        outputs=[c_bat["recls_group"]] + _free_panels,
+    )
 
     # ── Server tab ────────────────────────────────────────────────────────
     c_srv["server_preset"].change(
@@ -121,8 +146,9 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         outputs=[c_bat["run_btn"], c_bat["stop_run_btn"]],
         queue=False,
     ).then(
-        fn=run_batch_detection_gui,
+        fn=run_batch_dispatcher,
         inputs=[
+            c_bat["task_type"],
             c_bat["input_images"],
             c_bat["categories_input"],
             c_bat["category_defs_input"],
@@ -169,6 +195,16 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_bat["prep_custom_resize_chk"],
             c_bat["prep_custom_resize_width"],
             c_bat["prep_custom_resize_height"],
+            c_bat["recls_images_folder"],
+            c_bat["recls_labels_folder"],
+            c_bat["recls_yaml_path"],
+            c_bat["recls_output_folder"],
+            c_bat["recls_conf_slider"],
+            c_bat["recls_init_class_map_chk"],
+            c_bat["recls_num_samples"],
+            c_bat["recls_max_workers"],
+            c_bat["recls_target_h"],
+            c_bat["recls_target_w"],
         ],
         outputs=[
             c_bat["pipeline_status"],

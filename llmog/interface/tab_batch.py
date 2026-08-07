@@ -3,6 +3,7 @@ Batch Sandbox tab UI and execution engine functions.
 """
 
 import io
+import os
 import time
 import json
 import html
@@ -17,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import gradio as gr
 import httpx
+import yaml
 from PIL import Image
 from openai import OpenAI
 
@@ -42,7 +44,18 @@ from interface.state import (
     toggle_custom_color_field,
 )
 
+from auto_annotation.image_io import load_or_init_class_map, find_labeled_images
+from auto_annotation.single_image import process_one_image
+from auto_annotation.stats import RunStats
+
 logger = logging.getLogger("detection_pipeline")
+
+
+# Registry of task types exposed in the Batch Sandbox. The Radio in the UI uses
+# these labels; the dispatcher routes to the matching runner below.
+TASK_FREE_ANNOTATION = "Free Annotation (detections)"
+TASK_RECLASSIFICATION = "Reclassification (relabel YOLO boxes)"
+TASK_CHOICES = [TASK_FREE_ANNOTATION, TASK_RECLASSIFICATION]
 
 
 class PipelineCancelledException(Exception):
@@ -687,6 +700,499 @@ def cancel_pipeline():
 
 
 # ---------------------------------------------------------------------------
+# Reclassification (relabel existing YOLO boxes) task
+# ---------------------------------------------------------------------------
+
+
+def _render_reclass_status_table(image_status, order):
+    rows = []
+    for stem in order:
+        st = image_status.get(stem)
+        if not st:
+            continue
+        pill = _STATUS_PILL.get(st["state"], _STATUS_PILL["queued"])
+        boxes_txt = str(st.get("boxes", 0))
+        detail = st.get("detail", "") or ""
+        name_esc = html.escape(st["name"])
+        detail_short = html.escape(detail[:120])
+        detail_attr = html.escape(detail)
+        rows.append(
+            f"<tr><td>{name_esc}</td><td>{pill}</td>"
+            f"<td>{boxes_txt}</td>"
+            f'<td style="color:#7d8590;font-size:0.7rem" title="{detail_attr}">{detail_short}</td></tr>'
+        )
+    body = (
+        "".join(rows)
+        if rows
+        else '<tr><td colspan="4" style="color:#7d8590;text-align:center;padding:1rem;">No images yet.</td></tr>'
+    )
+    return f"""
+<div class="output-panel" style="margin-top:0.75rem">
+  <div class="out-header"><div class="out-header-left">
+    <span class="out-header-dot"></span><span class="out-header-title">Relabel Status ({len(order)} images)</span>
+  </div></div>
+  <div style="max-height:260px; overflow-y:auto;">
+  <table class="batch-status-table">
+    <thead><tr>
+      <th>Image</th><th>Status</th><th>Boxes</th><th>Detail</th>
+    </tr></thead>
+    <tbody>{body}</tbody>
+  </table>
+  </div>
+</div>"""
+
+
+def run_reclassification_gui(
+    images_folder,
+    labels_folder,
+    yaml_path,
+    out_folder,
+    conf_threshold,
+    init_class_map,
+    num_samples,
+    max_workers,
+    target_height,
+    target_width,
+    use_external_api,
+    ext_api_url,
+    ext_api_key,
+    ext_model_name,
+):
+    """Relabel every existing YOLO box in a dataset folder with the VLM.
+
+    Reuses the CLI's ``process_one_image`` / ``find_labeled_images`` helpers so
+    the GUI and the ``auto-annotation`` command behave identically, but streams
+    per-image progress to the Gradio components instead of plain logs.
+    """
+    state.pipeline_cancel_event.clear()
+
+    _empty_yield = (
+        "",
+        _render_progress_bar(0),
+        None,
+        "",
+        gr.update(choices=[]),
+        "",
+        _render_reclass_status_table({}, []),
+    )
+
+    def _err_yield(msg, status="Error"):
+        return (
+            msg,
+            _render_progress_bar(0, status),
+            None,
+            "",
+            gr.update(choices=[]),
+            "",
+            _render_reclass_status_table({}, []),
+        )
+
+    missing = [name for name, p in [
+        ("images folder", images_folder),
+        ("labels folder", labels_folder),
+        ("data.yaml", yaml_path),
+    ] if not p]
+    if missing:
+        yield _err_yield(f"Error: missing {', '.join(missing)}.")
+        return
+    if not os.path.isdir(images_folder):
+        yield _err_yield(f"Error: images folder does not exist: {images_folder}")
+        return
+    if not os.path.isdir(labels_folder):
+        yield _err_yield(f"Error: labels folder does not exist: {labels_folder}")
+        return
+    if not os.path.isfile(yaml_path):
+        yield _err_yield(f"Error: data.yaml does not exist: {yaml_path}")
+        return
+
+    # Reuse the same server / external-API connection logic as the detection task.
+    if use_external_api:
+        api_url, api_key = ext_api_url, ext_api_key
+        model_name = ext_model_name
+        if not api_key or api_key == "your-key":
+            yield _err_yield(
+                "Error: External API selected but no API key provided. "
+                "Set one in the External API section."
+            )
+            return
+    else:
+        with state.server_lock:
+            if state.server_manager is None or not state.server_manager.is_healthy():
+                yield _err_yield(
+                    "Error: Local server not running. Start it on the Server tab "
+                    "or enable External API."
+                )
+                return
+            port = state.server_manager.port
+            model_name = state.server_manager.model
+        api_url = f"http://localhost:{port}/v1"
+        api_key = "not-needed"
+
+    max_workers = max(1, int(max_workers or 1))
+
+    try:
+        client = OpenAI(base_url=api_url, api_key=api_key)
+    except Exception as e:
+        yield _err_yield(f"Error initializing OpenAI client: {e}")
+        return
+
+    try:
+        with open(yaml_path, "r") as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        yield _err_yield(f"Error: failed to read data.yaml: {e}")
+        return
+
+    class_map = (
+        load_or_init_class_map(data.get("names", [])) if init_class_map else {}
+    )
+
+    output_folder = out_folder or str(
+        Path("./gui_runs") / f"recls_{int(time.time())}"
+    )
+    labels_out = Path(output_folder) / "labels"
+    labels_out.mkdir(parents=True, exist_ok=True)
+
+    image_names = find_labeled_images(
+        images_folder, labels_folder, (".jpg", ".jpeg", ".png")
+    )
+    if not image_names:
+        yield _err_yield(
+            "Error: no images with non-empty label files found in the given folders."
+        )
+        return
+
+    if num_samples and num_samples > 0:
+        image_names = image_names[: int(num_samples)]
+
+    total = len(image_names)
+    batch_id = f"recls_{int(time.time())}"
+    q: queue.Queue = queue.Queue()
+    worker_done = threading.Event()
+    class_map_lock = threading.Lock()
+    stats = RunStats()
+
+    def _run_one(name):
+        return process_one_image(
+            name,
+            images_folder,
+            labels_folder,
+            str(labels_out),
+            class_map,
+            class_map_lock,
+            client,
+            model_name,
+            int(conf_threshold),
+            False,  # dry_run
+            False,  # resume
+            int(target_height),
+            int(target_width),
+            stats,
+            False,  # inplace_saving
+        )
+
+    def worker():
+        try:
+            if not state.pipeline_cancel_event.is_set():
+                if max_workers <= 1:
+                    for name in image_names:
+                        if state.pipeline_cancel_event.is_set():
+                            break
+                        q.put(("start", name))
+                        try:
+                            img = _run_one(name)
+                            q.put(("done", name, img is not None))
+                        except Exception as e:
+                            q.put(("err", name, str(e)))
+                else:
+                    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                        futures = {}
+                        for name in image_names:
+                            if state.pipeline_cancel_event.is_set():
+                                break
+                            q.put(("start", name))
+                            futures[pool.submit(_run_one, name)] = name
+                        for fut in as_completed(futures):
+                            name = futures[fut]
+                            try:
+                                img = fut.result()
+                                q.put(("done", name, img is not None))
+                            except Exception as e:
+                                q.put(("err", name, str(e)))
+            q.put(("finish",) if not state.pipeline_cancel_event.is_set() else ("cancelled",))
+        except Exception as e:
+            q.put(("crash", str(e)))
+        finally:
+            worker_done.set()
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    image_status = {
+        stem: {"name": stem, "state": "queued", "boxes": 0, "detail": ""}
+        for stem in image_names
+    }
+
+    yield (
+        f"Reclassifying {total} image(s) with {max_workers} worker(s)...",
+        _render_progress_bar(5, "Starting reclassification..."),
+        None,
+        batch_id,
+        gr.update(choices=image_names, value=None),
+        "",
+        _render_reclass_status_table(image_status, image_names),
+    )
+
+    done_n = 0
+    errored_n = 0
+    last_yield = time.time()
+    status_msg = "Processing..."
+
+    while True:
+        try:
+            tag, *payload = q.get(timeout=0.2)
+        except queue.Empty:
+            if worker_done.is_set():
+                yield (
+                    "Pipeline ended unexpectedly (worker exited).",
+                    _render_progress_bar(100, "Aborted"),
+                    None,
+                    batch_id,
+                    gr.update(choices=image_names, value=image_names[0] if image_names else None),
+                    "",
+                    _render_reclass_status_table(image_status, image_names),
+                )
+                break
+            if time.time() - last_yield > 0.33:
+                yield (
+                    status_msg,
+                    _render_progress_bar(
+                        int((done_n / total) * 90) if total else 0, status_msg
+                    ),
+                    None,
+                    batch_id,
+                    gr.update(choices=image_names, value=image_names[0] if image_names else None),
+                    "",
+                    _render_reclass_status_table(image_status, image_names),
+                )
+                last_yield = time.time()
+            time.sleep(0.1)
+            continue
+
+        if tag == "start":
+            stem = payload[0]
+            image_status[stem]["state"] = "running"
+            status_msg = f"Relabeling {stem} ({done_n}/{total} done)..."
+        elif tag == "done":
+            stem, ok = payload
+            done_n += 1
+            if ok:
+                image_status[stem]["state"] = "done"
+                image_status[stem]["detail"] = "label file written"
+            else:
+                image_status[stem]["state"] = "skipped"
+                image_status[stem]["detail"] = "no boxes / skipped"
+            status_msg = f"Finished {stem} ({done_n}/{total})."
+        elif tag == "err":
+            stem, err = payload
+            done_n += 1
+            errored_n += 1
+            if stem in image_status:
+                image_status[stem]["state"] = "error"
+                image_status[stem]["detail"] = err[:200]
+            status_msg = f"⚠ {stem} failed: {err[:160]}"
+        elif tag == "cancelled":
+            yield (
+                "Pipeline execution cancelled by the user.",
+                _render_progress_bar(100, "Cancelled"),
+                None,
+                batch_id,
+                gr.update(choices=image_names, value=None),
+                "",
+                _render_reclass_status_table(image_status, image_names),
+            )
+            break
+        elif tag == "crash":
+            yield (
+                f"Reclassification failed:\n{payload[0]}",
+                _render_progress_bar(100, "Error"),
+                None,
+                batch_id,
+                gr.update(choices=image_names, value=None),
+                "",
+                _render_reclass_status_table(image_status, image_names),
+            )
+            break
+        elif tag == "finish":
+            try:
+                zip_path = zip_results_folder(Path(output_folder))
+            except Exception as e:
+                zip_path = None
+                logger.error(f"Failed to zip results: {e}")
+            summary = (
+                f"Reclassification complete: {done_n - errored_n} succeeded, "
+                f"{errored_n} failed. Output: {output_folder}"
+            )
+            yield (
+                summary,
+                _render_progress_bar(100, "Complete"),
+                zip_path,
+                batch_id,
+                gr.update(choices=image_names, value=image_names[0] if image_names else None),
+                "",
+                _render_reclass_status_table(image_status, image_names),
+            )
+            break
+
+        if time.time() - last_yield > 0.33:
+            yield (
+                status_msg,
+                _render_progress_bar(
+                    int((done_n / total) * 90) if total else 0, status_msg
+                ),
+                None,
+                batch_id,
+                gr.update(choices=image_names, value=image_names[0] if image_names else None),
+                "",
+                _render_reclass_status_table(image_status, image_names),
+            )
+            last_yield = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Task Dispatcher
+# ---------------------------------------------------------------------------
+
+
+def run_batch_dispatcher(
+    task_type,
+    image_files,
+    categories_str,
+    category_definitions,
+    local_server_port,
+    use_external_api,
+    ext_api_url,
+    ext_api_key,
+    ext_model_name,
+    max_rounds,
+    score_threshold,
+    detector_temp,
+    judge_temp,
+    concurrency,
+    customize_prompts,
+    detector_template,
+    judge_template,
+    prep_enabled,
+    prep_short_edge,
+    prep_pad_square,
+    prep_contrast_method,
+    prep_gamma,
+    prep_denoise_method,
+    prep_sharpen,
+    prep_white_balance,
+    prep_grid_style,
+    prep_som_enabled,
+    prep_tiling_enabled,
+    prep_tile_size,
+    prep_tile_overlap,
+    prep_crop_verify_enabled,
+    prep_crop_padding,
+    prep_grid_step,
+    prep_grid_line_width,
+    prep_grid_font_size,
+    prep_grid_line_color,
+    prep_grid_line_color_custom,
+    prep_grid_text_color,
+    prep_grid_text_color_custom,
+    prep_grid_backing_color,
+    prep_grid_backing_color_custom,
+    prep_send_pixel_bounds,
+    prep_min_pixels,
+    prep_max_pixels,
+    prep_custom_resize_enabled,
+    prep_custom_resize_width,
+    prep_custom_resize_height,
+    # Reclassification task inputs
+    recls_images_folder,
+    recls_labels_folder,
+    recls_yaml_path,
+    recls_output_folder,
+    recls_conf_threshold,
+    recls_init_class_map,
+    recls_num_samples,
+    recls_max_workers,
+    recls_target_height,
+    recls_target_width,
+):
+    """Route a Batch run to the matching task runner based on the task type."""
+    if task_type == TASK_RECLASSIFICATION:
+        yield from run_reclassification_gui(
+            recls_images_folder,
+            recls_labels_folder,
+            recls_yaml_path,
+            recls_output_folder,
+            recls_conf_threshold,
+            recls_init_class_map,
+            recls_num_samples,
+            recls_max_workers,
+            recls_target_height,
+            recls_target_width,
+            use_external_api,
+            ext_api_url,
+            ext_api_key,
+            ext_model_name,
+        )
+    else:
+        yield from run_batch_detection_gui(
+            image_files,
+            categories_str,
+            category_definitions,
+            local_server_port,
+            use_external_api,
+            ext_api_url,
+            ext_api_key,
+            ext_model_name,
+            max_rounds,
+            score_threshold,
+            detector_temp,
+            judge_temp,
+            concurrency,
+            customize_prompts,
+            detector_template,
+            judge_template,
+            prep_enabled,
+            prep_short_edge,
+            prep_pad_square,
+            prep_contrast_method,
+            prep_gamma,
+            prep_denoise_method,
+            prep_sharpen,
+            prep_white_balance,
+            prep_grid_style,
+            prep_som_enabled,
+            prep_tiling_enabled,
+            prep_tile_size,
+            prep_tile_overlap,
+            prep_crop_verify_enabled,
+            prep_crop_padding,
+            prep_grid_step,
+            prep_grid_line_width,
+            prep_grid_font_size,
+            prep_grid_line_color,
+            prep_grid_line_color_custom,
+            prep_grid_text_color,
+            prep_grid_text_color_custom,
+            prep_grid_backing_color,
+            prep_grid_backing_color_custom,
+            prep_send_pixel_bounds,
+            prep_min_pixels,
+            prep_max_pixels,
+            prep_custom_resize_enabled,
+            prep_custom_resize_width,
+            prep_custom_resize_height,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Explorer Callbacks
 # ---------------------------------------------------------------------------
 
@@ -821,6 +1327,74 @@ def _build_batch_tab():
         with gr.Column(scale=2, min_width=400):
             gr.HTML('<p class="section-label">Configuration</p>')
 
+            task_type = gr.Radio(
+                choices=TASK_CHOICES,
+                value=TASK_FREE_ANNOTATION,
+                label="Task Type",
+                info="Free Annotation: full detector/judge pipeline on uploaded images. "
+                "Reclassification: relabel existing YOLO boxes in a dataset folder.",
+            )
+
+            # ── Reclassification config (hidden unless selected) ───────────
+            with gr.Group(visible=False) as recls_group:
+                gr.HTML(_section_title("🗂️", "Dataset (Reclassification)"))
+                recls_images_folder = gr.Textbox(
+                    label="Training Images Folder",
+                    placeholder=r"C:\data\train\images",
+                    info="Folder containing the source images.",
+                )
+                recls_labels_folder = gr.Textbox(
+                    label="YOLO Labels Folder",
+                    placeholder=r"C:\data\train\labels",
+                    info="Folder containing matching '<image>.txt' label files.",
+                )
+                recls_yaml_path = gr.Textbox(
+                    label="Dataset YAML Path (data.yaml)",
+                    placeholder=r"C:\data\data.yaml",
+                    info="Names list used to seed the class map.",
+                )
+                recls_output_folder = gr.Textbox(
+                    label="Output Folder",
+                    placeholder=r"C:\data\out",
+                    info="Relabeled labels are written here (originals untouched).",
+                )
+
+                with gr.Accordion("Relabel Parameters", open=True):
+                    with gr.Row():
+                        recls_conf_slider = gr.Slider(
+                            label="Low-Confidence Threshold (1-5)",
+                            minimum=1,
+                            maximum=5,
+                            step=1,
+                            value=2,
+                            info="Boxes with confidence at/below this are logged to "
+                            "*_low_confidence.json for review.",
+                        )
+                        recls_num_samples = gr.Number(
+                            label="Max Images (0 = all)",
+                            value=0,
+                            precision=0,
+                        )
+                    with gr.Row():
+                        recls_max_workers = gr.Number(
+                            label="Concurrent Images",
+                            value=1,
+                            precision=0,
+                            info="Keep 1 for a local server with a single slot.",
+                        )
+                        recls_target_h = gr.Number(label="Crop Height (px)", value=1024, precision=0)
+                        recls_target_w = gr.Number(label="Crop Width (px)", value=1024, precision=0)
+                    recls_init_class_map_chk = gr.Checkbox(
+                        label="Initialize class map from YAML names",
+                        value=True,
+                        info="Seed known classes from data.yaml 'names' so the model reuses them.",
+                    )
+
+                recls_hint = gr.Markdown(
+                    "**Note:** reads every image whose label file has at least one "
+                    "box. Relabeled annotations are written to the output folder."
+                )
+
             input_images = gr.File(
                 file_count="multiple",
                 file_types=["image"],
@@ -845,7 +1419,7 @@ def _build_batch_tab():
                 ),
             )
 
-            with gr.Accordion("Pipeline Parameters", open=False):
+            with gr.Accordion("Pipeline Parameters", open=False) as rounds_accordion:
                 rounds_slider = gr.Slider(
                     label="Optimization Max Rounds",
                     minimum=1,
@@ -875,7 +1449,7 @@ def _build_batch_tab():
                     value=0.2,
                 )
 
-            with gr.Accordion("Image Preprocessing & Augmentation", open=False):
+            with gr.Accordion("Image Preprocessing & Augmentation", open=False) as prep_accordion:
                 prep_enabled_chk = gr.Checkbox(
                     label="Enable Preprocessing",
                     value=False,
@@ -1113,7 +1687,7 @@ def _build_batch_tab():
                 )
                 ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
 
-            with gr.Accordion("Advanced Settings", open=False):
+            with gr.Accordion("Advanced Settings", open=False) as advanced_accordion:
                 concurrency_slider = gr.Slider(
                     label="Concurrent Images",
                     info=(
@@ -1241,6 +1815,21 @@ def _build_batch_tab():
                     gr.HTML("</div>")
 
     return dict(
+        task_type=task_type,
+        recls_group=recls_group,
+        recls_images_folder=recls_images_folder,
+        recls_labels_folder=recls_labels_folder,
+        recls_yaml_path=recls_yaml_path,
+        recls_output_folder=recls_output_folder,
+        recls_conf_slider=recls_conf_slider,
+        recls_num_samples=recls_num_samples,
+        recls_max_workers=recls_max_workers,
+        recls_target_h=recls_target_h,
+        recls_target_w=recls_target_w,
+        recls_init_class_map_chk=recls_init_class_map_chk,
+        rounds_accordion=rounds_accordion,
+        prep_accordion=prep_accordion,
+        advanced_accordion=advanced_accordion,
         input_images=input_images,
         categories_input=categories_input,
         category_defs_input=category_defs_input,
