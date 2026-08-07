@@ -1,8 +1,37 @@
+import os
 import subprocess
 import sys
 import threading
 import time
 import requests
+
+
+def _split_model_arg(model: str):
+    """Resolve a model string into CLI args for the ``llama_cpp.server``
+    launcher. Unlike the standalone ``llama-server`` (``-hf repo:filter``), the
+    python server loads HuggingFace models via two separate flags:
+    ``--hf_model_repo_id <repo>`` plus a glob ``--model <pattern>`` (matched
+    with :func:`fnmatch` against the repo's GGUF files, requiring exactly one
+    match).
+
+    Returns a ``(model_arg, hf_repo_id)`` tuple. ``hf_repo_id`` is ``None`` for
+    a plain local model path.
+    """
+    m = (model or "").strip()
+    local = (
+        os.path.exists(m)
+        or os.path.isabs(m)
+        or "\\" in m
+        or m.startswith((".", "/", "~"))
+        or m.lower().endswith((".gguf", ".bin", ".safetensors"))
+    )
+    if local:
+        return m, None
+    # HuggingFace repo, optionally with a native-style ``:file_filter`` suffix.
+    if ":" in m:
+        repo, _, file_filter = m.partition(":")
+        return f"*{file_filter}*.gguf", repo
+    return "*.gguf", m
 
 
 def _detect_gpu_count() -> int:
@@ -149,23 +178,28 @@ class LlamaCppPythonManager:
         # Bool settings (verbose, flash_attn) are NOT store_true flags -- they
         # require an explicit value (`--verbose true/false`). Only emit valid
         # field names, otherwise argparse exits immediately with usage error.
-        cmd = [
-            sys.executable,
-            "-m",
-            "llama_cpp.server",
-            "--model",
-            self.model,
-            "--host",
-            self.host,
-            "--port",
-            str(self.port),
-            "--n_ctx",
-            str(self.ctx_size),
-            "--n_gpu_layers",
-            str(self.gpu_layers),
-            "--main_gpu",
-            str(self.main_gpu),
-        ]
+        cmd = [sys.executable, "-m", "llama_cpp.server"]
+
+        # Resolve local path vs HuggingFace repo (see _split_model_arg).
+        model_arg, hf_repo_id = _split_model_arg(self.model)
+        cmd.extend(["--model", model_arg])
+        if hf_repo_id:
+            cmd.extend(["--hf_model_repo_id", hf_repo_id])
+
+        cmd.extend(
+            [
+                "--host",
+                self.host,
+                "--port",
+                str(self.port),
+                "--n_ctx",
+                str(self.ctx_size),
+                "--n_gpu_layers",
+                str(self.gpu_layers),
+                "--main_gpu",
+                str(self.main_gpu),
+            ]
+        )
 
         if self.chat_format:
             cmd.extend(["--chat_format", self.chat_format])
