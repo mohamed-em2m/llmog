@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any
 import gradio as gr
 
-from servers import LlamaServerManager, LlamaCppPythonManager
+from servers import LlamaServerManager, LlamaCppPythonManager, VllmServerManager
 from servers.llama_server_manager import num_gpus as _num_gpus
 from interface.state import (
     state,
@@ -19,6 +19,28 @@ from interface.state import (
 )
 
 logger = logging.getLogger("detection_pipeline")
+
+
+def _stop_manager():
+    """Stop whatever server manager is active regardless of backend."""
+    manager = state.server_manager
+    if manager is None:
+        return
+    if hasattr(manager, "stop_vllm_server"):
+        manager.stop_vllm_server()
+    else:
+        manager.stop_llama_server()
+
+
+def _start_manager():
+    """Start whatever server manager is active regardless of backend."""
+    manager = state.server_manager
+    if manager is None:
+        return
+    if hasattr(manager, "start_vllm_server"):
+        manager.start_vllm_server()
+    else:
+        manager.start_llama_server()
 
 
 def start_server_wrapper(
@@ -37,6 +59,9 @@ def start_server_wrapper(
     ubatch_size=1024,
     disable_log=False,
     server_type="llama_cpp",
+    vllm_tp=1,
+    vllm_gpu_util=0.90,
+    vllm_max_seq=20000,
 ):
     ctx_size = ctx_size * parallel_slots
 
@@ -54,7 +79,7 @@ def start_server_wrapper(
         )
         if state.server_manager is not None:
             try:
-                state.server_manager.stop_llama_server()
+                _stop_manager()
             except Exception as e:
                 logger.warning(f"Error stopping old server: {e}")
             state.server_manager = None
@@ -92,6 +117,18 @@ def start_server_wrapper(
                 ),
                 log_disable=bool(disable_log),
             )
+        elif server_type == "vllm":
+            state.server_manager = VllmServerManager(
+                model=model,
+                host=host,
+                port=int(port),
+                max_model_len=int(vllm_max_seq) if vllm_max_seq else 20000,
+                gpu_memory_utilization=(
+                    float(vllm_gpu_util) if vllm_gpu_util else 0.90
+                ),
+                tensor_parallel_size=int(vllm_tp) if vllm_tp else 1,
+                max_num_seqs=int(parallel_slots) if parallel_slots else 16,
+            )
         else:
             state.server_manager = LlamaServerManager(
                 model=model,
@@ -126,7 +163,7 @@ def start_server_wrapper(
             '<span class="status-badge badge-starting">STARTING...</span>',
         )
         try:
-            state.server_manager.start_llama_server()
+            _start_manager()
         except Exception as e:
             state.server_manager = None
             yield (
@@ -136,7 +173,9 @@ def start_server_wrapper(
             return
 
     start_time = time.time()
-    timeout = 180
+    # vLLM engine init (weight loading + CUDA graph capture) takes far longer
+    # than llama.cpp, so give it a much bigger health-check budget.
+    timeout = 600 if server_type == "vllm" else 180
     healthy = False
 
     while time.time() - start_time < timeout:
@@ -204,7 +243,7 @@ def stop_server_wrapper():
                 '<span class="status-badge badge-stopped">STOPPED</span>',
             )
         try:
-            state.server_manager.stop_llama_server()
+            _stop_manager()
             state.server_manager = None
             return (
                 "Server stopped successfully.",
@@ -266,12 +305,14 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 choices=[
                     ("llama.cpp (native binary)", "llama_cpp"),
                     ("llama-cpp-python (bundled server)", "llama_cpp_python"),
+                    ("vLLM (CUDA)", "vllm"),
                 ],
                 value="llama_cpp",
                 interactive=True,
                 info="llama.cpp spawns the native 'llama-server' binary; "
                 "llama-cpp-python uses the OpenAI-compatible server bundled in "
-                "the llama-cpp-python package.",
+                "the llama-cpp-python package; vLLM serves HuggingFace models "
+                "on CUDA.",
             )
             server_model_input = gr.Textbox(
                 label="Model GGUF Path or HF Repo ID",
@@ -345,6 +386,27 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                         precision=0,
                         info="Physical micro-batch size submitted to GPU.",
                     )
+                gr.HTML(_section_title("🧠", "vLLM Options"))
+                with gr.Row():
+                    server_vllm_tp = gr.Number(
+                        label="Tensor Parallel Size",
+                        value=1,
+                        precision=0,
+                        info="Number of GPUs to shard the model across (vLLM).",
+                    )
+                    server_vllm_gpu_util = gr.Number(
+                        label="GPU Memory Utilization",
+                        value=0.90,
+                        precision=None,
+                        info="Fraction of GPU memory to use (vLLM, e.g. 0.90).",
+                    )
+                with gr.Row():
+                    server_vllm_max_seq = gr.Number(
+                        label="Max Model Length",
+                        value=20000,
+                        precision=0,
+                        info="Maximum sequence length (vLLM --max-model-len).",
+                    )
                 gr.HTML(_section_title("🖼️", "Vision / Image Tokens"))
                 with gr.Row():
                     server_img_min_tokens = gr.Number(
@@ -410,6 +472,9 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
         server_kv_cache=server_kv_cache,
         server_batch_size=server_batch_size,
         server_ubatch_size=server_ubatch_size,
+        server_vllm_tp=server_vllm_tp,
+        server_vllm_gpu_util=server_vllm_gpu_util,
+        server_vllm_max_seq=server_vllm_max_seq,
         server_img_min_tokens=server_img_min_tokens,
         server_img_max_tokens=server_img_max_tokens,
         server_log_disable=server_log_disable,
