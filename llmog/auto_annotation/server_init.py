@@ -120,6 +120,32 @@ def init_server(args):
         kwargs.update({k: v for k, v in serving_extra.items() if v is not None})
         manager = servers_factory[args.server_type](**kwargs)
         manager.start_llama_server()
+    elif args.server_type == "llama_cpp_python":
+        kwargs = {
+            "model": args.model,
+            "host": "localhost",
+            "port": args.port,
+            "ctx_size": args.ctx_size,
+            "parallel_slots": args.parallel_slots,
+            "n_threads": -1,
+            "gpu_layers": -1,
+            "tensor_split": "1,1",
+            "main_gpu": 0,
+            "temp": 0.1,
+            "top_p": 0.85,
+            "top_k": 24,
+            "enable_thinking": args.enable_thinking,
+            "batch_size": 1024,
+            "ubatch_size": 512,
+            "kv_cache_type": "q4_0",
+            "image_min_tokens": args.image_min_tokens,
+            "image_max_tokens": args.image_max_tokens,
+            "extra_args": extra_args,
+        }
+        # User overrides win on top of the structured fields above.
+        kwargs.update({k: v for k, v in serving_extra.items() if v is not None})
+        manager = servers_factory[args.server_type](**kwargs)
+        manager.start_llama_server()
     elif args.server_type == "vllm":
         manager = servers_factory[args.server_type](
             model=args.model,

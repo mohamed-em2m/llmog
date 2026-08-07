@@ -22,6 +22,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Pick exactly ONE serving backend to install. See docs/install.md.
+#
+# llama-cpp-python: install the Python binding, whose "server" extra ships the
+#   OpenAI-compatible server launched via `python -m llama_cpp.server`. No
+#   native GPU llama.cpp build needed -- wheels are provided by the package.
+# llama-cpp: install nothing extra at build time; requires the native
+#   `llama-server` binary (build it with ./scripts/install_llama_cpp.sh).
+llama-cpp-python = ["llama-cpp-python[server]>=0.3.0"]
+llama-cpp = []
 vllm = ["vllm>=0.6.0"]
 docs = [
     "mkdocs>=1.6",

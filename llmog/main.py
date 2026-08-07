@@ -224,8 +224,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--server_type",
         default="llama_cpp",
-        choices=["llama_cpp", "vllm", "external"],
-        help="Server backend to use.",
+        choices=["llama_cpp", "llama_cpp_python", "vllm", "external"],
+        help="Server backend to use. 'llama_cpp' spawns the native llama.cpp "
+        "llama-server binary; 'llama_cpp_python' uses the server bundled in "
+        "the llama-cpp-python package.",
     )
     p.add_argument(
         "--max_workers", type=int, default=1, help="Concurrent image workers."

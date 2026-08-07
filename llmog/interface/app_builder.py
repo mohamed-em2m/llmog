@@ -52,6 +52,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_srv["server_batch_size"],
             c_srv["server_ubatch_size"],
             c_srv["server_log_disable"],
+            c_srv["server_backend"],
         ],
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )
@@ -101,6 +102,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_srv["start_server_btn"],
             c_srv["stop_server_btn"],
             c_srv["server_preset"],
+            c_srv["server_backend"],
             c_srv["server_model_input"],
             c_srv["server_port_input"],
             c_srv["server_thinking_chk"],

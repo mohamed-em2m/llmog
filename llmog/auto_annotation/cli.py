@@ -50,8 +50,10 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "--server_type",
         type=str,
         default="llama_cpp",
-        choices=["llama_cpp", "vllm", "external"],
-        help="Use a local llama.cpp server instead of an external API.",
+        choices=["llama_cpp", "llama_cpp_python", "vllm", "external"],
+        help="Use a local llama.cpp server ('llama_cpp' = native binary, "
+        "'llama_cpp_python' = bundled in the llama-cpp-python package) "
+        "instead of an external API.",
     )
     parser.add_argument(
         "--enable_thinking",

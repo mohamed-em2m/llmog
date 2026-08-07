@@ -799,6 +799,7 @@ def toggle_external_api(use_external):
         gr.update(interactive=not use_external),  # start_server_btn
         gr.update(interactive=not use_external),  # stop_server_btn
         gr.update(interactive=not use_external),  # server_preset
+        gr.update(interactive=not use_external),  # server_backend
         gr.update(interactive=not use_external),  # server_model_input
         gr.update(interactive=not use_external),  # server_port_input
         gr.update(interactive=not use_external),  # server_thinking_chk

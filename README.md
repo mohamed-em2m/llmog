@@ -52,7 +52,8 @@ This project implements an iterative **Detector-Judge pipeline**: a VLM "detecto
 - **VLM Processor Pixel Bounds** — manually configure `min_pixels` and `max_pixels` request parameters (passed via the API request's `extra_body`) to tune vision encoder resolution and prevent OOMs on backends like vLLM / Qwen-VL.
 
 **Server lifecycle managers (`llmog/servers/`)**
-- 🦙 **`LlamaServerManager`** — manage local `llama-server` background processes, configure ports, context sizes (`--ctx-size`), KV cache quantization (`--cache-type-k`/`--cache-type-v`), parallel request slots, draft models, flash attention, and reasoning toggles.
+- 🦙 **`LlamaServerManager`** — manage the native `llama-server` binary: ports, context sizes (`--ctx-size`), KV cache quantization (`--cache-type-k`/`--cache-type-v`), parallel request slots, draft models, flash attention, and reasoning toggles.
+- 🐍 **`LlamaCppPythonManager`** — the same API surface driven by `llama-cpp-python`'s bundled server (`python -m llama_cpp.server`); pick it with `--server_type llama_cpp_python` and `pip install -e ".[llama-cpp-python]"`.
 - ⚡ **`VllmServerManager`** — launch and control local `vLLM` instances with tensor/pipeline parallelism, custom dtypes, prefix caching, and chunked prefill options.
 
 **Gradio web interface**
@@ -65,14 +66,21 @@ This project implements an iterative **Detector-Judge pipeline**: a VLM "detecto
 
 ## 🚀 Quick Start
 
-**Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv), and (optionally) a CUDA-capable GPU for local `llama.cpp` inference.
+**Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv), and (optionally) a CUDA-capable GPU for local inference.
 
 ```bash
 git clone https://github.com/mohamed-em2m/llm-object-grounding.git
 cd llm-object-grounding
 
-./scripts/install_llama_cpp.sh   # Linux only; builds llama.cpp with CUDA
 uv sync
+```
+
+**Install one serving backend:**
+
+```bash
+uv pip install -e ".[llama-cpp-python]"   # Python binding, ships its own server (--server_type llama_cpp_python)
+uv pip install -e ".[llama-cpp]"           # native llama.cpp binary (default; build with ./scripts/install_llama_cpp.sh)
+uv pip install -e ".[vllm]"                # vLLM on CUDA (--server_type vllm)
 ```
 
 ---

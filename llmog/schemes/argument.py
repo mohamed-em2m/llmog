@@ -65,7 +65,7 @@ class PipelineConfig(BaseModel):
     judge_url: Optional[str] = None
     api_key: str = "not-needed"
     base_url: str = "http://localhost:8080/v1"
-    server_type: Literal["llama_cpp", "vllm", "external"] = "llama_cpp"
+    server_type: Literal["llama_cpp", "llama_cpp_python", "vllm", "external"] = "llama_cpp"
     max_workers: int = 1
 
     # llama.cpp-specific

@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any
 import gradio as gr
 
-from servers import LlamaServerManager
+from servers import LlamaServerManager, LlamaCppPythonManager
 from servers.llama_server_manager import num_gpus as _num_gpus
 from interface.state import (
     state,
@@ -36,6 +36,7 @@ def start_server_wrapper(
     batch_size=1024,
     ubatch_size=1024,
     disable_log=False,
+    server_type="llama_cpp",
 ):
     ctx_size = ctx_size * parallel_slots
 
@@ -65,36 +66,63 @@ def start_server_wrapper(
 
         tensor_split = ",".join(["1"] * _num_gpus)
         spec_type = "draft-mtp" if enable_mtp else "none"
-        state.server_manager = LlamaServerManager(
-            model=model,
-            host=host,
-            port=int(port),
-            ctx_size=int(ctx_size),
-            parallel_slots=parallel_slots,
-            n_threads=-1,
-            gpu_layers=int(gpu_layers),
-            tensor_split=tensor_split,
-            main_gpu=0,
-            temp=0.4,
-            top_p=0.95,
-            top_k=64,
-            spec_type=spec_type,
-            spec_draft_n_max=4 if enable_mtp else 0,
-            enable_thinking=enable_thinking,
-            batch_size=int(batch_size) if batch_size else 2048,
-            ubatch_size=int(ubatch_size) if ubatch_size else 512,
-            kv_cache_type=kv_cache_type,
-            image_min_tokens=(
-                int(image_min_tokens) if image_min_tokens is not None else 1024
-            ),
-            image_max_tokens=(
-                int(image_max_tokens) if image_max_tokens is not None else 4096
-            ),
-            log_disable=bool(disable_log),
-        )
+        if server_type == "llama_cpp_python":
+            state.server_manager = LlamaCppPythonManager(
+                model=model,
+                host=host,
+                port=int(port),
+                ctx_size=int(ctx_size),
+                parallel_slots=parallel_slots,
+                n_threads=-1,
+                gpu_layers=int(gpu_layers),
+                tensor_split=tensor_split,
+                main_gpu=0,
+                temp=0.4,
+                top_p=0.95,
+                top_k=64,
+                enable_thinking=enable_thinking,
+                batch_size=int(batch_size) if batch_size else 2048,
+                ubatch_size=int(ubatch_size) if ubatch_size else 512,
+                kv_cache_type=kv_cache_type,
+                image_min_tokens=(
+                    int(image_min_tokens) if image_min_tokens is not None else 1024
+                ),
+                image_max_tokens=(
+                    int(image_max_tokens) if image_max_tokens is not None else 4096
+                ),
+                log_disable=bool(disable_log),
+            )
+        else:
+            state.server_manager = LlamaServerManager(
+                model=model,
+                host=host,
+                port=int(port),
+                ctx_size=int(ctx_size),
+                parallel_slots=parallel_slots,
+                n_threads=-1,
+                gpu_layers=int(gpu_layers),
+                tensor_split=tensor_split,
+                main_gpu=0,
+                temp=0.4,
+                top_p=0.95,
+                top_k=64,
+                spec_type=spec_type,
+                spec_draft_n_max=4 if enable_mtp else 0,
+                enable_thinking=enable_thinking,
+                batch_size=int(batch_size) if batch_size else 2048,
+                ubatch_size=int(ubatch_size) if ubatch_size else 512,
+                kv_cache_type=kv_cache_type,
+                image_min_tokens=(
+                    int(image_min_tokens) if image_min_tokens is not None else 1024
+                ),
+                image_max_tokens=(
+                    int(image_max_tokens) if image_max_tokens is not None else 4096
+                ),
+                log_disable=bool(disable_log),
+            )
 
         yield (
-            "Spawning llama-server process...",
+            "Spawning server process...",
             '<span class="status-badge badge-starting">STARTING...</span>',
         )
         try:
@@ -233,6 +261,18 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                 value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
                 interactive=True,
             )
+            server_backend = gr.Dropdown(
+                label="Server Backend",
+                choices=[
+                    ("llama.cpp (native binary)", "llama_cpp"),
+                    ("llama-cpp-python (bundled server)", "llama_cpp_python"),
+                ],
+                value="llama_cpp",
+                interactive=True,
+                info="llama.cpp spawns the native 'llama-server' binary; "
+                "llama-cpp-python uses the OpenAI-compatible server bundled in "
+                "the llama-cpp-python package.",
+            )
             server_model_input = gr.Textbox(
                 label="Model GGUF Path or HF Repo ID",
                 value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
@@ -358,6 +398,7 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
 
     return dict(
         server_preset=server_preset,
+        server_backend=server_backend,
         server_model_input=server_model_input,
         server_port_input=server_port_input,
         server_host_input=server_host_input,

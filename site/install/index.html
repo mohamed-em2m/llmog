@@ -420,6 +420,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#choose-a-serving-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose a serving backend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#install-the-documentation-toolchain-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -898,6 +909,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#choose-a-serving-backend" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choose a serving backend
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#install-the-documentation-toolchain-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -943,17 +965,34 @@
 <p><code>uv</code> is the recommended package manager. The project requires <strong>Python 3.12+</strong>.</p>
 <h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
 <ul>
-<li>A local inference backend. On Linux, run
-  <code>./scripts/install_llama_cpp.sh</code> first to build llama.cpp with CUDA.</li>
+<li>A local inference backend. Install exactly <strong>one</strong> serving backend.</li>
 <li>Python dependencies managed via <code>uv</code>.</li>
 </ul>
 <h2 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="c1"># Linux only — build llama.cpp with CUDA</span>
-./scripts/install_llama_cpp.sh
-
-<span class="c1"># Install the project and dependencies into a virtualenv</span>
-uv<span class="w"> </span>sync
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>sync
 </code></pre></div>
+<h2 id="choose-a-serving-backend">Choose a serving backend<a class="headerlink" href="#choose-a-serving-backend" title="Permanent link">&para;</a></h2>
+<p>Pick exactly <strong>one</strong> optional extra depending on how you want to run the model.
+All three plug into the same OpenAI-compatible client.</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># llama-cpp-python: Python binding; ships its own OpenAI-compatible server</span>
+<span class="c1"># (`python -m llama_cpp.server`). Prebuilt wheels -- no native llama.cpp build</span>
+<span class="c1"># needed. Select --server_type llama_cpp_python (or the &quot;Server Backend&quot;</span>
+<span class="c1"># dropdown in the web UI)</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[llama-cpp-python]&quot;</span>
+
+<span class="c1"># llama.cpp (native): lightweight; no extra Python deps to install. Requires the</span>
+<span class="c1"># standalone `llama-server` binary (build it with ./scripts/install_llama_cpp.sh,</span>
+<span class="c1"># Linux). Select with --server_type llama_cpp (the default)</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[llama-cpp]&quot;</span>
+
+<span class="c1"># vLLM: high-throughput GPU serving on CUDA systems.</span>
+<span class="c1"># Select with --server_type vllm</span>
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[vllm]&quot;</span>
+</code></pre></div>
+<blockquote>
+<p><code>uv sync</code> alone installs the base package without a GPU serving backend (safe
+for CPU-only development and for pointing at an external <code>--base_url</code>).</p>
+</blockquote>
 <h2 id="install-the-documentation-toolchain-optional">Install the documentation toolchain (optional)<a class="headerlink" href="#install-the-documentation-toolchain-optional" title="Permanent link">&para;</a></h2>
 <p>To build and preview the API docs:</p>
 <div class="highlight"><pre><span></span><code>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>docs
