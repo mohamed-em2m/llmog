@@ -14,7 +14,7 @@ Interactive test console for assessing Vision-Language Models (VLMs) on object d
 | `uv run llmog` | `main:main` | Unified CLI; dispatches by `--task` (`free_detection` / `auto_label`) |
 | `uv run detection-cli` | `free_detection:main` | Shortcut for `llmog --task free_detection` (detector/judge loop on `--image` paths) |
 | `uv run auto-annotation` | `auto_annotation:main` | Shortcut for `llmog --task auto_label` (batch YOLO relabeling from a `data.yaml`) |
-| `uv run detection-gui` | `free_detection.gui:main` | Launch the Gradio web interface |
+| `uv run detection-gui` | `interface.gui:main` | Launch the Gradio web interface |
 
 Single source of truth for every CLI flag: `src/schemes/argument.py:PipelineConfig`
 (a pydantic v2 model). `src/main.py:build_parser` mirrors every field of

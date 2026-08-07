@@ -46,8 +46,8 @@ llmog = "main:main"
 # Convenience aliases that pass the right --task for you
 detection-cli = "free_detection:main"
 auto-annotation = "auto_annotation:main"
-# Launch the Gradio web interface
-detection-gui = "free_detection.gui:main"
+# Launch the Gradio web interface (lives in the `interface` package)
+detection-gui = "interface.gui:main"
 
 [tool.setuptools]
 package-dir = { "" = "llmog" }
