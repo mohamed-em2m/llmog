@@ -32,7 +32,14 @@ dependencies = [
 #   GPU-enabled wheel with no local CUDA toolkit / nvcc / compiler needed.
 # llama-cpp: install nothing extra at build time; requires the native
 #   `llama-server` binary (build it with ./scripts/install_llama_cpp.sh).
-llama-cpp-python = ["llama-cpp-python[server]>=0.3.0"]
+llama-cpp-python = [
+    "starlette",
+    "uvicorn",
+    "sse-starlette",
+    "starlette-context",
+    "llama-cpp-python[server]>=0.3.0",
+    "pydantic_settings",
+]
 llama-cpp = []
 vllm = ["vllm>=0.6.0"]
 docs = [
