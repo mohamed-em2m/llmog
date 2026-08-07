@@ -26,7 +26,7 @@ def main():
         "--port", type=int, default=7860, help="Port to run the Gradio server on."
     )
     parser.add_argument(
-        "--share", action="store_true", help="Create a public Gradio share link."
+        "--not_share", action="store_true", help="To not create a public Gradio share link."
     )
     parser.add_argument(
         "--no-queue", action="store_true", help="Disable Gradio's request queue."
@@ -36,10 +36,10 @@ def main():
     # imported here so --help is instant
     demo = build_app()
     if args.no_queue:
-        demo.launch(server_name=args.host, server_port=args.port, share=args.share)
+        demo.launch(server_name=args.host, server_port=args.port, share=not args.not_share)
     else:
         demo.queue().launch(
-            server_name=args.host, server_port=args.port, share=args.share
+            server_name=args.host, server_port=args.port, share=not args.not_share
         )
 
 
