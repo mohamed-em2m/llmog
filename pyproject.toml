@@ -23,6 +23,12 @@ dependencies = [
 
 [project.optional-dependencies]
 vllm = ["vllm>=0.6.0"]
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mkdocstrings-python>=1.11",
+]
 
 
 [project.scripts]
@@ -35,7 +41,13 @@ auto-annotation = "auto_annotation:main"
 detection-gui = "free_detection.gui:main"
 
 [tool.setuptools]
-package-dir = { "" = "src" }
+package-dir = { "" = "llmog" }
+py-modules = ["main", "auto_annotiontion"]
+
+[tool.setuptools.packages.find]
+where = ["llmog"]
+include = ["free_detection*", "auto_annotation*", "schemes*", "servers*", "interface*"]
+exclude = ["*.egg-info"]
 
 [tool.uv]
 package = true

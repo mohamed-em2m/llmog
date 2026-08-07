@@ -7,7 +7,6 @@ user-supplied base_url.
 """
 
 import json
-import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -21,23 +20,6 @@ from auto_annotation.logging_utils import logger
 # `servers`, but `servers/__init__.py` only exports `servers_factory`. Keep
 # both names so any external caller that still uses `factory` keeps working.
 factory = servers_factory
-
-
-def _get_gpu_count() -> int:
-    """Return the number of NVIDIA GPUs visible to nvidia-smi, or 1 as a safe default."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
-            return max(1, len(lines))
-    except Exception:
-        pass
-    return 1
 
 
 def wait_for_server_health(port, timeout=1200, poll_interval=2.0):
@@ -97,7 +79,15 @@ def init_server(args):
     extra_args = list(getattr(args, "extra_args", None) or [])
     serving_extra = getattr(args, "serving_extra", {}) or {}
 
-    num_gpus = _get_gpu_count()
+    import subprocess
+
+    num_gpus = int(
+        subprocess.check_output(
+            "nvidia-smi -L | wc -l",
+            shell=True,
+            text=True,
+        ).strip()
+    )
     tensor_split = "1," * num_gpus
     if args.server_type == "llama_cpp":
         # Build kwargs from any user overrides first, then the structured

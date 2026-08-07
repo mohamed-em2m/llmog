@@ -1,31 +1,33 @@
-# 🔍 llmog (LLM Object Detection) 
+# 🔍 llmog (LLM Object Detection)
 
-**An Library for object detection tasks using LLMs.**
+**A library for object detection tasks using LLMs.**
 
 ![Preview](assets/image.png)
 
 This project implements an iterative **Detector-Judge pipeline**: a VLM "detector" agent proposes bounding boxes, a VLM "judge" agent critiques them against the original image, and the loop repeats with structured feedback until the annotations meet a quality threshold or the round limit is reached.
 
-It ships **two complementary workflows** behind a single unified CLI:
-
-| `--task` | What it does | Typical input |
-|----------|---------------|----------------|
-| `free_detection` | Runs the detector→judge loop on explicitly supplied `--image` paths and dumps per-image annotations + history. | One or more `--image` paths + `--categories` |
-| `auto_label` | Walks a YOLO-format dataset folder (`--train_image`/`--train_label` + `data.yaml`), relabels each binary defect/no-defect box into a multi-class label using a VLM classify-this-crop call, and persists an updated `data.yaml`. | `--train_image`, `--train_label`, `--yaml_path`, `--model` |
-
 ---
 
-## Table of Contents
+## 🎯 What This Project Can Do For You
 
-- [Key Features](#-key-features)
-- [Setup & Installation](#-setup--installation)
-- [Usage](#️-usage)
-  - [1. Launching the Web GUI](#1-launching-the-web-gui)
-  - [2. Free-Detection CLI](#2-free-detection-cli---task-free_detection)
-  - [3. Auto-Labeling CLI](#3-auto-labeling-cli---task-auto_label)
-  - [4. YAML Config + CLI Overrides](#4-yaml-config--cli-overrides)
-- [Output Structure](#-output-structure)
-- [Technology Stack](#️-technology-stack)
+**Stop hand-labeling and let a vision-language model do the heavy lifting.** `llmog` turns any OpenAI-compatible VLM (llama.cpp, vLLM, Ollama, cloud APIs) into a practical object-detection tool for real workflows:
+
+- **Detect anything, zero training** — give it a comma-separated category list (`"person, car, dog"` or `"crack, scratch, dent"`) and it detects those objects in any image, with no fine-tuning, no dataset, and no YOLO weights required.
+- **Produce high-quality annotations, automatically** — the built-in judge agent critiques every round of detections and the loop self-corrects, so the final boxes are far more reliable than a single naive VLM pass.
+- **Relabel your existing YOLO datasets** — have a binary defect/no-defect dataset? `auto_label` walks every box, asks the VLM to classify each crop into a multi-class label, and writes back an updated `data.yaml` — turning 2-class datasets into rich multi-class ones.
+- **Scale to small, hard-to-see objects** — tiling, CLAHE contrast, denoising, sharpening, Set-of-Mark prompting, and crop-verify passes help the VLM find tiny defects that would otherwise be missed.
+- **Run on your own hardware** — spin up and manage local `llama-server` or `vLLM` instances directly from the CLI or the web UI; no cloud keys required.
+- **Interact visually** — launch a Gradio web console to batch-test images, watch live per-round annotated results, tweak preprocessing, and download a `.zip` of everything.
+
+### Common use cases
+
+| You want to… | Use this |
+|--------------|----------|
+| Probe how well a VLM localizes objects before building a production system | `free_detection` on a handful of images |
+| Compare detector vs. judge models, prompts, preprocessing, or grid styles side by side | `free_detection` + `--config` YAML |
+| Enrich a coarse binary defect dataset into fine-grained labels | `auto_label` |
+| Find small defects in industrial parts or microscopy images | `free_detection` + tiling, CLAHE, crop-verify |
+| Test Qwen-VL / vLLM vision backends without a GPU workstation | `external` mode pointing at any OpenAI-compatible URL |
 
 ---
 
@@ -49,7 +51,7 @@ It ships **two complementary workflows** behind a single unified CLI:
 - **Fully Customizable Grid Overlays** — adjustable style (standard, transparent, fine, none), step size, line thickness, font size, and custom colors (line, text, and text-backing box — CSS name or hex).
 - **VLM Processor Pixel Bounds** — manually configure `min_pixels` and `max_pixels` request parameters (passed via the API request's `extra_body`) to tune vision encoder resolution and prevent OOMs on backends like vLLM / Qwen-VL.
 
-**Server lifecycle managers (`src/servers/`)**
+**Server lifecycle managers (`llmog/servers/`)**
 - 🦙 **`LlamaServerManager`** — manage local `llama-server` background processes, configure ports, context sizes (`--ctx-size`), KV cache quantization (`--cache-type-k`/`--cache-type-v`), parallel request slots, draft models, flash attention, and reasoning toggles.
 - ⚡ **`VllmServerManager`** — launch and control local `vLLM` instances with tensor/pipeline parallelism, custom dtypes, prefix caching, and chunked prefill options.
 
@@ -61,72 +63,35 @@ It ships **two complementary workflows** behind a single unified CLI:
 
 ---
 
-## 🚀 Setup & Installation
+## 🚀 Quick Start
 
 **Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv), and (optionally) a CUDA-capable GPU for local `llama.cpp` inference.
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/mohamed-em2m/llm-object-grounding.git
-   cd llm-object-grounding
-   ```
-2. **Install dependencies**:
-   ```bash
-   ./scripts/install_llama_cpp.sh   # Linux only; builds llama.cpp with CUDA
-   uv sync
-   ```
+```bash
+git clone https://github.com/mohamed-em2m/llm-object-grounding.git
+cd llm-object-grounding
+
+./scripts/install_llama_cpp.sh   # Linux only; builds llama.cpp with CUDA
+uv sync
+```
 
 ---
 
-## 🖥️ Usage
+## 🖥️ Coding Snippets
 
-There is one unified entry point — `llmog` — that dispatches by `--task`:
+There is one unified entry point — `llmog` — that dispatches by `--task`. Both workflows also have shortcut aliases that pre-set the right `--task` for you.
 
-```bash
-uv run llmog --task free_detection -i image.jpg -c "person, car, dog"
-uv run llmog --task auto_label     --train_image imgs/ --train_label lbls/ \
-    --yaml_path data.yaml --model local-model -o ./out
-```
+> **Single source of truth**: every CLI flag is defined on `llmog/schemes/argument.py:PipelineConfig` (a pydantic v2 model). `llmog/main.py:build_parser` mirrors that model onto an `argparse.ArgumentParser`, and `parse_args()` overlays an optional `--config <yaml>` file before constructing the validated `PipelineConfig`. Both dashed (`--prep-tile-size`) and underscored (`--prep_tile_size`) forms are accepted.
 
-Both workflows also have shortcut aliases that pre-set the right `--task` for you:
-
-```bash
-uv run detection-cli -i image.jpg -c "person, car, dog"
-uv run auto-annotation --train_image imgs/ --train_label lbls/ \
-    --yaml_path data.yaml --model local-model -o ./out
-```
-
-> **Single source of truth**: every CLI flag is defined on `src/schemes/argument.py:PipelineConfig` (a pydantic v2 model). `src/main.py:build_parser` mirrors that model onto an `argparse.ArgumentParser`, and `parse_args()` overlays an optional `--config <yaml>` file before constructing the validated `PipelineConfig`. Both dashed (`--prep-tile-size`) and underscored (`--prep_tile_size`) forms are accepted.
-
-### 1. Launching the Web GUI
-
-To launch the interactive Gradio interface:
-
-```bash
-uv run detection-gui
-```
-
-Options:
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--host` | Host to bind the Gradio server to | `0.0.0.0` |
-| `--port` | Port to run the server on | `7860` |
-| `--share` | Create a public Gradio share link | off |
-| `--no-queue` | Disable Gradio's request queue | off |
-
-Example:
-
-```bash
-uv run detection-gui --port 7861 --share
-```
-
-### 2. Free-Detection CLI (`--task free_detection`)
+### 1. Free-Detection CLI
 
 Run the detector→judge pipeline on one or more images:
 
 ```bash
-uv run llmog --task free_detection --image path/to/image.jpg --categories "person, car, dog"
+uv run llmog --task free_detection -i image.jpg -c "person, car, dog"
+
+# Shortcut alias
+uv run detection-cli -i image.jpg -c "person, car, dog"
 ```
 
 #### Common options
@@ -197,7 +162,7 @@ uv run llmog --task free_detection \
   -o ./inspection_results
 ```
 
-### 3. Auto-Labeling CLI (`--task auto_label`)
+### 2. Auto-Labeling CLI (`--task auto_label`)
 
 Walk an existing YOLO-format dataset (binary defect/no-defect), re-classify each annotated crop with a VLM, accumulate a class map, and persist the updated `data.yaml`.
 
@@ -207,6 +172,10 @@ uv run llmog --task auto_label \
     --yaml_path data.yaml \
     --model local-model \
     -o ./out
+
+# Shortcut alias
+uv run auto-annotation --train_image imgs/ --train_label lbls/ \
+    --yaml_path data.yaml --model local-model -o ./out
 ```
 
 #### Auto-label-specific options
@@ -227,17 +196,43 @@ uv run llmog --task auto_label \
 | `--resume` | Legacy per-file resume (skip if output `.txt` already exists) | off |
 | `--auto_resume` (default on) / `--no_auto_resume` | Resume from `<output_folder>/.checkpoint.json` after an interrupted run; pass `--no_auto_resume` to start fresh | on |
 
+### 3. Launching the Web GUI
+
+To launch the interactive Gradio interface:
+
+```bash
+uv run detection-gui
+```
+
+Options:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--host` | Host to bind the Gradio server to | `0.0.0.0` |
+| `--port` | Port to run the server on | `7860` |
+| `--share` | Create a public Gradio share link | off |
+| `--no-queue` | Disable Gradio's request queue | off |
+
+Example:
+
+```bash
+uv run detection-gui --port 7861 --share
+```
+
 ### 4. YAML Config + CLI Overrides
 
-Any field on `PipelineConfig` can live in a YAML file loaded by `--config`.
+Any field on `PipelineConfig` can live in a YAML file loaded by `--config`. A fully-commented example is at [`examples/config.example.yaml`](examples/config.example.yaml).
 
 ```yaml
 # pipeline.yaml
+task: free_detection
+categories: "crack, scratch, dent"
 max_rounds: 5
 score_threshold: 9
-categories: "crack, scratch, dent"
 output_folder: ./yaml_out
-auto_resume: false
+prep_enabled: true
+prep_contrast_method: clahe
+prep_tiling_enabled: true
 ```
 
 ```bash
@@ -246,7 +241,10 @@ uv run llmog --task free_detection --config pipeline.yaml -i img.jpg --max_round
 # → max_rounds == 2          (CLI won)
 # → score_threshold == 9      (from YAML)
 # → output_folder == ./yaml_out (from YAML)
-# → auto_resume == False      (from YAML)
+# → prep_enabled == true       (from YAML)
+
+# Full example: detect on the included sample config
+uv run llmog --config examples/config.example.yaml
 ```
 
 ---

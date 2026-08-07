@@ -1,0 +1,78 @@
+site_name: LLM Object Detection Console
+site_description: Interactive test console for assessing Vision-Language Models on object detection tasks.
+repo_url: https://github.com/anomalyco/opencode
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [llmog]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_category_heading: true
+            show_if_no_docstring: true
+            members_order: source
+            docstring_section_style: table
+            heading_level: 3
+          import:
+            - url: https://docs.python.org/3/objects.inv
+              domains: [std, py]
+            - url: https://opencv.org/opencv-python-doc/objects.inv
+            - url: https://numpy.org/doc/stable/objects.inv
+            - url: https://docs.pydantic.dev/latest/objects.inv
+              domains: [std, py]
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: install.md
+      - Usage: usage.md
+  - API Reference:
+      - main: api/main.md
+      - schemes: api/schemes/index.md
+      - PipelineConfig: api/schemes/argument.md
+      - free_detection: api/free_detection/index.md
+      - ObjectDetectionPipeline: api/free_detection/detection_pipeline.md
+      - Image Preprocessing: api/free_detection/image_preprocessing.md
+      - Trackers: api/free_detection/trackers.md
+      - Gradio UI: api/free_detection/app.md
+      - auto_annotation: api/auto_annotation/index.md
+      - servers: api/servers/index.md
+      - interface: api/interface/index.md

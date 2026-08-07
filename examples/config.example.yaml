@@ -1,0 +1,79 @@
+# Example PipelineConfig for llmog.
+# Every field here mirrors PipelineConfig in llmog/schemes/argument.py.
+# Load with:  uv run llmog --task free_detection --config config/example.yaml ...
+# CLI flags override whatever you set here.
+
+# --- Task selection -----------------------------------------------------
+task: free_detection          # "free_detection" | "auto_label"
+
+# --- Logging ------------------------------------------------------------
+log_level: INFO
+log_file: null
+
+# --- Detection settings -------------------------------------------------
+images:
+  - ./assets/image.png
+categories: "person, car, bicycle, dog, cat"
+definitions: |
+  crack: a thin linear fracture on the surface
+  scratch: shallow groove from abrasion
+  dent: a shallow depression or indentation
+max_rounds: 5
+score_threshold: 9
+detector_temperature: 0.7
+detector_top_p: 0.95
+judge_temperature: 0.2
+detector_max_tokens: 4096
+judge_max_tokens: 1024
+api_retries: 3
+
+# --- Model / server -----------------------------------------------------
+base_url: "http://localhost:8080/v1"
+api_key: "not-needed"
+detector_model: "local-model"
+judge_model: "local-model"
+judge_url: null
+server_type: llama_cpp            # "llama_cpp" | "vllm" | "external"
+
+# --- Output -------------------------------------------------------------
+output_folder: ./yaml_out
+no_plot: true
+
+# --- Preprocessing ------------------------------------------------------
+prep_enabled: true
+prep_short_edge: 1024
+prep_pad_square: false
+prep_contrast_method: clahe       # "none" | "clahe" | "autocontrast"
+prep_gamma: 1.0
+prep_denoise_method: none         # "none" | "bilateral" | "nlm"
+prep_sharpen: false
+prep_white_balance: false
+
+# Tiling for small objects
+prep_tiling_enabled: true
+prep_tile_size: 512
+prep_tile_overlap: 0.25
+prep_crop_verify_enabled: true
+prep_crop_padding: 0.15
+
+# Set-of-Mark prompting
+prep_som_enabled: false
+
+# Custom grid overlay
+prep_grid_style: standard         # "standard" | "transparent" | "fine" | "none"
+prep_grid_step: 50
+prep_grid_line_width: 1
+prep_grid_font_size: 0
+prep_grid_line_color: "blue"
+prep_grid_text_color: "white"
+prep_grid_backing_color: "black"
+
+# VLM processor pixel bounds (Qwen-VL / vLLM extra_body)
+prep_send_pixel_bounds: true
+prep_min_pixels: 200704
+prep_max_pixels: 2097152
+
+# --- Serving extras (passed through to the server manager) --------------
+serving_extra:
+  ctx_size: 20000
+  parallel_slots: 1
