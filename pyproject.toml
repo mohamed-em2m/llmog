@@ -25,8 +25,11 @@ dependencies = [
 # Pick exactly ONE serving backend to install. See docs/install.md.
 #
 # llama-cpp-python: install the Python binding, whose "server" extra ships the
-#   OpenAI-compatible server launched via `python -m llama_cpp.server`. No
-#   native GPU llama.cpp build needed -- wheels are provided by the package.
+#   OpenAI-compatible server launched via `python -m llama_cpp.server`. The
+#   plain PyPI sdist builds CPU-only by default; the [tool.uv.sources] /
+#   [tool.uv.index] blocks below redirect this package to abetlen's prebuilt
+#   CUDA wheel index instead, so `uv sync --extra llama-cpp-python` pulls a
+#   GPU-enabled wheel with no local CUDA toolkit / nvcc / compiler needed.
 # llama-cpp: install nothing extra at build time; requires the native
 #   `llama-server` binary (build it with ./scripts/install_llama_cpp.sh).
 llama-cpp-python = ["llama-cpp-python[server]>=0.3.0"]
@@ -55,8 +58,34 @@ py-modules = ["main", "auto_annotiontion"]
 
 [tool.setuptools.packages.find]
 where = ["llmog"]
-include = ["free_detection*", "auto_annotation*", "schemes*", "servers*", "interface*"]
+include = [
+    "free_detection*",
+    "auto_annotation*",
+    "schemes*",
+    "servers*",
+    "interface*",
+]
 exclude = ["*.egg-info"]
 
 [tool.uv]
 package = true
+
+# ─── llama-cpp-python CUDA wheels ─────────────────────────────────────────
+# abetlen's project publishes prebuilt CUDA wheels on a separate index
+# (they are NOT on PyPI). Pin the exact tag to the CUDA runtime you have
+# installed on the machine that will *run* this (check with `nvidia-smi`
+# for the driver's max supported CUDA version). Available tags as of this
+# writing: cu118, cu121, cu122, cu123, cu124, cu125, cu130, cu132.
+#
+# Only cu121-cu125 reliably have wheels for Python 3.12; if you're on
+# Python 3.13 (allowed by requires-python above) check that a matching
+# cp313 wheel actually exists for your chosen tag before relying on this --
+# otherwise uv will silently fall back to building from source, which
+# needs the CUDA toolkit + nvcc + a C++ compiler on the build machine.
+[[tool.uv.index]]
+name = "llama-cpp-python-cuda"
+url = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+llama-cpp-python = [{ index = "llama-cpp-python-cuda" }]
