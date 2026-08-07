@@ -37,7 +37,7 @@ llama-cpp-python = [
     "uvicorn",
     "sse-starlette",
     "starlette-context",
-    "llama-cpp-python[server]>=0.3.0",
+    "llama-cpp-python[server]>=0.3.34",
     "pydantic_settings",
 ]
 llama-cpp = []
