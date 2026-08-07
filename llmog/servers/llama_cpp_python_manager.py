@@ -1,10 +1,8 @@
-import os
 import subprocess
 import sys
 import threading
 import time
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def _detect_gpu_count() -> int:
@@ -22,7 +20,7 @@ def _detect_gpu_count() -> int:
 
 
 num_gpus = _detect_gpu_count()
-tensor_split = ",".join(["1"] * num_gpus)
+tensor_split_default = ",".join(["1"] * num_gpus)
 
 
 # ─── Llama-CPP-Python Server Class ───────────────────────────────────────────
@@ -50,12 +48,12 @@ class LlamaCppPythonManager:
         parallel_slots: int = 1,
         n_threads: int = -1,
         gpu_layers: int = -1,
-        tensor_split: str = tensor_split,
+        tensor_split: str = tensor_split_default,
         main_gpu: int = 0,
         temp: float = 0.4,
         top_p: float = 0.95,
         top_k: int = 64,
-        fa: str = "auto",
+        fa: bool = True,
         enable_thinking: bool = False,
         batch_size: int = 1024,
         ubatch_size: int = 512,
@@ -100,6 +98,21 @@ class LlamaCppPythonManager:
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
         self.server_url = f"http://{req_host}:{self.port}"
 
+    # ─── Default sampling kwargs for chat completion requests ────────────────
+    def default_generation_kwargs(self) -> dict:
+        """temp/top_p/top_k/enable_thinking are per-*request* sampling params in
+        llama-cpp-python's OpenAI-compatible API, not server startup flags, so
+        they can't be passed on the command line. Use this to build the JSON
+        body for /v1/chat/completions calls instead."""
+        kwargs = {
+            "temperature": self.temp,
+            "top_p": self.top_p,
+            "top_k": self.top_k,
+        }
+        if self.enable_thinking:
+            kwargs["extra_body"] = {"enable_thinking": True}
+        return kwargs
+
     # ─── Server Launcher ──────────────────────────────────────────────────────
     def start_llama_server(self):
         """
@@ -110,6 +123,24 @@ class LlamaCppPythonManager:
             print("ℹ️ Server is already running.")
             return
 
+        # Fail fast with an actionable message instead of an opaque
+        # "No module named 'llama_cpp'" from the spawned subprocess.
+        import importlib.util
+
+        if importlib.util.find_spec("llama_cpp") is None:
+            print(
+                "❌ llama-cpp-python is not installed. Install it with:\n"
+                "  uv pip install -e '.[llama-cpp-python]'\n"
+                "(or `pip install 'llama-cpp-python[server]'` outside this project).",
+                file=sys.stderr,
+            )
+            raise ModuleNotFoundError("llama-cpp-python is not installed.")
+
+        # The `llama_cpp.server` CLI derives every flag from pydantic field
+        # names in llama_cpp.server.settings (ModelSettings / ServerSettings).
+        # Bool settings (verbose, flash_attn) are NOT store_true flags -- they
+        # require an explicit value (`--verbose true/false`). Only emit valid
+        # field names, otherwise argparse exits immediately with usage error.
         cmd = [
             sys.executable,
             "-m",
@@ -126,33 +157,44 @@ class LlamaCppPythonManager:
             str(self.gpu_layers),
             "--main_gpu",
             str(self.main_gpu),
-            "--n_parallel",
-            str(self.parallel_slots),
-            "--tensor_split",
-            self.tensor_split,
-            "--chat_format",
-            self.chat_format,
         ]
+
+        if self.chat_format:
+            cmd.extend(["--chat_format", self.chat_format])
+
+        # tensor_split is a List[float] setting; the CLI expects it as
+        # space-separated values (nargs="+"), NOT a single comma-joined
+        # string like "1,1" -- that would be parsed as one bad float.
+        split_values = [v for v in str(self.tensor_split).split(",") if v]
+        if len(split_values) > 1:
+            cmd.append("--tensor_split")
+            cmd.extend(split_values)
+
         if self.n_threads is not None and self.n_threads > 0:
             cmd.extend(["--n_threads", str(self.n_threads)])
-        if self.verbose:
-            cmd.append("--verbose")
-        else:
-            cmd.append("--verbose_error")
-
         if self.batch_size is not None and self.batch_size > 0:
             cmd.extend(["--n_batch", str(self.batch_size)])
         if self.ubatch_size is not None and self.ubatch_size > 0:
             cmd.extend(["--n_ubatch", str(self.ubatch_size)])
+
+        # KV cache quantization settings are `type_k` / `type_v` (int enums).
+        # Only forward a value that actually converts to an int; anything else
+        # (e.g. "q4_0") would crash the server's settings parser.
         if self.kv_cache_type is not None:
-            cmd.extend(
-                [
-                    "--cache_type_k",
-                    self.kv_cache_type,
-                    "--cache_type_v",
-                    self.kv_cache_type,
-                ]
-            )
+            try:
+                int(self.kv_cache_type)
+            except (TypeError, ValueError):
+                pass
+            else:
+                cmd.extend(
+                    ["--type_k", str(self.kv_cache_type), "--type_v", str(self.kv_cache_type)]
+                )
+
+        # flash_attn is a bool ModelSettings field -> requires an explicit value.
+        cmd.extend(["--flash_attn", "true" if self.fa else "false"])
+        # verbose is likewise a bool value-taking flag.
+        cmd.extend(["--verbose", "true" if self.verbose else "false"])
+
         if self.extra_args:
             cmd.extend(self.extra_args)
 
@@ -195,10 +237,26 @@ class LlamaCppPythonManager:
         until the server confirms it is fully loaded.
         """
         print("⏳ Waiting for llama-cpp-python server...")
-        self.server_ready_event.wait(timeout=timeout)
+
+        if self.process is None:
+            raise RuntimeError("❌ start_llama_server() was never called.")
+
+        ready = self.server_ready_event.wait(timeout=timeout)
+        if not ready and self.process.poll() is not None:
+            # Process already died and never printed the readiness line --
+            # fail fast instead of polling /health for another minute.
+            raise RuntimeError(
+                f"❌ Server process exited early (code {self.process.returncode}). "
+                f"Last logs:\n{self.get_logs()[-2000:]}"
+            )
 
         deadline = time.time() + 60
         while time.time() < deadline:
+            if self.process.poll() is not None:
+                raise RuntimeError(
+                    f"❌ Server process exited (code {self.process.returncode}) "
+                    f"while waiting for health check. Last logs:\n{self.get_logs()[-2000:]}"
+                )
             try:
                 r = requests.get(f"{self.server_url}/health", timeout=2)
                 if r.status_code == 200:
@@ -219,14 +277,16 @@ class LlamaCppPythonManager:
         """
         try:
             print("🔥 Warming up model...")
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": test_prompt}],
+                "max_tokens": 1,
+                "stream": False,
+            }
+            payload.update(self.default_generation_kwargs())
             requests.post(
                 f"{self.server_url}/v1/chat/completions",
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": test_prompt}],
-                    "max_tokens": 1,
-                    "stream": False,
-                },
+                json=payload,
                 timeout=60,
             )
             print("✅ Warmup done — TTFT will be faster for real requests")
