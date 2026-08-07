@@ -125,16 +125,24 @@ class LlamaCppPythonManager:
 
         # Fail fast with an actionable message instead of an opaque
         # "No module named 'llama_cpp'" from the spawned subprocess.
+        # Also print diagnostics so a wrong-environment install is obvious.
         import importlib.util
 
         if importlib.util.find_spec("llama_cpp") is None:
             print(
-                "❌ llama-cpp-python is not installed. Install it with:\n"
-                "  uv pip install -e '.[llama-cpp-python]'\n"
-                "(or `pip install 'llama-cpp-python[server]'` outside this project).",
+                f"❌ 'llama_cpp' is not importable by the Python that launched "
+                f"this app:\n   sys.executable = {sys.executable}\n"
+                f"   sys.prefix     = {sys.prefix}\n"
+                "llama-cpp-python must be installed into that same interpreter, e.g.:\n"
+                f"   {sys.executable} -m pip install 'llama-cpp-python[server]'\n"
+                "or (when using uv from this repo):\n"
+                "   uv pip install -e '.[llama-cpp-python]'",
                 file=sys.stderr,
             )
-            raise ModuleNotFoundError("llama-cpp-python is not installed.")
+            raise ModuleNotFoundError(
+                "llama-cpp-python is not installed in the active interpreter "
+                f"({sys.executable})."
+            )
 
         # The `llama_cpp.server` CLI derives every flag from pydantic field
         # names in llama_cpp.server.settings (ModelSettings / ServerSettings).
