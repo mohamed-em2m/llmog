@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any
 from concurrent.futures import ThreadPoolExecutor
-
+from jinja2 import Template
 from PIL import Image, ImageDraw, ImageFont
 
 import matplotlib.pyplot as plt
@@ -648,7 +648,6 @@ A separate quality-control reviewer inspected your last attempt on this image.{p
 
         # Jinja2 / string format fallback
         try:
-            from jinja2 import Template
 
             return Template(self.detector_template).render(
                 categories_list=", ".join(categories),

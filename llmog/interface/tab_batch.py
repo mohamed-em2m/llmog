@@ -6,6 +6,7 @@ import io
 import time
 import json
 import html
+import base64
 import queue
 import shutil
 import logging
@@ -15,9 +16,12 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import cv2
+import numpy as np
 import gradio as gr
 import httpx
-from PIL import Image
+import json_repair
+from PIL import Image, ImageDraw, ImageFont
 from openai import OpenAI
 from free_detection.detection_pipeline import (
     ObjectDetectionPipeline,
@@ -47,7 +51,7 @@ logger = logging.getLogger("detection_pipeline")
 # Registry of task types exposed in the Batch Sandbox. The Radio in the UI uses
 # these labels; the dispatcher routes to the matching runner below.
 TASK_FREE_ANNOTATION = "Free Annotation (detections)"
-TASK_RECLASSIFICATION = "Reclassification (relabel YOLO boxes)"
+TASK_RECLASSIFICATION = "Reclassification (draw & relabel)"
 TASK_CHOICES = [TASK_FREE_ANNOTATION, TASK_RECLASSIFICATION]
 
 
@@ -748,6 +752,339 @@ def _detections_to_yolo(detections, categories):
 
 
 # ---------------------------------------------------------------------------
+# Interactive Reclassification (draw a region -> agent recognizes it)
+# ---------------------------------------------------------------------------
+
+
+_RECLS_PALETTE = [
+    (255, 0, 0),
+    (0, 128, 255),
+    (0, 200, 0),
+    (255, 165, 0),
+    (255, 0, 255),
+    (0, 200, 200),
+    (128, 0, 255),
+    (255, 200, 0),
+    (0, 0, 255),
+    (200, 0, 200),
+]
+
+_RECLS_EMPTY_TABLE = (
+    '<div class="output-panel" style="margin-top:0.75rem">'
+    '<div class="out-header"><div class="out-header-left">'
+    '<span class="out-header-dot"></span>'
+    '<span class="out-header-title">Recognition Results</span>'
+    "</div></div>"
+    '<div style="color:#7d8590;text-align:center;padding:1rem;">No results yet.</div></div>'
+)
+
+
+def _make_recls_client(
+    use_external_api,
+    ext_api_url,
+    ext_api_key,
+    ext_model_name,
+    local_server_port,
+):
+    """Build an OpenAI-compatible client + model name for the region classifier.
+
+    Raises ValueError with a user-facing message when no usable backend is up.
+    """
+    if use_external_api:
+        if not ext_api_key or ext_api_key == "your-key":
+            raise ValueError(
+                "External API selected but no API key provided. "
+                "Set one in the External API section."
+            )
+        api_url, api_key, model_name = ext_api_url, ext_api_key, ext_model_name
+    else:
+        with state.server_lock:
+            if state.server_manager is None or not state.server_manager.is_healthy():
+                raise ValueError(
+                    "Local server not running. Start it on the Server tab "
+                    "or enable External API."
+                )
+            local_port = state.server_manager.port
+            model_name = state.server_manager.model
+        api_url = f"http://localhost:{local_port}/v1"
+        api_key = "not-needed"
+    return OpenAI(base_url=api_url, api_key=api_key), model_name
+
+
+def _extract_regions(editor_value, min_area_ratio=0.001, max_regions=50):
+    """Turn the user's drawn strokes into a list of pixel-space regions.
+
+    Gradio's ImageEditor drops vector annotations server-side, so the drawn
+    shapes are recovered from the painted layers (alpha channel) with a
+    composite-vs-background diff as a fallback. Each connected blob becomes
+    one region dict {x1, y1, x2, y2, area}.
+    """
+    layers = editor_value.get("layers") or []
+    composite = editor_value.get("composite")
+    background = editor_value.get("background")
+    mask = None
+
+    for layer in layers:
+        if layer is None:
+            continue
+        try:
+            alpha = np.asarray(layer.convert("RGBA"))[..., 3].astype(np.uint8)
+        except Exception:
+            continue
+        mask = alpha if mask is None else np.maximum(mask, alpha)
+
+    if mask is None and composite is not None and background is not None:
+        try:
+            comp = np.asarray(composite.convert("RGB")).astype(np.int16)
+            bg = np.asarray(background.convert("RGB")).astype(np.int16)
+            diff = np.abs(comp - bg).sum(axis=2)
+            mask = (diff > 20).astype(np.uint8) * 255
+        except Exception:
+            pass
+
+    if mask is None:
+        return []
+
+    mask = (np.asarray(mask) > 0).astype(np.uint8) * 255
+    h, w = mask.shape
+    min_area = max(6, int(w * h * min_area_ratio))
+
+    n, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    regions = []
+    for i in range(1, n):
+        x, y, bw, bh, area = (int(v) for v in stats[i])
+        if area < min_area:
+            continue
+        regions.append(
+            {"x1": x, "y1": y, "x2": x + bw, "y2": y + bh, "area": area}
+        )
+    regions.sort(key=lambda r: (r["y1"], r["x1"]))
+    return regions[:max_regions]
+
+
+def _crop_with_padding(background, region, pad_pct):
+    """Crop a region from the background image, optionally adding context padding."""
+    w, h = background.size
+    pad = int(max(w, h) * (float(pad_pct or 0) / 100.0))
+    x1 = max(0, region["x1"] - pad)
+    y1 = max(0, region["y1"] - pad)
+    x2 = min(w, region["x2"] + pad)
+    y2 = min(h, region["y2"] + pad)
+    if x2 <= x1 or y2 <= y1:
+        x1, y1, x2, y2 = region["x1"], region["y1"], region["x2"], region["y2"]
+    return background.crop((x1, y1, x2, y2))
+
+
+def _classify_region(crop_pil, client, model_name, classes, class_definitions):
+    """Ask the VLM to pick exactly one class for a cropped region."""
+    buf = io.BytesIO()
+    crop_pil.convert("RGB").save(buf, format="JPEG", quality=92)
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    data_uri = f"data:image/jpeg;base64,{b64}"
+
+    prompt = (
+        "You are an expert visual inspector. A user drew a region on an image "
+        "and you must recognize what object or defect is inside it.\n"
+        f"Available classes: {classes}.\n"
+    )
+    if class_definitions and class_definitions.strip():
+        prompt += f"Class definitions:\n{class_definitions}\n"
+    prompt += (
+        "Look carefully at the cropped region and choose EXACTLY ONE class from "
+        "the available classes that best matches what is inside. If none of the "
+        "classes clearly apply, respond with class \"none\".\n"
+        "Respond with ONLY valid JSON in exactly this format: "
+        '{"class":"<class_name>","confidence":<0-100>,"reasoning":"<short reason>"}. '
+        "Do not include explanations, markdown, extra text, comments, or additional fields."
+    )
+
+    response = client.chat.completions.create(
+        model=model_name,
+        temperature=0.2,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_uri}},
+                ],
+            }
+        ],
+    )
+    if not response.choices or not response.choices[0].message:
+        raise ValueError("No choices returned from the VLM API call.")
+    raw = response.choices[0].message.content
+    if not raw:
+        raise ValueError("Model returned an empty text content response.")
+    output = json_repair.loads(raw)
+    return output if isinstance(output, dict) else {}
+
+
+def _render_recls_table(rows):
+    body = "".join(rows) if rows else (
+        '<tr><td colspan="4" style="color:#7d8590;text-align:center;padding:1rem;">'
+        "No regions detected.</td></tr>"
+    )
+    return (
+        '<div class="output-panel" style="margin-top:0.75rem">'
+        '<div class="out-header"><div class="out-header-left">'
+        '<span class="out-header-dot"></span>'
+        '<span class="out-header-title">Recognition Results</span>'
+        "</div></div>"
+        '<div style="max-height:320px; overflow-y:auto;">'
+        '<table class="batch-status-table"><thead><tr>'
+        "<th>Region</th><th>Class</th><th>Confidence</th><th>Reasoning</th>"
+        "</tr></thead><tbody>" + body + "</tbody></table></div></div>"
+    )
+
+
+def classify_regions_gui(
+    editor_value,
+    classes_str,
+    class_definitions,
+    pad_pct,
+    use_external_api,
+    ext_api_url,
+    ext_api_key,
+    ext_model_name,
+    local_server_port,
+):
+    """Draw-and-recognize: extract drawn regions, classify each crop, export YOLO."""
+    classes = [c.strip().lower() for c in (classes_str or "").split(",") if c.strip()]
+    if not classes:
+        return (
+            "Error: provide at least one class.",
+            None,
+            _RECLS_EMPTY_TABLE,
+            "",
+        )
+    if not editor_value or not editor_value.get("background"):
+        return (
+            "Error: upload an image and draw strokes over each object first.",
+            None,
+            _RECLS_EMPTY_TABLE,
+            "",
+        )
+
+    try:
+        client, model_name = _make_recls_client(
+            use_external_api,
+            ext_api_url,
+            ext_api_key,
+            ext_model_name,
+            local_server_port,
+        )
+    except ValueError as e:
+        return f"Error: {e}", None, _RECLS_EMPTY_TABLE, ""
+
+    background = editor_value["background"]
+    if isinstance(background, np.ndarray):
+        background = Image.fromarray(background).convert("RGB")
+    elif not isinstance(background, Image.Image):
+        background = Image.open(background).convert("RGB")
+    else:
+        background = background.convert("RGB")
+
+    regions = _extract_regions(editor_value)
+    if not regions:
+        return (
+            "No drawn regions detected. Draw strokes over each object, then run again.",
+            background,
+            _RECLS_EMPTY_TABLE,
+            "",
+        )
+
+    annotated = background.copy()
+    draw = ImageDraw.Draw(annotated)
+    try:
+        font = ImageFont.load_default(size=18)
+    except Exception:
+        font = ImageFont.load_default()
+
+    class_ids = {}
+    for i, c in enumerate(classes):
+        class_ids.setdefault(c, i)
+
+    rows = []
+    yolo_lines = []
+    label_candidates = []
+    for idx, reg in enumerate(regions):
+        crop = _crop_with_padding(background, reg, pad_pct)
+        try:
+            result = _classify_region(
+                crop, client, model_name, classes, class_definitions
+            )
+        except Exception as e:
+            result = {"class": "error", "confidence": 0, "reasoning": f"API error: {e}"}
+
+        cls = (str(result.get("class") or "").strip()).lower()
+        confidence = result.get("confidence", 0)
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        reasoning = str(result.get("reasoning") or "").strip()
+
+        color = _RECLS_PALETTE[idx % len(_RECLS_PALETTE)]
+        draw.rectangle(
+            [(reg["x1"], reg["y1"]), (reg["x2"], reg["y2"])],
+            outline=color,
+            width=3,
+        )
+        draw.rectangle(
+            [(reg["x1"], reg["y1"]), (reg["x2"], reg["y2"])],
+            outline=(0, 0, 0),
+            width=6,
+        )
+        draw.rectangle(
+            [(reg["x1"], reg["y1"]), (reg["x2"], reg["y2"])],
+            outline=color,
+            width=3,
+        )
+        label_text = f"#{idx + 1} {cls} ({confidence:.0f}%)"
+        try:
+            text_w = draw.textlength(label_text, font=font)
+        except Exception:
+            text_w = 0
+        text_y = reg["y1"] - 22
+        if text_y < 0:
+            text_y = reg["y1"] + 4
+        draw.rectangle(
+            [(reg["x1"], text_y), (reg["x1"] + text_w + 8, text_y + 18)],
+            fill=color,
+        )
+        draw.text((reg["x1"] + 4, text_y + 1), label_text, fill=(0, 0, 0), font=font)
+
+        if cls in class_ids and cls != "none":
+            w_px = reg["x2"] - reg["x1"]
+            h_px = reg["y2"] - reg["y1"]
+            if w_px > 0 and h_px > 0:
+                xc = (reg["x1"] + reg["x2"]) / 2.0 / background.size[0]
+                yc = (reg["y1"] + reg["y2"]) / 2.0 / background.size[1]
+                nw = w_px / background.size[0]
+                nh = h_px / background.size[1]
+                xc = max(0.0, min(1.0, xc))
+                yc = max(0.0, min(1.0, yc))
+                nw = max(0.0, min(1.0, nw))
+                nh = max(0.0, min(1.0, nh))
+                yolo_lines.append(
+                    f"{class_ids[cls]} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}"
+                )
+        label_candidates.append(cls)
+
+        conf_txt = f"{confidence:.0f}%" if cls != "error" else "—"
+        cls_disp = html.escape(cls) if cls != "error" else "⚠ error"
+        reason_esc = html.escape(reasoning[:160])
+        rows.append(
+            f"<tr><td>#{idx + 1}</td><td>{cls_disp}</td>"
+            f"<td>{conf_txt}</td><td>{reason_esc}</td></tr>"
+        )
+
+    status = f"Recognized {len(regions)} region(s) -> YOLO labels: {len(yolo_lines)}"
+    return status, annotated, _render_recls_table(rows), "\n".join(yolo_lines)
+
+
+# ---------------------------------------------------------------------------
 # Task Dispatcher
 # ---------------------------------------------------------------------------
 
@@ -995,9 +1332,56 @@ def _build_batch_tab():
                 value=TASK_FREE_ANNOTATION,
                 label="Task Type",
                 info="Free Annotation: full detector/judge pipeline on uploaded images. "
-                "Reclassification: same pipeline on uploaded images, but also exports "
-                "YOLO-format '<name>.txt' labels next to the results.",
+                "Reclassification: upload one image, draw strokes over each object, "
+                "and the agent recognizes the class of every drawn region.",
             )
+
+            with gr.Group(visible=False) as recls_group:
+                gr.HTML(
+                    '<p class="section-label">🎯 Draw &amp; Recognize</p>'
+                )
+                recls_image_editor = gr.ImageEditor(
+                    label="1. Upload an image, then draw strokes over each object",
+                    type="pil",
+                    sources=["upload"],
+                    brush=gr.Brush(
+                        default_size=36,
+                        colors=["#00ff00"],
+                        color_mode="fixed",
+                    ),
+                    layers=True,
+                    format="png",
+                )
+                recls_classes_input = gr.Textbox(
+                    label="2. Classes to recognize (comma-separated)",
+                    placeholder="hole, stain, tear, cut, knot, weaving_defect",
+                    value="hole, stain, tear, cut, knot, weaving_defect",
+                )
+                recls_defs_input = gr.Textbox(
+                    label="Class Definitions (optional)",
+                    lines=3,
+                    value=(
+                        "- hole: missing fabric\n"
+                        "- stain: discoloration only\n"
+                        "- tear: frayed, uneven separation\n"
+                        "- cut: clean cut\n"
+                        "- knot: raised lump\n"
+                        "- weaving_defect: uneven thread density"
+                    ),
+                )
+                recls_padding_slider = gr.Slider(
+                    label="Region Context Padding (%)",
+                    minimum=0,
+                    maximum=50,
+                    step=1,
+                    value=10,
+                    info="Extra context around each drawn region before the agent looks at it.",
+                )
+                recls_run_btn = gr.Button(
+                    "🔎 Recognize Drawn Regions",
+                    variant="primary",
+                    interactive=True,
+                )
 
 
             input_images = gr.File(
@@ -1325,6 +1709,21 @@ def _build_batch_tab():
         with gr.Column(scale=3, min_width=600):
             gr.HTML('<p class="section-label">Results</p>')
 
+            with gr.Group(visible=False) as recls_outputs_group:
+                recls_status = gr.Markdown("**Status: Idle**")
+                recls_annotated = gr.Image(
+                    label="Annotated Regions", type="pil", interactive=False
+                )
+                recls_results = gr.HTML(value=_RECLS_EMPTY_TABLE)
+                with gr.Accordion(
+                    "YOLO Labels (<class_id> <xc> <yc> <w> <h>)", open=True
+                ):
+                    recls_yolo = gr.Textbox(
+                        lines=8,
+                        interactive=False,
+                        label="Copy these lines into the image's .txt label file",
+                    )
+
             with gr.Group():
                 pipeline_status = gr.Markdown("**Status: Idle**")
                 progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
@@ -1335,7 +1734,7 @@ def _build_batch_tab():
                 interactive=False,
             )
 
-            with gr.Tabs():
+            with gr.Tabs() as explorer_tabs:
                 with gr.TabItem("🖼️ Batch Explorer"):
                     with gr.Row():
                         explorer_image_select = gr.Dropdown(
@@ -1421,6 +1820,18 @@ def _build_batch_tab():
 
     return dict(
         task_type=task_type,
+        recls_group=recls_group,
+        recls_image_editor=recls_image_editor,
+        recls_classes_input=recls_classes_input,
+        recls_defs_input=recls_defs_input,
+        recls_padding_slider=recls_padding_slider,
+        recls_run_btn=recls_run_btn,
+        recls_outputs_group=recls_outputs_group,
+        recls_status=recls_status,
+        recls_annotated=recls_annotated,
+        recls_results=recls_results,
+        recls_yolo=recls_yolo,
+        explorer_tabs=explorer_tabs,
         rounds_accordion=rounds_accordion,
         prep_accordion=prep_accordion,
         advanced_accordion=advanced_accordion,
