@@ -860,3 +860,16 @@ input[type="checkbox"] { accent-color: #38bdf8 !important; }
     .metric-grid { grid-template-columns: repeat(2, 1fr); }
     .tabitem { padding: 0.75rem !important; }
 }
+
+/* ── Large Drawing Canvas for Interactive Tab ── */
+.draw-canvas-large {
+    min-height: 520px !important;
+    background: #0d1117 !important;
+    border: 1px solid #21262d !important;
+    border-radius: 8px !important;
+}
+.draw-canvas-large .image-container,
+.draw-canvas-large canvas {
+    min-height: 480px !important;
+}
+

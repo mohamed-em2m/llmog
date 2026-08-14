@@ -1858,7 +1858,7 @@ wheels = [
 [[package]]
 name = "llama-cpp-python"
 version = "0.3.34"
-source = { registry = "https://pypi.org/simple" }
+source = { registry = "https://abetlen.github.io/llama-cpp-python/whl/cu124" }
 dependencies = [
     { name = "diskcache" },
     { name = "jinja2" },
@@ -1866,7 +1866,10 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/2f/46487e949da42b31847853793ddbfd44c7414e94d4364c9a41f91f30af27/llama_cpp_python-0.3.34.tar.gz", hash = "sha256:d849d286d808284f1d3ec1bd6875572430d29d1f9574a010232caa4e9cef0e35", size = 71617302, upload-time = "2026-07-12T04:33:41.928Z" }
+wheels = [
+    { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.34-cu124/llama_cpp_python-0.3.34-py3-none-manylinux_2_35_x86_64.whl" },
+    { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.34-cu124/llama_cpp_python-0.3.34-py3-none-win_amd64.whl" },
+]
 
 [package.optional-dependencies]
 server = [
@@ -1923,6 +1926,11 @@ docs = [
 ]
 llama-cpp-python = [
     { name = "llama-cpp-python", extra = ["server"] },
+    { name = "pydantic-settings" },
+    { name = "sse-starlette" },
+    { name = "starlette" },
+    { name = "starlette-context" },
+    { name = "uvicorn" },
 ]
 vllm = [
     { name = "vllm", version = "0.22.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
@@ -1935,7 +1943,7 @@ requires-dist = [
     { name = "gradio", specifier = "==6.19.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "json-repair", specifier = "==0.61.0" },
-    { name = "llama-cpp-python", extras = ["server"], marker = "extra == 'llama-cpp-python'", specifier = ">=0.3.0" },
+    { name = "llama-cpp-python", extras = ["server"], marker = "extra == 'llama-cpp-python'", specifier = ">=0.3.34", index = "https://abetlen.github.io/llama-cpp-python/whl/cu124" },
     { name = "matplotlib", specifier = "==3.11.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
@@ -1946,9 +1954,14 @@ requires-dist = [
     { name = "openai", specifier = "==2.43.0" },
     { name = "opencv-python", specifier = ">=4.9.0.80" },
     { name = "pillow", specifier = "==12.2.0" },
+    { name = "pydantic-settings", marker = "extra == 'llama-cpp-python'" },
     { name = "requests", specifier = ">=2.34.2" },
     { name = "rich", specifier = ">=15.0.0" },
+    { name = "sse-starlette", marker = "extra == 'llama-cpp-python'" },
+    { name = "starlette", marker = "extra == 'llama-cpp-python'" },
+    { name = "starlette-context", marker = "extra == 'llama-cpp-python'" },
     { name = "streamlit", specifier = ">=1.58.0" },
+    { name = "uvicorn", marker = "extra == 'llama-cpp-python'" },
     { name = "vllm", marker = "extra == 'vllm'", specifier = ">=0.6.0" },
     { name = "wrapt", specifier = ">=2.2.2" },
 ]

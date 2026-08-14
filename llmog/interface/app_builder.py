@@ -20,14 +20,14 @@ from interface.tab_batch import (
     cancel_pipeline,
     on_explorer_image_change,
     on_explorer_round_change,
-    classify_regions_gui,
-    TASK_RECLASSIFICATION,
 )
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
+from interface.tab_draw import build_draw_tab, wire_draw_events
 
 
 def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
+
     """Wire all event handlers across server, batch, and prompt tabs."""
 
     # ── Server tab ────────────────────────────────────────────────────────
@@ -68,64 +68,6 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     c_srv["refresh_logs_btn"].click(
         get_server_status_and_logs,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
-    )
-
-    # ── Batch tab — task type toggle (Free Annotation vs Reclassification) ─
-    _free_panels = [
-        c_bat["input_images"],
-        c_bat["categories_input"],
-        c_bat["category_defs_input"],
-        c_bat["rounds_accordion"],
-        c_bat["prep_accordion"],
-        c_bat["advanced_accordion"],
-        c_bat["run_btn"],
-        c_bat["stop_run_btn"],
-    ]
-    _batch_outputs = [
-        c_bat["pipeline_status"],
-        c_bat["progress_html"],
-        c_bat["batch_status_table"],
-        c_bat["download_results_box"],
-        c_bat["explorer_tabs"],
-    ]
-
-    def toggle_task_panels(task):
-        is_recls = task == TASK_RECLASSIFICATION
-        return (
-            [gr.update(visible=is_recls), gr.update(visible=is_recls)]
-            + [gr.update(visible=not is_recls)] * len(_free_panels)
-            + [gr.update(visible=not is_recls)] * len(_batch_outputs)
-        )
-
-    c_bat["task_type"].change(
-        toggle_task_panels,
-        inputs=[c_bat["task_type"]],
-        outputs=[c_bat["recls_group"], c_bat["recls_outputs_group"]]
-        + _free_panels
-        + _batch_outputs,
-    )
-
-    # ── Batch tab — interactive reclassification ────────────────────────
-    c_bat["recls_run_btn"].click(
-        fn=classify_regions_gui,
-        inputs=[
-            c_bat["recls_image_editor"],
-            c_bat["recls_classes_input"],
-            c_bat["recls_defs_input"],
-            c_bat["recls_padding_slider"],
-            c_bat["use_external_api_chk"],
-            c_bat["ext_api_url"],
-            c_bat["ext_api_key"],
-            c_bat["ext_model_name"],
-            c_srv["server_port_input"],
-        ],
-        outputs=[
-            c_bat["recls_status"],
-            c_bat["recls_annotated"],
-            c_bat["recls_results"],
-            c_bat["recls_yolo"],
-        ],
-        concurrency_limit=1,
     )
 
     # ── Batch tab — preprocessing toggles ────────────────────────────────
@@ -183,7 +125,6 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     ).then(
         fn=run_batch_dispatcher,
         inputs=[
-            c_bat["task_type"],
             c_bat["input_images"],
             c_bat["categories_input"],
             c_bat["category_defs_input"],
@@ -323,6 +264,9 @@ def build_app() -> gr.Blocks:
             with gr.TabItem("🦙 Llama Server"):
                 c_srv = _build_server_tab(server_status_badge)
 
+            with gr.TabItem("🎨 Draw & Recognize"):
+                c_draw = build_draw_tab()
+
             with gr.TabItem("🧪 Batch Sandbox"):
                 c_bat = _build_batch_tab()
 
@@ -334,7 +278,9 @@ def build_app() -> gr.Blocks:
 
         # ── Wire all events ───────────────────────────────────────────────
         _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state)
+        wire_draw_events(c_draw, c_srv, c_bat)
         _wire_realtime_events(c_rt, c_srv, c_bat)
+
 
         # ── Auto-refresh server status every 5 s ─────────────────────────
         status_timer = gr.Timer(value=5.0)
