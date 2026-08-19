@@ -73,6 +73,11 @@ def make_recls_client(
                 )
             local_port = state.server_manager.port
             model_name = state.server_manager.model
+        # Ensure port is a plain int/str (guard against None slipping through)
+        if local_port is None:
+            raise ValueError(
+                "Local server port is not set. Restart the server on the Server tab."
+            )
         api_url = f"http://localhost:{local_port}/v1"
         api_key = "not-needed"
     return OpenAI(base_url=api_url, api_key=api_key), model_name
@@ -117,8 +122,16 @@ def draw_recls_bbox(
         text_bbox = draw.textbbox((0, 0), label, font=font)
         text_w = text_bbox[2] - text_bbox[0]
         text_h = text_bbox[3] - text_bbox[1]
-    except AttributeError:
-        text_w, text_h = draw.textsize(label, font=font)
+    except Exception:
+        # Fallback: estimate size via font metrics (Pillow >=10 removed textsize)
+        try:
+            fb = font.getbbox(label)
+            text_w = fb[2] - fb[0]
+            text_h = fb[3] - fb[1]
+        except Exception:
+            # Last-resort pixel estimate (~8px per char, 14px tall)
+            text_w = max(8, len(label) * 8)
+            text_h = 14
 
     padding = max(3, line_w + 1)
     badge_w = text_w + 2 * padding
@@ -205,16 +218,32 @@ def extract_regions(
             layer_rgba = layer_pil.convert("RGBA")
             alpha = np.asarray(layer_rgba)[..., 3].astype(np.uint8)
 
-            # Some layers might have strokes painted directly on RGB with full opacity
+            # Guard: Gradio initialises the default drawing layer as a fully white-opaque
+            # RGBA canvas (alpha=255 everywhere). Treating that as "drawn strokes" would
+            # mark the entire image as one giant region.  Skip any layer where ≥90% of
+            # pixels are opaque — that pattern only appears on a blank default canvas, not
+            # on sparse user-drawn strokes.
+            opaque_ratio = np.count_nonzero(alpha > 10) / float(alpha.size)
+            if opaque_ratio >= 0.90:
+                logger.debug(
+                    "Skipping layer with %.0f%% opaque pixels (blank default canvas).",
+                    opaque_ratio * 100,
+                )
+                continue
+
             if np.any(alpha > 10):
+                # Layer has sparse transparent strokes — use alpha as the stroke mask
                 combined_mask = np.maximum(combined_mask, (alpha > 10).astype(np.uint8) * 255)
                 found_layer_strokes = True
             else:
-                # Check RGB difference from blank/transparent
+                # Alpha is all zero; check RGB brightness in case strokes are fully opaque RGB
+                # (raise threshold to 30 to ignore JPEG compression artefacts in blank areas)
                 rgb = np.asarray(layer_rgba.convert("RGB")).astype(np.int16)
-                if np.any(rgb > 20):
-                    layer_mask = (np.max(rgb, axis=2) > 20).astype(np.uint8) * 255
-                    combined_mask = np.maximum(combined_mask, layer_mask)
+                rgb_mask = np.max(rgb, axis=2) > 30
+                rgb_ratio = np.count_nonzero(rgb_mask) / float(rgb_mask.size)
+                if rgb_ratio > 0.0 and rgb_ratio < 0.90:
+                    # Sparse bright pixels — treat as strokes
+                    combined_mask = np.maximum(combined_mask, rgb_mask.astype(np.uint8) * 255)
                     found_layer_strokes = True
         except Exception as e:
             logger.warning(f"Error parsing editor layer: {e}")
@@ -388,7 +417,11 @@ def classify_regions_gui(
     ext_model_name: str,
     local_server_port: int | str | None,
 ) -> Tuple[str, Optional[Image.Image], str, str]:
-    """Interactive Draw-and-Recognize handler for Gradio UI."""
+    """Interactive Draw-and-Recognize handler for Gradio UI.
+
+    Returns:
+        (status_str, annotated_pil_or_None, results_html, yolo_txt)
+    """
     classes = [c.strip().lower() for c in (classes_str or "").split(",") if c.strip()]
     if not classes:
         return (
@@ -417,12 +450,27 @@ def classify_regions_gui(
         return f"Error: {e}", None, _RECLS_EMPTY_TABLE, ""
 
     background = editor_value["background"]
-    if isinstance(background, np.ndarray):
-        background = Image.fromarray(background).convert("RGB")
-    elif not isinstance(background, Image.Image):
-        background = Image.open(background).convert("RGB")
-    else:
-        background = background.convert("RGB")
+    try:
+        if isinstance(background, np.ndarray):
+            background = Image.fromarray(background).convert("RGB")
+        elif isinstance(background, Image.Image):
+            background = background.convert("RGB")
+        elif isinstance(background, str):
+            background = Image.open(background).convert("RGB")
+        else:
+            return (
+                "Error: unsupported background image type from editor.",
+                None,
+                _RECLS_EMPTY_TABLE,
+                "",
+            )
+    except Exception as e:
+        return (
+            f"Error loading background image: {e}",
+            None,
+            _RECLS_EMPTY_TABLE,
+            "",
+        )
 
     regions = extract_regions(editor_value)
     if not regions:

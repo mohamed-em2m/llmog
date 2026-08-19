@@ -6,6 +6,7 @@ crop classification, and YOLO labeling.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Dict, Any
 import gradio as gr
 
@@ -13,6 +14,8 @@ from interface.batch.reclassification import (
     classify_regions_gui,
     _RECLS_EMPTY_TABLE,
 )
+
+_DEFAULT_CANVAS_IMAGE = Path(__file__).resolve().parents[2] / "assets" / "image.png"
 
 
 def build_draw_tab() -> Dict[str, Any]:
@@ -24,6 +27,7 @@ def build_draw_tab() -> Dict[str, Any]:
             recls_image_editor = gr.ImageEditor(
                 label="Upload an image and draw a circle, rectangle, or outline in red over any object",
                 type="pil",
+                value=str(_DEFAULT_CANVAS_IMAGE) if _DEFAULT_CANVAS_IMAGE.is_file() else None,
                 sources=["upload", "clipboard"],
                 brush=gr.Brush(
                     default_size=4,
@@ -34,7 +38,7 @@ def build_draw_tab() -> Dict[str, Any]:
                 eraser=gr.Eraser(default_size=12),
                 layers=True,
                 format="png",
-                elem_classes=["draw-canvas-large"],
+                height=600,
             )
 
             with gr.Row(elem_classes=["btn-group"]):
