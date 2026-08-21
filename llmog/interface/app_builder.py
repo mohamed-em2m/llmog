@@ -24,6 +24,10 @@ from interface.batch.components import on_batch_preset_change, on_batch_strategy
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 from interface.tab_draw import build_draw_tab, wire_draw_events
+from interface.tab_realtime_interactive import (
+    build_realtime_interactive_tab,
+    wire_realtime_interactive_events,
+)
 
 
 def _on_endpoint_mode_change(mode: str):
@@ -312,10 +316,14 @@ def build_app() -> gr.Blocks:
             with gr.TabItem("🎥 Real-Time Detection"):
                 c_rt = _build_realtime_tab()
 
+            with gr.TabItem("🎯 Real-Time Draw"):
+                c_rt_interactive = build_realtime_interactive_tab()
+
         # ── Wire all events ───────────────────────────────────────────────
         _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state)
         wire_draw_events(c_draw, c_srv, c_bat)
         _wire_realtime_events(c_rt, c_srv, c_bat)
+        wire_realtime_interactive_events(c_rt_interactive, c_srv)
 
 
         # ── Auto-refresh server status every 5 s ─────────────────────────

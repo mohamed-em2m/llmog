@@ -89,24 +89,23 @@ def process_single_frame(
     prep_custom_resize_width: float,
     prep_custom_resize_height: float,
     detector_temp: float = 0.9,
-) -> Tuple[Any, str, SessionDetector]:
-    """Continuous Live Streaming Processor – now returns a DetectionViewer payload.
+) -> Tuple[Any, Any, str, SessionDetector]:
+    """Continuous Live Streaming Processor – now returns both DetectionViewer payload and same-window boxes.
 
-    Returns ``(viewer_payload, hud, session)`` where viewer_payload is
-    ``(frame_numpy, [annotations])`` for ``DetectionViewer``.  Boxes are
-    converted once via ``realtime_boxes_to_annotations`` so the browser draws
-    them on the JS canvas – zero server-side box rasterisation.
+    Returns ``(viewer_payload, boxes_json, hud, session)`` where viewer_payload is
+    ``(frame_numpy, [annotations])`` for ``DetectionViewer`` and boxes_json is
+    ``{"boxes": [[ymin,xmin,ymax,xmax,label,trackId],...], "frame_w":W, "frame_h":H}``
+    for the same-window canvas overlay (max speed – no WebP re-encode).
     """
     if session is None:
         session = new_session_detector()
 
     if frame is None:
         boxes, hud = session.snapshot()
-        # No frame yet – return placeholder (viewer shows "No data")
+        # No frame yet – return placeholders for both viewer and overlay
         if not boxes:
-            return None, hud, session
-        # Need a dummy frame size; return None payload to avoid wrong scale
-        return None, hud, session
+            return None, {"boxes": [], "frame_w": 0, "frame_h": 0}, hud, session
+        return None, {"boxes": boxes, "frame_w": 0, "frame_h": 0}, hud, session
 
     frame_h, frame_w = frame.shape[0], frame.shape[1]
 
@@ -204,17 +203,18 @@ def process_single_frame(
             )
             session.last_detect_time = now
 
-    # Build DetectionViewer payload: (RGB frame, viewer annotations)
+    # Build both outputs: DetectionViewer payload (for interactive viewer) + boxes JSON (for same-window overlay, max speed – no WebP)
     try:
         anns = realtime_boxes_to_annotations(tracked_boxes)
     except Exception:
         anns = []
     viewer_payload = build_viewer_payload(frame, anns)
-    # Update hud with tracked count for immediate feedback
+    boxes_json = {"boxes": tracked_boxes, "frame_w": frame_w, "frame_h": frame_h}
     if not hud or "DETECTED" not in hud:
         hud = f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>' if anns else hud
     return (
         viewer_payload,
+        boxes_json,
         hud,
         session,
     )

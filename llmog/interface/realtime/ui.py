@@ -100,6 +100,11 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         "ByteTrack = multi-object Kalman IoU tracker."
                     ),
                 )
+                c["same_window_chk"] = gr.Checkbox(
+                    value=True,
+                    label="⚡ Same-window overlay (fastest – no WebP re-encode)",
+                    info="ON: boxes drawn directly on video (max FPS). OFF: use interactive DetectionViewer (more features, adds WebP).",
+                )
                 c["category_strategy"] = gr.Radio(
                     label="🎯 Class Expectation Mode",
                     choices=[
@@ -306,23 +311,33 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
 
             with gr.Column(scale=2):
-                with gr.Group(elem_id="rt_webcam_wrap") as webcam_wrap:
+                with gr.Group(elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]) as webcam_wrap:
                     c["webcam_input"] = gr.Image(
                         sources=["webcam"],
                         streaming=True,
-                        label="LIVE WEBCAM STREAM",
+                        label="LIVE WEBCAM STREAM (free detection – boxes in same window when ⚡ enabled)",
                         type="numpy",
                         elem_id="rt_webcam_input",
                     )
+                    # Same-window overlay canvas – positioned over video, no WebP re-encode (max FPS)
+                    c["same_window_html"] = gr.HTML(
+                        value="""
+                        <canvas id="rt_same_window_canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
+                        <style>
+                        #rt_webcam_wrap{position:relative;}
+                        #rt_same_window_canvas{position:absolute; top:0; left:0; width:100%; height:100%;}
+                        </style>
+                        """,
+                        visible=True,
+                        elem_id="rt_same_window_html",
+                    )
                 c["webcam_wrap_group"] = webcam_wrap
-                # Replaced old floating-canvas + JSON overlay with DetectionViewer
-                # (client-side canvas, 10× less websocket payload, no rAF loop).
                 c["realtime_viewer"] = DetectionViewer(
-                    label="Live Detections",
+                    label="Live Detections (interactive viewer – disable ⚡ for features)",
                     panel_title="Live Detections",
                     list_height=380,
+                    visible=False,
                 )
-                # Keep hidden JSON for backward-compat (no longer wired)
                 c["boxes_json_state"] = gr.JSON(visible=False)
                 c["video_input"] = gr.Video(
                     label="INPUT VIDEO FILE",
@@ -389,6 +404,13 @@ def _wire_realtime_events(
         (c_real["prep_grid_backing_color_dropdown"], c_real["prep_grid_backing_color_custom"]),
     ]:
         dd.change(toggle_custom_color_field, inputs=[dd], outputs=[custom_field])
+
+    # Same-window overlay toggle – free detection max speed
+    c_real["same_window_chk"].change(
+        fn=lambda enabled: (gr.update(visible=enabled), gr.update(visible=not enabled)),
+        inputs=[c_real["same_window_chk"]],
+        outputs=[c_real["same_window_html"], c_real["realtime_viewer"]],
+    )
 
     def toggle_mode(mode, session):
         is_cam = mode == "Webcam Stream"
@@ -466,11 +488,66 @@ def _wire_realtime_events(
         ],
         outputs=[
             c_real["realtime_viewer"],
+            c_real["boxes_json_state"],
             c_real["hud_status"],
             c_real["session_state"],
         ],
         stream_every=0.12,
         show_progress="hidden",
+    )
+
+    # Same-window overlay – draws boxes_json_state directly on video (no WebP, max FPS)
+    # Canvas is absolutely positioned over the video element; scale from video's displayed size
+    c_real["boxes_json_state"].change(
+        fn=None,
+        inputs=[c_real["boxes_json_state"]],
+        outputs=[],
+        js="""(payload) => {
+            const canvas = document.getElementById('rt_same_window_canvas');
+            const wrap = document.getElementById('rt_webcam_wrap');
+            if (!canvas || !wrap) return;
+            const ctx = canvas.getContext('2d');
+            const video = wrap.querySelector('video');
+            if (!video || !video.videoWidth) {
+                ctx.clearRect(0,0,canvas.width,canvas.height);
+                return;
+            }
+            const rect = video.getBoundingClientRect();
+            const wrapRect = wrap.getBoundingClientRect();
+            // Position canvas exactly over the video (handles letterboxing)
+            canvas.width = Math.round(rect.width);
+            canvas.height = Math.round(rect.height);
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            canvas.style.left = (rect.left - wrapRect.left) + 'px';
+            canvas.style.top = (rect.top - wrapRect.top) + 'px';
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            if (!payload || !payload.boxes || payload.boxes.length===0) return;
+            const boxes = payload.boxes;
+            const frameW = payload.frame_w || video.videoWidth;
+            const frameH = payload.frame_h || video.videoHeight;
+            if (!frameW || !frameH) return;
+            const scaleX = rect.width / frameW;
+            const scaleY = rect.height / frameH;
+            ctx.lineWidth = 2;
+            ctx.font = '12px \"JetBrains Mono\", monospace';
+            for (let i=0;i<boxes.length;i++){
+                const b=boxes[i]; if(!b||b.length<4) continue;
+                const ymin=b[0], xmin=b[1], ymax=b[2], xmax=b[3];
+                const label = b[4]!==undefined?String(b[4]):'';
+                const tid = b[5]!==undefined?b[5]:null;
+                const x=xmin*scaleX, y=ymin*scaleY, w=(xmax-xmin)*scaleX, h=(ymax-ymin)*scaleY;
+                ctx.strokeStyle='#00ffcc'; ctx.shadowColor='#00ffcc'; ctx.shadowBlur=6;
+                ctx.strokeRect(x,y,w,h); ctx.shadowBlur=0;
+                const tag = tid!==null ? (label+' #'+tid) : label;
+                if(tag.trim()){
+                    const tw=ctx.measureText(tag).width; const bh=18;
+                    const by = (y>bh)?(y-bh):(y+h);
+                    ctx.fillStyle='rgba(0,255,204,0.85)'; ctx.fillRect(x,by,tw+8,bh);
+                    ctx.fillStyle='#050811'; ctx.fillText(tag, x+4, by+bh-4);
+                }
+            }
+        }""",
     )
 
     c_real["process_video_btn"].click(
