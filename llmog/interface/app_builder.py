@@ -21,6 +21,7 @@ from interface.tab_batch import (
     on_explorer_image_change,
     on_explorer_round_change,
 )
+from interface.batch.components import on_batch_preset_change, on_batch_strategy_change
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 from interface.tab_draw import build_draw_tab, wire_draw_events
@@ -68,6 +69,23 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     c_srv["refresh_logs_btn"].click(
         get_server_status_and_logs,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
+    )
+
+    # ── Batch tab — category strategy & presets ──────────────────────────
+    c_bat["category_strategy"].change(
+        fn=on_batch_strategy_change,
+        inputs=[c_bat["category_strategy"]],
+        outputs=[
+            c_bat["categories_input"],
+            c_bat["category_defs_input"],
+            c_bat["category_preset_dropdown"],
+        ],
+    )
+
+    c_bat["category_preset_dropdown"].change(
+        fn=on_batch_preset_change,
+        inputs=[c_bat["category_preset_dropdown"]],
+        outputs=[c_bat["categories_input"], c_bat["category_defs_input"]],
     )
 
     # ── Batch tab — preprocessing toggles ────────────────────────────────
@@ -171,6 +189,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_bat["prep_custom_resize_chk"],
             c_bat["prep_custom_resize_width"],
             c_bat["prep_custom_resize_height"],
+            c_bat["category_strategy"],
         ],
         outputs=[
             c_bat["pipeline_status"],

@@ -295,7 +295,10 @@ def render_crop_verify_prompt(label: str, template: Optional[str] = None) -> str
 # ---------------------------------------------------------------------------
 
 def render_auto_label_prompt(
-    known_class_names: List[str], template: Optional[str] = None
+    known_class_names: List[str],
+    template: Optional[str] = None,
+    class_mode: str = "hybrid",
+    class_definitions: str = "",
 ) -> str:
     """Render the auto-annotation defect-classification prompt.
 
@@ -305,26 +308,80 @@ def render_auto_label_prompt(
             inventing a new class name.
         template: Optional override template string. If None, the default
             ``auto_label_classifier.md`` template is used.
+        class_mode: One of ``"strict"``, ``"hybrid"`` (default), or ``"free"``.
+            Controls how tightly the model is bound to ``known_class_names``.
+        class_definitions: Optional per-class description block (plain text)
+            to inject into the prompt to help the model distinguish classes.
 
     Returns:
         The rendered prompt string ready to pass to the VLM.
     """
+    mode = (class_mode or "hybrid").lower().strip()
+
     if known_class_names:
         known_str = ", ".join(known_class_names)
     else:
-        known_str = "(none yet — create a new class)"
+        known_str = "(none yet)"
 
+    defs_block = ""
+    if class_definitions and class_definitions.strip():
+        defs_block = f"\n\nClass Definitions:\n{class_definitions.strip()}"
+
+    if mode == "strict":
+        if known_class_names:
+            mode_instruction = (
+                f"You MUST classify this crop into EXACTLY ONE of the following classes: {known_str}.\n"
+                f"If the crop clearly does not match any class, respond with class='none' and confidence=1.\n"
+                f"Do NOT invent new class names under any circumstances.{defs_block}"
+            )
+        else:
+            mode_instruction = (
+                "No target classes have been defined yet.\n"
+                "Respond with class='unknown' and confidence=1."
+            )
+    elif mode == "free":
+        mode_instruction = (
+            "You are in OPEN-WORLD mode. Freely identify and name the most specific defect or object "
+            "visible in this crop using a concise, lowercase, underscore-separated label (e.g. 'surface_scratch', "
+            "'oil_stain', 'bent_component'). Do NOT limit yourself to any prior class list."
+            + (defs_block if defs_block else "")
+        )
+    else:  # hybrid (default)
+        if known_class_names:
+            mode_instruction = (
+                f"PRIORITY classes (reuse if the crop matches): {known_str}.\n"
+                f"If this crop clearly matches one of the above, use that exact name.\n"
+                f"If it is a genuinely different defect/object not covered by the list, "
+                f"you MAY introduce a new concise lowercase class name.{defs_block}"
+            )
+        else:
+            mode_instruction = (
+                "No classes discovered yet — freely name the defect/object you see with "
+                "a concise, lowercase, underscore-separated label."
+                + (defs_block if defs_block else "")
+            )
+
+    # Try to inject the mode instruction into the template via DynaPrompt / Jinja2
     t = template if template is not None else DEFAULT_AUTO_LABEL_TEMPLATE
 
     if template is None:
         dp = _dynaprompt_attr("auto_label_classifier")
         if dp is not None:
             try:
-                return dp.render({"known_classes": known_str}).text
+                return dp.render(
+                    {
+                        "known_classes": known_str,
+                        "mode_instruction": mode_instruction,
+                        "class_mode": mode,
+                    }
+                ).text
             except Exception as exc:
                 logger.warning(
                     "DynaPrompt auto_label_classifier rendering failed, falling back: %s",
                     exc,
                 )
 
-    return _jinja_render(t, known_classes=known_str)
+    # Fallback: append the mode instruction to the rendered template
+    rendered = _jinja_render(t, known_classes=known_str)
+    return rendered + "\n\n" + mode_instruction
+

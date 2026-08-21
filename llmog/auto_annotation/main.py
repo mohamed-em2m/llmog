@@ -142,6 +142,8 @@ def main(args=None):
             completed_images=completed_images,
             batches_done=batches_done,
             auto_save=auto_save,
+            class_mode=getattr(args, "class_mode", "hybrid"),
+            class_definitions=getattr(args, "class_definitions", ""),
         )
     except Exception as e:
         logger.exception(f"An unexpected error occurred during image processing: {e}")

@@ -378,6 +378,62 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         help="save inplace the relabeled annotations in the original label folder instead of a separate output folder.",
     )
 
+    # ── Class Expectation Mode ──────────────────────────────────────────────
+    parser.add_argument(
+        "--class_mode",
+        "--class-mode",
+        dest="class_mode",
+        type=str,
+        default="hybrid",
+        choices=["strict", "hybrid", "free"],
+        help=(
+            "How the VLM should handle target class expectations when classifying crops:\n"
+            "  strict  — Agent is locked to the class list from data.yaml (or --class_definitions).\n"
+            "            If the crop does not match any known class it is labelled 'none'.\n"
+            "  hybrid  — Agent prioritises known classes but can discover and name brand-new\n"
+            "            classes when the crop clearly does not match any existing label.\n"
+            "            This is the default and best for growing datasets.\n"
+            "  free    — Agent freely names whatever defect/object it sees, ignoring the\n"
+            "            existing class list entirely. Use for fully open-vocabulary runs.\n"
+        ),
+    )
+    parser.add_argument(
+        "--class_definitions",
+        "--class-definitions",
+        dest="class_definitions",
+        type=str,
+        default="",
+        help=(
+            "Optional multiline string (or path to a .txt/.md file) with per-class descriptions "
+            "that help the model distinguish between classes.  "
+            "Example: '- hole: missing fabric\\n- stain: discoloration'.  "
+            "If a file path is given and exists, its content is read; otherwise the string is used verbatim."
+        ),
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        default=None,
+        choices=[
+            "fabric_defects",
+            "coco",
+            "road_traffic",
+            "retail_packaging",
+            "pcb_defects",
+        ],
+        help=(
+            "Quick-load a built-in category preset to populate --class_definitions.  "
+            "Ignored when --class_definitions is already set.  "
+            "Choices:\n"
+            "  fabric_defects   — hole, stain, tear, cut, knot, weaving_defect\n"
+            "  coco             — person, car, bicycle, dog, cat, chair, bottle, laptop, cell_phone, book\n"
+            "  road_traffic     — car, truck, pedestrian, cyclist, traffic_light, traffic_sign, bus, motorcycle\n"
+            "  retail_packaging — box, barcode, product_label, bottle, can, pouch, blister_pack\n"
+            "  pcb_defects      — short_circuit, missing_component, solder_bridge, broken_trace, scratch, misalignment\n"
+        ),
+    )
+
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the standalone argparse parser for the auto-annotation pipeline."""
@@ -425,4 +481,73 @@ def parse_args(argv=None) -> argparse.Namespace:
     else:
         args.serving_extra = {}
 
+    # ── Resolve --class_definitions (file path or inline text) ─────────────
+    import os as _os
+    raw_defs = getattr(args, "class_definitions", "") or ""
+    if raw_defs and _os.path.isfile(raw_defs):
+        try:
+            with open(raw_defs, "r", encoding="utf-8") as _f:
+                args.class_definitions = _f.read().strip()
+        except Exception as _e:
+            parser.error(f"--class_definitions: could not read file {raw_defs!r}: {_e}")
+
+    # ── Resolve --preset -> populate class_definitions if not already set ───
+    _PRESET_DEFS = {
+        "fabric_defects": (
+            "- hole: missing fabric or puncture\n"
+            "- stain: discoloration or surface contaminant\n"
+            "- tear: frayed, uneven physical separation\n"
+            "- cut: clean sharp slice or incision\n"
+            "- knot: raised thread lump or snarl\n"
+            "- weaving_defect: uneven thread density or missing yarn"
+        ),
+        "coco": (
+            "- person: human body\n"
+            "- car: passenger automobile\n"
+            "- bicycle: two-wheeled pedal bike\n"
+            "- dog: canine domestic animal\n"
+            "- cat: feline domestic animal\n"
+            "- chair: seating furniture\n"
+            "- bottle: liquid beverage container\n"
+            "- laptop: portable notebook computer\n"
+            "- cell_phone: handheld smartphone\n"
+            "- book: bound printed volume"
+        ),
+        "road_traffic": (
+            "- car: passenger sedan, coupe, or SUV\n"
+            "- truck: heavy transport or cargo vehicle\n"
+            "- pedestrian: person on foot\n"
+            "- cyclist: person riding a bicycle\n"
+            "- traffic_light: signal light lamp\n"
+            "- traffic_sign: road regulatory or warning signboard\n"
+            "- bus: public transit passenger bus\n"
+            "- motorcycle: motorized two-wheeled vehicle"
+        ),
+        "retail_packaging": (
+            "- box: cardboard or corrugated carton\n"
+            "- barcode: 1D or 2D scanner code\n"
+            "- product_label: brand packaging label\n"
+            "- bottle: glass or plastic container\n"
+            "- can: aluminum or tin can\n"
+            "- pouch: flexible plastic packaging\n"
+            "- blister_pack: clear molded plastic bubble packaging"
+        ),
+        "pcb_defects": (
+            "- short_circuit: unintended electrical contact\n"
+            "- missing_component: empty pad where SMD/component should be\n"
+            "- solder_bridge: solder connecting adjacent pins\n"
+            "- broken_trace: severed copper circuit trace\n"
+            "- scratch: surface gouge across the solder mask\n"
+            "- misalignment: component rotated or shifted off pad"
+        ),
+    }
+    preset = getattr(args, "preset", None)
+    if preset and not args.class_definitions:
+        args.class_definitions = _PRESET_DEFS.get(preset, "")
+
+    # Ensure class_mode has a sensible default even when PipelineConfig skips parse_args
+    if not getattr(args, "class_mode", None):
+        args.class_mode = "hybrid"
+
     return args
+

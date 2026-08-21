@@ -749,6 +749,7 @@ def run_batch_dispatcher(
     prep_custom_resize_width,
     prep_custom_resize_height,
     write_yolo_labels: bool = False,
+    category_strategy: str = "strict",
 ):
     """Run Batch detection pipeline across multiple images."""
     yield from run_batch_detection_gui(
@@ -799,4 +800,5 @@ def run_batch_dispatcher(
         prep_custom_resize_width,
         prep_custom_resize_height,
         write_yolo_labels,
+        category_strategy=category_strategy,
     )
