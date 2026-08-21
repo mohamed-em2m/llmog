@@ -55,6 +55,18 @@ class DetectionViewer(gr.HTML):
         html_template = (_STATIC_DIR / "template.html").read_text(encoding="utf-8")
         css_template = (_STATIC_DIR / "style.css").read_text(encoding="utf-8")
         js_on_load = (_STATIC_DIR / "script.js").read_text(encoding="utf-8")
+        # Pre-interpolate panel_title / list_height to avoid ReferenceError:
+        # Gradio's HTML templating expects JS `${props.x}` or Handlebars `{{x}}`,
+        # but the static file ships `${panel_title}` which evaluates as bare JS var.
+        # Doing Python replacement makes it work on all Gradio versions.
+        try:
+            html_template = html_template.replace("${panel_title}", str(panel_title))
+        except Exception:
+            pass
+        try:
+            css_template = css_template.replace("${list_height}", str(list_height))
+        except Exception:
+            pass
 
         has_label = label is not None
         super().__init__(

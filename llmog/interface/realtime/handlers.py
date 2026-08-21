@@ -25,10 +25,29 @@ from interface.realtime.utils import (
 )
 
 
+def _frame_diff_percent(a: np.ndarray, b: np.ndarray) -> float:
+    """Fast downscaled mean diff % for motion gate – 64×64, ~0.1ms."""
+    try:
+        if a is None or b is None or a.shape != b.shape:
+            return 100.0
+        if cv2 is not None:
+            small_a = cv2.resize(a, (64, 64), interpolation=cv2.INTER_NEAREST)
+            small_b = cv2.resize(b, (64, 64), interpolation=cv2.INTER_NEAREST)
+        else:
+            # fallback: center crop
+            small_a = a[:: max(1, a.shape[0] // 64), :: max(1, a.shape[1] // 64)]
+            small_b = b[:: max(1, b.shape[0] // 64), :: max(1, b.shape[1] // 64)]
+        diff = np.mean(np.abs(small_a.astype(np.int16) - small_b.astype(np.int16)))
+        return float(diff / 255.0 * 100.0)
+    except Exception:
+        return 100.0
+
+
 def process_single_frame(
     frame: np.ndarray,
     categories_str: str,
     category_definitions: str,
+    category_strategy: str,
     server_port: int,
     use_external_api: bool,
     ext_api_url: str,
@@ -104,11 +123,31 @@ def process_single_frame(
         # Check if a fresh VLM result just arrived — re-detect immediately
         fresh_result = session.consume_force_redetect()
 
-        if fresh_result or not motion_gate_enabled or stale:
+        # Performance: motion gate now actually compares frames (fast 64×64 diff)
+        # instead of just checking the flag – avoids VLM calls on static scenes.
+        should_submit = False
+        if fresh_result or stale:
+            should_submit = True
+        elif not motion_gate_enabled:
+            should_submit = True
+        else:
+            if session._last_submitted_frame is None:
+                should_submit = True
+            else:
+                diff_pct = _frame_diff_percent(frame, session._last_submitted_frame)
+                if diff_pct >= float(motion_sensitivity_pct or 1.5):
+                    should_submit = True
+
+        if should_submit:
+            # copy only when we will submit (saves 1× frame copy on skipped ticks)
             session._last_submitted_frame = frame.copy()
-            categories = [
-                c.strip() for c in categories_str.split(",") if c.strip()
-            ] or ["object"]
+            mode_norm = (category_strategy or "strict").lower().strip()
+            categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
+            if not categories:
+                if "free" in mode_norm:
+                    categories = ["*"]
+                else:
+                    categories = ["object"]
             base_url, api_key, model_name = resolve_endpoint(
                 server_port, use_external_api, ext_api_url, ext_api_key, ext_model_name
             )
@@ -186,6 +225,7 @@ def process_video_frames(
     sample_interval: float,
     categories_str: str,
     category_definitions: str,
+    category_strategy: str,
     server_port: int,
     use_external_api: bool,
     ext_api_url: str,
@@ -224,21 +264,23 @@ def process_video_frames(
     detector_temp: float = 0.9,
     tracker_algorithm: str = "ByteTrack",
     progress=gr.Progress(),
-) -> Tuple[Any, str]:
-    """Synchronous video file sampling – returns a DetectionViewer payload for the last sampled frame.
+) -> Tuple[Any, Any, str]:
+    """Synchronous video file sampling – returns Gallery (all sampled frames) + DetectionViewer payload (last frame).
 
-    Perf: server no longer draws boxes into NumPy via OpenCV; the browser
-    renders them via DetectionViewer's JS canvas (avoids per-frame JPEG
-    re-encode + copy).  Gallery replaced by a single optimised viewer.
+    Gallery gives quick scan of sampled frames with OpenCV boxes; viewer gives
+    interactive last-frame with DetectionViewer. Capped to 60 frames for long videos.
     """
+    # Gradio Video may return dict with 'video' key or filepath string
+    if isinstance(video_path, dict):
+        video_path = video_path.get("video") or video_path.get("path") or video_path.get("name")
     if not video_path:
-        return None, "No video file uploaded."
+        return [], None, "No video file uploaded."
     if cv2 is None:
-        return None, "OpenCV (cv2) is required for video processing."
+        return [], None, "OpenCV (cv2) is required for video processing."
 
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        return None, "Failed to open video file."
+        return [], None, "Failed to open video file."
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_interval = int(max(1, fps * sample_interval))
@@ -254,11 +296,17 @@ def process_video_frames(
     cap.release()
 
     if not frames:
-        return None, "No frames could be sampled from this video."
+        return [], None, "No frames could be sampled from this video."
 
-    categories = [c.strip() for c in categories_str.split(",") if c.strip()] or [
-        "object"
-    ]
+    # Performance: cap sampled frames to 60 to avoid 100+ VLM calls on long videos
+    if len(frames) > 60:
+        step = len(frames) / 60
+        frames = [frames[int(i * step)] for i in range(60)]
+
+    mode_norm = (category_strategy or "strict").lower().strip()
+    categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
+    if not categories:
+        categories = ["*"] if "free" in mode_norm else ["object"]
     base_url, api_key, model_name = resolve_endpoint(
         server_port, use_external_api, ext_api_url, ext_api_key, ext_model_name
     )
@@ -301,10 +349,13 @@ def process_video_frames(
     pipeline_params = {"detector_temperature": float(detector_temp or 0.9)}
 
     tracker = MultiAlgorithmTracker(tracker_algorithm)
+    # For Gallery (sample frame detection) we keep annotated frames
+    from interface.realtime.utils import draw_boxes_opencv
+
+    gallery_frames: List[np.ndarray] = []
     last_payload = None
     last_boxes: List[Any] = []
     errors = 0
-    # Keep last raw frame for viewer base if all frames fail
     last_raw = frames[-1] if frames else None
     for idx, f in enumerate(frames):
         progress(
@@ -331,7 +382,12 @@ def process_video_frames(
             last_boxes = []
             errors += 1
             last_raw = f
-        # Build viewer payload for this frame – will be overwritten, keep last
+        # Gallery keeps OpenCV-annotated frames for quick scan (restores sample frame detection)
+        try:
+            gallery_frames.append(draw_boxes_opencv(f, last_boxes))
+        except Exception:
+            gallery_frames.append(f)
+        # Viewer keeps last frame's interactive DetectionViewer payload
         try:
             anns = realtime_boxes_to_annotations(last_boxes)
         except Exception:
@@ -342,7 +398,7 @@ def process_video_frames(
     status = f"Successfully processed {total} sampled frame(s) from video!"
     if errors:
         status += f" ({errors} frame(s) failed detection and were shown unannotated.)"
-    # Fallback: if last_payload is None, return raw last frame with empty annotations
     if last_payload is None and last_raw is not None:
         last_payload = build_viewer_payload(last_raw, [])
-    return last_payload, status
+    # Return both Gallery (all sampled frames) and viewer (last frame interactive)
+    return gallery_frames, last_payload, status

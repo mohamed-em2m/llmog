@@ -7,6 +7,7 @@ import gradio as gr
 
 from detection_viewer import DetectionViewer
 from free_detection.trackers import MultiAlgorithmTracker
+from interface.batch.reclassification import CATEGORY_PRESETS
 from interface.realtime.state import (
     SessionDetector,
     new_session_detector,
@@ -14,6 +15,56 @@ from interface.realtime.state import (
     DEFAULT_HUD,
 )
 from interface.realtime.handlers import process_single_frame, process_video_frames
+
+
+def _on_realtime_preset_change(preset_name: str):
+    preset = CATEGORY_PRESETS.get(preset_name, CATEGORY_PRESETS["Custom / Blank"])
+    return gr.update(value=preset["classes"]), gr.update(value=preset["defs"])
+
+
+def _on_realtime_strategy_change(strategy: str):
+    if strategy == "free":
+        return (
+            gr.update(
+                label="Domain / Focus Hint (Optional)",
+                placeholder="e.g. Focus on industrial defects, wildlife, vehicles... (or leave blank)",
+                info="Free Mode: Agent autonomously detects all salient objects/anomalies.",
+            ),
+            gr.update(
+                label="Domain Guidance / Prompt Context (Optional)",
+                placeholder="Optional domain context or special instructions...",
+                info="Optional domain guidance.",
+            ),
+            gr.update(visible=False),
+        )
+    elif strategy == "hybrid":
+        return (
+            gr.update(
+                label="Priority Target Categories (comma-separated)",
+                placeholder="e.g. hole, stain, tear, cut",
+                info="Hybrid Mode: Target categories are prioritized; agent can discover new anomaly classes.",
+            ),
+            gr.update(
+                label="Category Definitions & Novel Discovery Guidelines",
+                placeholder="Definitions for priority categories...",
+                info="Definitions for priority categories.",
+            ),
+            gr.update(visible=True),
+        )
+    else:  # strict
+        return (
+            gr.update(
+                label="Target Categories (Strict - Comma Separated)",
+                placeholder="hole, stain, tear, cut, knot, weaving_defect",
+                info="Strict Mode: Agent is restricted strictly to listed categories.",
+            ),
+            gr.update(
+                label="Category Definitions",
+                placeholder="Write instructions for categories...",
+                info="Category definitions.",
+            ),
+            gr.update(visible=True),
+        )
 
 
 def _build_realtime_tab() -> Dict[str, Any]:
@@ -49,16 +100,32 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         "ByteTrack = multi-object Kalman IoU tracker."
                     ),
                 )
+                c["category_strategy"] = gr.Radio(
+                    label="🎯 Class Expectation Mode",
+                    choices=[
+                        ("🔒 Strict (Closed-Set)", "strict"),
+                        ("🔀 Hybrid (Extendable)", "hybrid"),
+                        ("🌐 Free (Open-World)", "free"),
+                    ],
+                    value="strict",
+                    info="Strict: only detect listed categories. Hybrid: prioritize + discover new. Free: detect all salient objects freely.",
+                )
+                c["category_preset_dropdown"] = gr.Dropdown(
+                    label="📋 Category Domain Presets",
+                    choices=list(CATEGORY_PRESETS.keys()),
+                    value="General Objects (COCO)",
+                    info="Quickly load target categories & definitions.",
+                )
                 c["categories_input"] = gr.Textbox(
                     value="person, car, dog, bottle, phone",
-                    label="Target Categories (comma-separated)",
-                    info="Leave empty or type * for free/open-vocabulary detection.",
+                    label="Target Categories (Strict - Comma Separated)",
+                    info="Strict Mode: Agent is restricted strictly to listed categories.",
                 )
                 c["category_defs_input"] = gr.Textbox(
                     label="Category Definitions",
                     placeholder="Write instructions for categories...",
                     lines=3,
-                    value="",
+                    value=CATEGORY_PRESETS["General Objects (COCO)"]["defs"],
                 )
 
                 # ── Motion Gate + Refresh ─────────────────────────────────────
@@ -261,13 +328,21 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     label="INPUT VIDEO FILE",
                     visible=False,
                 )
-                c["video_gallery_output"] = DetectionViewer(
-                    label="Sampled Frame Detections",
+                # Sampled frames – Gallery for quick scan + DetectionViewer for interactive last frame
+                c["video_gallery_output"] = gr.Gallery(
+                    label="Sampled Frame Detections (Gallery)",
+                    columns=3,
+                    visible=False,
+                    elem_id="rt_video_gallery",
+                )
+                c["video_viewer"] = DetectionViewer(
+                    label="Sampled Frame – Interactive Viewer (last frame)",
                     panel_title="Sampled Detections",
                     list_height=380,
+                    elem_id="rt_video_viewer",
                 )
-                # Legacy Gallery key retained as alias for old callers
-                c["video_gallery_legacy"] = gr.Gallery(visible=False)
+                # Keep legacy key for backward compat
+                c["video_gallery_legacy"] = c["video_gallery_output"]
     return c
 
 
@@ -290,14 +365,40 @@ def _wire_realtime_events(
         outputs=[c_real["prep_pixel_bounds_row"]],
     )
 
+    # ── Category strategy & presets (Class Expectation Mode) ──────────────
+    c_real["category_preset_dropdown"].change(
+        fn=_on_realtime_preset_change,
+        inputs=[c_real["category_preset_dropdown"]],
+        outputs=[c_real["categories_input"], c_real["category_defs_input"]],
+    )
+    c_real["category_strategy"].change(
+        fn=_on_realtime_strategy_change,
+        inputs=[c_real["category_strategy"]],
+        outputs=[
+            c_real["categories_input"],
+            c_real["category_defs_input"],
+            c_real["category_preset_dropdown"],
+        ],
+    )
+    # Custom grid colors (parity with Batch tab)
+    from interface.state import toggle_custom_color_field
+
+    for dd, custom_field in [
+        (c_real["prep_grid_line_color_dropdown"], c_real["prep_grid_line_color_custom"]),
+        (c_real["prep_grid_text_color_dropdown"], c_real["prep_grid_text_color_custom"]),
+        (c_real["prep_grid_backing_color_dropdown"], c_real["prep_grid_backing_color_custom"]),
+    ]:
+        dd.change(toggle_custom_color_field, inputs=[dd], outputs=[custom_field])
+
     def toggle_mode(mode, session):
         is_cam = mode == "Webcam Stream"
         fresh_session = reset_session(session)
         return (
             gr.update(visible=is_cam),
-            gr.update(visible=is_cam),  # realtime_viewer visible only in cam mode
+            gr.update(visible=is_cam),  # realtime_viewer
             gr.update(visible=not is_cam),
-            gr.update(visible=not is_cam),
+            gr.update(visible=not is_cam),  # gallery
+            gr.update(visible=not is_cam),  # viewer (last frame)
             fresh_session,
         )
 
@@ -309,6 +410,7 @@ def _wire_realtime_events(
             c_real["realtime_viewer"],
             c_real["video_input"],
             c_real["video_gallery_output"],
+            c_real["video_viewer"],
             c_real["session_state"],
         ],
     )
@@ -319,6 +421,7 @@ def _wire_realtime_events(
             c_real["webcam_input"],
             c_real["categories_input"],
             c_real["category_defs_input"],
+            c_real["category_strategy"],
             c_srv["server_port_input"],
             c_srv["use_external_api_chk"],
             c_srv["ext_api_url"],
@@ -377,6 +480,7 @@ def _wire_realtime_events(
             c_real["sample_interval"],
             c_real["categories_input"],
             c_real["category_defs_input"],
+            c_real["category_strategy"],
             c_srv["server_port_input"],
             c_srv["use_external_api_chk"],
             c_srv["ext_api_url"],
@@ -415,5 +519,5 @@ def _wire_realtime_events(
             c_real["det_temp_slider"],
             c_real["tracker_algorithm"],
         ],
-        outputs=[c_real["video_gallery_output"], c_real["hud_status"]],
+        outputs=[c_real["video_gallery_output"], c_real["video_viewer"], c_real["hud_status"]],
     )
