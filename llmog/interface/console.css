@@ -861,9 +861,324 @@ input[type="checkbox"] { accent-color: #38bdf8 !important; }
     .tabitem { padding: 0.75rem !important; }
 }
 
-/* ── Large Drawing Canvas for Interactive Tab ── */
-.draw-canvas-large {
-    border-radius: 8px !important;
+/* ── Custom HTML5 Canvas Frontend (Draw & Recognize) ── */
+.custom-canvas-container {
+    display: flex;
+    flex-direction: column;
+    background: #080d14;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
+
+.canvas-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #0d1117;
+    border-bottom: 1px solid #21262d;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.canvas-tool-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.tool-group-label {
+    font-size: 0.7rem;
+    color: #7d8590;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-right: 0.2rem;
+}
+
+.canvas-toolbar-divider {
+    width: 1px;
+    height: 22px;
+    background: #21262d;
+    margin: 0 0.25rem;
+}
+
+.canvas-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    background: #161b22;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.canvas-tool-btn:hover {
+    background: #21262d;
+    border-color: #38bdf8;
+    color: #ffffff;
+}
+
+.canvas-tool-btn.active {
+    background: #0369a1;
+    border-color: #38bdf8;
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.canvas-tool-btn.danger:hover {
+    background: #7f1d1d;
+    border-color: #f87171;
+    color: #fca5a5;
+}
+
+.canvas-tool-btn.icon-only {
+    padding: 0.3rem 0.45rem;
+}
+
+.color-palette-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.color-swatch {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.1s ease, border-color 0.1s ease;
+}
+
+.color-swatch:hover {
+    transform: scale(1.2);
+}
+
+.color-swatch.active {
+    border-color: #ffffff;
+    box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    transform: scale(1.15);
+}
+
+.color-picker-input {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.canvas-range-slider {
+    width: 70px;
+    height: 4px;
+    accent-color: #38bdf8;
+    cursor: pointer;
+}
+
+.zoom-indicator {
+    font-size: 0.72rem;
+    color: #38bdf8;
+    min-width: 40px;
+    text-align: center;
+}
+
+.canvas-stage-wrapper {
+    position: relative;
+    width: 100%;
+    height: 560px;
+    background: #080d14;
+    overflow: hidden;
+    cursor: crosshair;
+    user-select: none;
+}
+
+.canvas-stage-wrapper.drag-active {
+    outline: 2px dashed #38bdf8;
+    background: rgba(56, 189, 248, 0.05);
+}
+
+#custom-annotation-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.canvas-empty-state {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 13, 20, 0.92);
+    z-index: 10;
+    text-align: center;
+    padding: 2rem;
+}
+
+.canvas-empty-state .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+}
+
+.canvas-empty-state h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    color: #e6edf3;
+    font-size: 1.25rem;
+    margin-bottom: 0.35rem;
+}
+
+.canvas-empty-state p {
+    font-family: 'Space Grotesk', sans-serif;
+    color: #7d8590;
+    font-size: 0.85rem;
+    max-width: 420px;
+    margin-bottom: 1.25rem;
+}
+
+.empty-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.btn-canvas-primary {
+    padding: 0.55rem 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: #0ea5e9;
+    color: #ffffff;
+    border: 1px solid #38bdf8;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.btn-canvas-primary:hover {
+    background: #0284c7;
+}
+
+.btn-canvas-secondary {
+    padding: 0.55rem 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 500;
+    background: #161b22;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-canvas-secondary:hover {
+    background: #21262d;
+    color: #ffffff;
+}
+
+.drag-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: #484f58;
+}
+
+.canvas-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.75rem;
+    background: #0d1117;
+    border-top: 1px solid #21262d;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    min-height: 34px;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.regions-count-badge {
+    background: #161b22;
+    border: 1px solid #30363d;
+    padding: 0.15rem 0.5rem;
+    border-radius: 12px;
+    color: #38bdf8;
+    font-weight: 600;
+}
+
+.canvas-hint-text {
+    color: #7d8590;
+}
+
+.regions-list-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    overflow-x: auto;
+    max-width: 55%;
+}
+
+.canvas-region-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.68rem;
+    color: #c9d1d9;
+    white-space: nowrap;
+}
+
+.chip-color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.chip-title {
+    font-weight: 600;
+    color: #e6edf3;
+}
+
+.chip-coords {
+    color: #7d8590;
+}
+
+.chip-del-btn {
+    background: transparent;
+    border: none;
+    color: #7d8590;
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 0 0.1rem;
+    line-height: 1;
+}
+
+.chip-del-btn:hover {
+    color: #f87171;
+}
+
 
 

@@ -99,6 +99,7 @@ def run_batch_detection_gui(
     prep_custom_resize_width,
     prep_custom_resize_height,
     write_yolo_labels: bool = False,
+    category_strategy: str = "strict",
 ):
     state.pipeline_cancel_event.clear()
 
@@ -116,12 +117,16 @@ def run_batch_detection_gui(
         ), *_empty_yield
         return
 
-    categories = [c.strip() for c in categories_str.split(",") if c.strip()]
+    mode_norm = (category_strategy or "strict").lower().strip()
+    categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
     if not categories:
-        yield "Error: Please list at least one category.", _render_progress_bar(
-            0
-        ), *_empty_yield
-        return
+        if "free" in mode_norm:
+            categories = ["*"]
+        else:
+            yield f"Error: Please list at least one category for {category_strategy.capitalize()} mode (or choose Free mode).", _render_progress_bar(
+                0
+            ), *_empty_yield
+            return
 
     # Normalize image_files into a list (prevent iterating character-by-character if a string is passed)
     raw_list: List[Any]
@@ -428,7 +433,8 @@ def run_batch_detection_gui(
                 batch_results[stem]["detections"] = detections
 
             if write_yolo_labels:
-                lines, unmapped = detections_to_yolo(detections, categories)
+                allow_dyn = (category_strategy != "strict")
+                lines, unmapped = detections_to_yolo(detections, categories, allow_dynamic_classes=allow_dyn)
                 labels_dir = run_dir / "labels"
                 labels_dir.mkdir(parents=True, exist_ok=True)
                 if lines:

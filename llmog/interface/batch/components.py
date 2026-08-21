@@ -15,7 +15,7 @@ from interface.state import (
 )
 from interface.batch.runner import TASK_CHOICES, TASK_FREE_ANNOTATION
 from interface.batch.helpers import render_status_table
-from interface.batch.reclassification import _RECLS_EMPTY_TABLE
+from interface.batch.reclassification import _RECLS_EMPTY_TABLE, CATEGORY_PRESETS
 
 
 def toggle_run_btn(is_running: bool):
@@ -38,6 +38,61 @@ def toggle_external_api(use_external: bool):
     )
 
 
+def on_batch_preset_change(preset_name: str):
+    """Populate batch categories and definitions when a domain preset is chosen."""
+    preset = CATEGORY_PRESETS.get(preset_name, CATEGORY_PRESETS["Custom / Blank"])
+    return (
+        gr.update(value=preset["classes"]),
+        gr.update(value=preset["defs"]),
+    )
+
+
+def on_batch_strategy_change(strategy: str):
+    """Update batch inputs according to the selected category strategy."""
+    if strategy == "free":
+        return (
+            gr.update(
+                label="Domain / Focus Hint (Optional)",
+                placeholder="e.g. Focus on industrial defects, biological specimens, vehicles... (or leave blank)",
+                info="Free Mode: Agent autonomously detects all salient objects/anomalies.",
+            ),
+            gr.update(
+                label="Domain Guidance / Prompt Context (Optional)",
+                placeholder="Optional domain context or special instructions...",
+                info="Optional domain guidance.",
+            ),
+            gr.update(visible=False),
+        )
+    elif strategy == "hybrid":
+        return (
+            gr.update(
+                label="Priority Target Categories (comma-separated)",
+                placeholder="e.g. hole, stain, tear, cut",
+                info="Hybrid Mode: Target categories are prioritized; agent can discover new anomaly classes.",
+            ),
+            gr.update(
+                label="Category Definitions & Novel Discovery Guidelines",
+                placeholder="Definitions for priority categories...",
+                info="Definitions for priority categories.",
+            ),
+            gr.update(visible=True),
+        )
+    else:  # strict
+        return (
+            gr.update(
+                label="Target Categories (Strict - Comma Separated)",
+                placeholder="hole, stain, tear, cut, knot, weaving_defect",
+                info="Strict Mode: Agent is restricted strictly to listed categories.",
+            ),
+            gr.update(
+                label="Category Definitions",
+                placeholder="Write instructions for categories...",
+                info="Category definitions.",
+            ),
+            gr.update(visible=True),
+        )
+
+
 def build_batch_tab() -> Dict[str, Any]:
     """Build the Batch Sandbox tab and return all interactive Gradio components."""
 
@@ -51,23 +106,36 @@ def build_batch_tab() -> Dict[str, Any]:
                 file_types=["image"],
                 label="Upload Source Image(s)",
             )
+
+            category_strategy = gr.Radio(
+                label="🎯 Category Detection Strategy",
+                choices=[
+                    ("🔒 Strict (Closed-Set)", "strict"),
+                    ("🔀 Hybrid (Extendable)", "hybrid"),
+                    ("🌐 Free (Open-World)", "free"),
+                ],
+                value="strict",
+                info="Strict: Only detects listed categories. Hybrid: Prioritizes target categories + discovers new. Free: Detects all salient objects freely.",
+            )
+
+            category_preset_dropdown = gr.Dropdown(
+                label="📋 Category Domain Presets",
+                choices=list(CATEGORY_PRESETS.keys()),
+                value="Fabric & Surface Defects",
+                info="Quickly load target categories & distinguishing definitions.",
+            )
+
             categories_input = gr.Textbox(
-                label="Target Categories (comma-separated)",
+                label="Target Categories (Strict - Comma Separated)",
                 placeholder="hole, stain, tear, cut, knot, weaving_defect",
                 value="hole, stain, tear, cut, knot, weaving_defect",
+                info="Strict Mode: Agent is restricted strictly to listed categories.",
             )
             category_defs_input = gr.Textbox(
                 label="Category Definitions",
                 placeholder="Write instructions for categories...",
                 lines=4,
-                value=(
-                    "- hole: missing fabric\n"
-                    "- stain: discoloration only\n"
-                    "- tear: frayed, uneven separation\n"
-                    "- cut: clean cut\n"
-                    "- knot: raise lump\n"
-                    "- weaving_defect: uneven thread density"
-                ),
+                value=CATEGORY_PRESETS["Fabric & Surface Defects"]["defs"],
             )
 
             with gr.Accordion("Pipeline Parameters", open=False) as rounds_accordion:
@@ -465,6 +533,8 @@ def build_batch_tab() -> Dict[str, Any]:
         prep_accordion=prep_accordion,
         advanced_accordion=advanced_accordion,
         input_images=input_images,
+        category_strategy=category_strategy,
+        category_preset_dropdown=category_preset_dropdown,
         categories_input=categories_input,
         category_defs_input=category_defs_input,
         rounds_slider=rounds_slider,
