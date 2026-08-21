@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import Dict, Any
 import gradio as gr
 
+from detection_viewer import DetectionViewer
+
 from interface.state import (
     DEFAULT_CONCURRENCY,
     panel_header,
@@ -392,22 +394,6 @@ def build_batch_tab() -> Dict[str, Any]:
                             info="Default: 2048×2048",
                         )
 
-            with gr.Accordion("External API (Optional)", open=False) as ext_api_group:
-                use_external_api_chk = gr.Checkbox(
-                    label="Use External API instead of Local Server",
-                    value=False,
-                )
-                ext_api_url = gr.Textbox(
-                    label="Base URL", value="https://api.openai.com/v1"
-                )
-                ext_api_key = gr.Textbox(
-                    label="API Key",
-                    placeholder="sk-...",
-                    value="",
-                    type="password",
-                )
-                ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
-
             with gr.Accordion("Advanced Settings", open=False) as advanced_accordion:
                 concurrency_slider = gr.Slider(
                     label="Concurrent Images",
@@ -485,11 +471,11 @@ def build_batch_tab() -> Dict[str, Any]:
                             )
                             gr.HTML("</div>")
                         with gr.Column(scale=1):
-                            gr.HTML('<div class="img-viewer-wrap">')
-                            best_annotated_viewer = gr.Image(
-                                label="Annotated Image", type="pil"
+                            best_annotated_viewer = DetectionViewer(
+                                label="Detections Viewer",
+                                panel_title="Detections",
+                                list_height=340,
                             )
-                            gr.HTML("</div>")
 
                     round_feedback_display = gr.Textbox(
                         label="Judge's Feedback", lines=4, interactive=False
@@ -574,11 +560,6 @@ def build_batch_tab() -> Dict[str, Any]:
         prep_pixel_bounds_row=prep_pixel_bounds_row,
         prep_min_pixels_num=prep_min_pixels_num,
         prep_max_pixels_num=prep_max_pixels_num,
-        ext_api_group=ext_api_group,
-        use_external_api_chk=use_external_api_chk,
-        ext_api_url=ext_api_url,
-        ext_api_key=ext_api_key,
-        ext_model_name=ext_model_name,
         concurrency_slider=concurrency_slider,
         run_btn=run_btn,
         stop_run_btn=stop_run_btn,

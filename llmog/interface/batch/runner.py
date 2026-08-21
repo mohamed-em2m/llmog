@@ -256,85 +256,41 @@ def run_batch_detection_gui(
     run_dir = Path("./gui_runs") / f"run_{batch_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build preprocessing config
-    if not prep_enabled:
-        prep_config = {
-            "resolution_enabled": False,
-            "contrast_method": "none",
-            "denoise_method": "none",
-            "som_enabled": False,
-            "tiling_enabled": False,
-            "crop_verify_enabled": False,
-            "grid_style": "standard",
-            "grid_step": 100,
-            "grid_line_width": 1,
-            "grid_font_size": 0,
-            "grid_line_color": "red",
-            "grid_text_color": "white",
-            "grid_backing_color": "black",
-            "send_pixel_bounds": False,
-            "min_pixels": 200704,
-            "max_pixels": 4194304,
-            "custom_resize": False,
-            "custom_resize_width": 1024,
-            "custom_resize_height": 1024,
-        }
-    else:
-        use_custom_resize = (
-            prep_custom_resize_enabled and prep_custom_resize_enabled is not None
-        )
-        prep_config = {
-            "resolution_enabled": True if not use_custom_resize else False,
-            "target_short_edge": int(prep_short_edge),
-            "pad_to_square": prep_pad_square,
-            "contrast_method": prep_contrast_method,
-            "clip_limit": 2.0,
-            "gamma": float(prep_gamma),
-            "denoise_method": prep_denoise_method,
-            "sharpen": prep_sharpen,
-            "white_balance": prep_white_balance,
-            "grid_style": (
-                prep_grid_style if prep_grid_style != "Standard Red" else "standard"
-            ),
-            "som_enabled": prep_som_enabled,
-            "tiling_enabled": prep_tiling_enabled,
-            "tile_size": int(prep_tile_size),
-            "tile_overlap": float(prep_tile_overlap) / 100.0,
-            "crop_verify_enabled": prep_crop_verify_enabled,
-            "crop_padding": float(prep_crop_padding) / 100.0,
-            "grid_step": int(prep_grid_step),
-            "grid_line_width": int(prep_grid_line_width),
-            "grid_font_size": int(prep_grid_font_size),
-            "grid_line_color": (
-                prep_grid_line_color
-                if prep_grid_line_color != "custom"
-                else prep_grid_line_color_custom
-            ),
-            "grid_text_color": (
-                prep_grid_text_color
-                if prep_grid_text_color != "custom"
-                else prep_grid_text_color_custom
-            ),
-            "grid_backing_color": (
-                prep_grid_backing_color
-                if prep_grid_backing_color != "custom"
-                else prep_grid_backing_color_custom
-            ),
-            "send_pixel_bounds": prep_send_pixel_bounds,
-            "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
-            "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,
-            "custom_resize": use_custom_resize,
-            "custom_resize_width": (
-                int(prep_custom_resize_width)
-                if prep_custom_resize_width is not None
-                else 1024
-            ),
-            "custom_resize_height": (
-                int(prep_custom_resize_height)
-                if prep_custom_resize_height is not None
-                else 1024
-            ),
-        }
+    # Shared builder – single source of truth for Batch + Realtime (perf: no duplication)
+    from interface.viewer_utils import build_prep_config
+
+    prep_config = build_prep_config(
+        prep_enabled=prep_enabled,
+        prep_short_edge=prep_short_edge,
+        prep_pad_square=prep_pad_square,
+        prep_contrast_method=prep_contrast_method,
+        prep_gamma=prep_gamma,
+        prep_denoise_method=prep_denoise_method,
+        prep_sharpen=prep_sharpen,
+        prep_white_balance=prep_white_balance,
+        prep_grid_style=prep_grid_style,
+        prep_som_enabled=prep_som_enabled,
+        prep_tiling_enabled=prep_tiling_enabled,
+        prep_tile_size=prep_tile_size,
+        prep_tile_overlap=prep_tile_overlap,
+        prep_crop_verify_enabled=prep_crop_verify_enabled,
+        prep_crop_padding=prep_crop_padding,
+        prep_grid_step=prep_grid_step,
+        prep_grid_line_width=prep_grid_line_width,
+        prep_grid_font_size=prep_grid_font_size,
+        prep_grid_line_color=prep_grid_line_color,
+        prep_grid_line_color_custom=prep_grid_line_color_custom,
+        prep_grid_text_color=prep_grid_text_color,
+        prep_grid_text_color_custom=prep_grid_text_color_custom,
+        prep_grid_backing_color=prep_grid_backing_color,
+        prep_grid_backing_color_custom=prep_grid_backing_color_custom,
+        prep_send_pixel_bounds=prep_send_pixel_bounds,
+        prep_min_pixels=prep_min_pixels,
+        prep_max_pixels=prep_max_pixels,
+        prep_custom_resize_enabled=prep_custom_resize_enabled,
+        prep_custom_resize_width=prep_custom_resize_width,
+        prep_custom_resize_height=prep_custom_resize_height,
+    )
 
     batch_results: Dict[str, Any] = {}
     _cache_put(batch_id, batch_results)
@@ -371,21 +327,27 @@ def run_batch_detection_gui(
 
             target_suffix = img_path.suffix or ".jpg"
             shutil.copy(img_path, image_out_dir / f"original{target_suffix}")
-            base_image = Image.open(img_path).convert("RGB")
+            base_image_full = Image.open(img_path).convert("RGB")
+            # Cache spill opt: keep viewer image ≤1600 long edge to cut RAM ~4× for 4K batches
+            cache_image = base_image_full
+            if max(cache_image.size) > 1600:
+                cache_image = cache_image.copy()
+                cache_image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
 
+            # Lazy grid: defer draw_grid until explorer requests show_grid=True
             with results_lock:
                 batch_results[stem] = {
-                    "grid_original": draw_grid(
-                        base_image,
-                        step=prep_config.get("grid_step", 250),
-                        style=prep_config.get("grid_style", "standard"),
-                        line_color=prep_config.get("grid_line_color", "red"),
-                        line_width=prep_config.get("grid_line_width", 1),
-                        font_size=prep_config.get("grid_font_size", 0),
-                        text_color=prep_config.get("grid_text_color", "white"),
-                        backing_color=prep_config.get("grid_backing_color", "black"),
-                    ),
-                    "raw_original": base_image,
+                    "raw_original": cache_image,
+                    "grid_original": None,  # populated on demand
+                    "_grid_config": {
+                        "step": prep_config.get("grid_step", 250),
+                        "style": prep_config.get("grid_style", "standard"),
+                        "line_color": prep_config.get("grid_line_color", "red"),
+                        "line_width": prep_config.get("grid_line_width", 1),
+                        "font_size": prep_config.get("grid_font_size", 0),
+                        "text_color": prep_config.get("grid_text_color", "white"),
+                        "backing_color": prep_config.get("grid_backing_color", "black"),
+                    },
                     "best_annotated": None,
                     "detections": [],
                     "rounds": [],
@@ -396,7 +358,9 @@ def run_batch_detection_gui(
             ):
                 if state.pipeline_cancel_event.is_set():
                     raise PipelineCancelledException("Pipeline cancelled by user.")
-                q.put(("round", _stem, round_result, annotated_image))
+                # Perf: discard server-drawn annotated_image – viewer draws client-side.
+                # Only round_result (detections/score) is needed for the UI.
+                q.put(("round", _stem, round_result, None))
 
             pipeline = ObjectDetectionPipeline(
                 detector_client=client,
@@ -527,7 +491,7 @@ def run_batch_detection_gui(
                 status_msg = f"Processing ({finished_count}/{total_imgs} done) — {running_n} running concurrently..."
 
             elif tag == "round":
-                stem, r_res, r_img = msg[1], msg[2], msg[3]
+                stem, r_res, _r_img = msg[1], msg[2], msg[3]
                 with results_lock:
                     if stem in batch_results:
                         batch_results[stem]["rounds"].append(
@@ -537,7 +501,8 @@ def run_batch_detection_gui(
                                 "feedback": r_res.feedback,
                                 "raw_text": r_res.raw_detector_output,
                                 "parse_error": r_res.parse_error,
-                                "image": r_img,
+                                # No per-round annotated PIL – viewer builds overlay client-side
+                                "image": None,
                                 "detections": r_res.detections,
                             }
                         )

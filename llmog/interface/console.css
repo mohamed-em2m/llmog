@@ -1180,5 +1180,86 @@ input[type="checkbox"] { accent-color: #38bdf8 !important; }
     color: #f87171;
 }
 
+/* ── DetectionViewer (llmog/detection_viewer) — dark console overrides ── */
+.pose-viewer-container {
+    background: #0d1117 !important;
+    border: 1px solid #21262d !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+}
+.pose-viewer-container .canvas-wrapper {
+    background: #080d14 !important;
+    border-radius: 0 !important;
+}
+.pose-viewer-container .canvas-wrapper canvas {
+    border-radius: 6px;
+}
+.pose-viewer-container .control-panel {
+    background: #0d1117 !important;
+    border-color: #21262d !important;
+}
+.pose-viewer-container .control-panel-header {
+    background: #161b22 !important;
+    border-bottom-color: #21262d !important;
+}
+.pose-viewer-container .control-panel-title,
+.pose-viewer-container .control-panel-count {
+    color: #c9d1d9 !important;
+}
+.pose-viewer-container .cp-btn {
+    background: #161b22 !important;
+    color: #c9d1d9 !important;
+    border-color: #30363d !important;
+}
+.pose-viewer-container .cp-btn:hover {
+    background: #21262d !important;
+    border-color: #38bdf8 !important;
+    color: #e6edf3 !important;
+}
+.pose-viewer-container .cp-btn.active,
+.pose-viewer-container .toggle-image-btn.active {
+    background: #0ea5e9 !important;
+    border-color: #38bdf8 !important;
+    color: #fff !important;
+}
+.pose-viewer-container .annotation-row {
+    border-bottom: 1px solid #161b22 !important;
+}
+.pose-viewer-container .annotation-row:hover {
+    background: #161b22 !important;
+}
+.pose-viewer-container .annotation-row.selected {
+    background: #1c2128 !important;
+    border-left-color: #38bdf8 !important;
+}
+.pose-viewer-container .ann-label { color: #e6edf3 !important; }
+.pose-viewer-container .ann-summary { color: #7d8590 !important; }
+.pose-viewer-container .placeholder {
+    background: #0d1117;
+    border-color: #21262d !important;
+    color: #7d8590 !important;
+}
+.pose-viewer-container .loading-indicator {
+    background: #0d1117;
+    border-color: #21262d !important;
+}
+/* Draw tab — keep canvas + viewer columns aligned and scrollable */
+.draw-tab-row {
+    align-items: flex-start !important;
+}
+.draw-right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.draw-right-panel .pose-viewer-container {
+    flex-shrink: 0;
+}
+@media (max-width: 1100px) {
+    .draw-tab-row {
+        flex-direction: column !important;
+    }
+}
+
 
 

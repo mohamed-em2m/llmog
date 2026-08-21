@@ -14,7 +14,6 @@ from interface.tab_server import (
 )
 from interface.tab_batch import (
     _build_batch_tab,
-    toggle_external_api,
     toggle_run_btn,
     run_batch_dispatcher,
     cancel_pipeline,
@@ -27,11 +26,46 @@ from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 from interface.tab_draw import build_draw_tab, wire_draw_events
 
 
+def _on_endpoint_mode_change(mode: str):
+    is_ext = mode == "External API"
+    return (
+        gr.update(visible=not is_ext),  # local_server_group
+        gr.update(visible=is_ext),       # ext_api_group
+        is_ext,                          # use_external_api_chk (hidden bool)
+        gr.update(interactive=not is_ext),  # start_server_btn
+        gr.update(interactive=not is_ext),  # stop_server_btn
+        gr.update(interactive=not is_ext),  # server_preset
+        gr.update(interactive=not is_ext),  # server_backend
+        gr.update(interactive=not is_ext),  # server_model_input
+        gr.update(interactive=not is_ext),  # server_port_input
+        gr.update(interactive=not is_ext),  # server_thinking_chk
+        gr.update(interactive=not is_ext),  # server_mtp_chk
+    )
+
+
 def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
 
     """Wire all event handlers across server, batch, and prompt tabs."""
 
     # ── Server tab ────────────────────────────────────────────────────────
+    c_srv["endpoint_mode"].change(
+        _on_endpoint_mode_change,
+        inputs=[c_srv["endpoint_mode"]],
+        outputs=[
+            c_srv["local_server_group"],
+            c_srv["ext_api_group"],
+            c_srv["use_external_api_chk"],
+            c_srv["start_server_btn"],
+            c_srv["stop_server_btn"],
+            c_srv["server_preset"],
+            c_srv["server_backend"],
+            c_srv["server_model_input"],
+            c_srv["server_port_input"],
+            c_srv["server_thinking_chk"],
+            c_srv["server_mtp_chk"],
+        ],
+    )
+
     c_srv["server_preset"].change(
         handle_preset_change,
         c_srv["server_preset"],
@@ -117,23 +151,6 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         outputs=[c_bat["prep_pixel_bounds_row"]],
     )
 
-    # ── External API toggle ───────────────────────────────────────────────
-    c_bat["use_external_api_chk"].change(
-        toggle_external_api,
-        inputs=[c_bat["use_external_api_chk"]],
-        outputs=[
-            c_srv["start_server_btn"],
-            c_srv["stop_server_btn"],
-            c_srv["server_preset"],
-            c_srv["server_backend"],
-            c_srv["server_model_input"],
-            c_srv["server_port_input"],
-            c_srv["server_thinking_chk"],
-            c_srv["server_mtp_chk"],
-            c_bat["ext_api_group"],
-        ],
-    )
-
     # ── Run / Cancel ──────────────────────────────────────────────────────
     c_bat["run_btn"].click(
         fn=lambda: toggle_run_btn(is_running=True),
@@ -147,10 +164,10 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_bat["categories_input"],
             c_bat["category_defs_input"],
             c_srv["server_port_input"],
-            c_bat["use_external_api_chk"],
-            c_bat["ext_api_url"],
-            c_bat["ext_api_key"],
-            c_bat["ext_model_name"],
+            c_srv["use_external_api_chk"],
+            c_srv["ext_api_url"],
+            c_srv["ext_api_key"],
+            c_srv["ext_model_name"],
             c_bat["rounds_slider"],
             c_bat["score_threshold_slider"],
             c_bat["det_temp_slider"],
@@ -280,7 +297,7 @@ def build_app() -> gr.Blocks:
         batch_id_state = gr.State("")
 
         with gr.Tabs():
-            with gr.TabItem("🦙 Llama Server"):
+            with gr.TabItem("🧠 Model / Endpoint"):
                 c_srv = _build_server_tab(server_status_badge)
 
             with gr.TabItem("🎨 Draw & Recognize"):

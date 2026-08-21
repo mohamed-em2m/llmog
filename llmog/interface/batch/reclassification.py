@@ -6,6 +6,7 @@ classifies them using the VLM, and draws clear, high-contrast bounding boxes wit
 
 from __future__ import annotations
 
+import asyncio
 import io
 import html
 import base64
@@ -576,6 +577,131 @@ def classify_region(
     return output if isinstance(output, dict) else {}
 
 
+async def _classify_one_async(
+    crop: Image.Image,
+    client: OpenAI,
+    model_name: str,
+    classes: List[str],
+    class_definitions: str,
+    class_mode: str,
+) -> Dict[str, Any]:
+    """Async wrapper for classify_region via asyncio.to_thread for parallel mode."""
+    try:
+        return await asyncio.to_thread(
+            classify_region, crop, client, model_name, classes, class_definitions, class_mode
+        )
+    except Exception as e:
+        return {"class": "error", "confidence": 0, "reasoning": f"API error: {e}"}
+
+
+def classify_regions_batched(
+    crops: List[Image.Image],
+    client: OpenAI,
+    model_name: str,
+    classes: List[str],
+    class_definitions: str = "",
+    class_mode: str = "strict",
+) -> List[Dict[str, Any]]:
+    """Single multi-image request: N crops → 1 VLM call → JSON array.
+
+    Sends [{"type":"text","text":prompt_all}, {"type":"image_url",...}*N] and
+    expects a JSON array `[{"region":1,"class":"...","confidence":0-100,"reasoning":"..."}, ...]`.
+    Falls back to per-region dicts on parse failure.
+    """
+    if not crops:
+        return []
+    # Build data URIs for all crops
+    data_uris: List[str] = []
+    for crop in crops:
+        buf = io.BytesIO()
+        crop.convert("RGB").save(buf, format="JPEG", quality=92)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        data_uris.append(f"data:image/jpeg;base64,{b64}")
+
+    n = len(crops)
+    mode_norm = (class_mode or "strict").lower().strip()
+    if "free" in mode_norm:
+        prompt = (
+            f"You are an expert visual inspector. You are given {n} cropped regions (Region 1..{n}), "
+            "each is a user-marked area. Autonomously name each region's object/defect without fixed class constraint.\n"
+        )
+        if class_definitions and class_definitions.strip():
+            prompt += f"Optional context:\n{class_definitions}\n"
+        prompt += (
+            "For each region, provide a concise lowercase descriptor (1-3 words). "
+            "If blank/unknown, use \"none\".\n"
+            f"Respond with ONLY a JSON array of {n} objects in order, each like "
+            '{"region":<1..N>,"class":"<name>","confidence":<0-100>,"reasoning":"<short>"}. '
+            "No markdown, no extra text."
+        )
+    elif "hybrid" in mode_norm:
+        prompt = (
+            f"You are an expert visual inspector. You are given {n} cropped regions (Region 1..{n}).\n"
+            f"Priority target classes: {classes}.\n"
+        )
+        if class_definitions and class_definitions.strip():
+            prompt += f"Category definitions:\n{class_definitions}\n"
+        prompt += (
+            f"For each region: if it matches a priority class use that name; "
+            f"elif distinct object/defect assign a NEW concise lowercase name; else \"none\".\n"
+            f"Respond with ONLY a JSON array of {n} objects, each like "
+            '{"region":<1..N>,"class":"<name>","is_new_class":<bool>,"confidence":<0-100>,"reasoning":"<short>"}. '
+            "No markdown."
+        )
+    else:  # strict
+        prompt = (
+            f"You are an expert visual inspector. You are given {n} cropped regions (Region 1..{n}).\n"
+            f"Available target classes: {classes}.\n"
+        )
+        if class_definitions and class_definitions.strip():
+            prompt += f"Class definitions:\n{class_definitions}\n"
+        prompt += (
+            f"For each region choose EXACTLY ONE class from the list or \"none\". "
+            f"Respond with ONLY a JSON array of {n} objects, each like "
+            '{"region":<1..N>,"class":"<name>","confidence":<0-100>,"reasoning":"<short>"}. '
+            "No markdown."
+        )
+
+    content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for i, uri in enumerate(data_uris):
+        content.append({"type": "text", "text": f"Region {i+1}:"})
+        content.append({"type": "image_url", "image_url": {"url": uri}})
+
+    response = client.chat.completions.create(
+        model=model_name,
+        temperature=0.2,
+        messages=[{"role": "user", "content": content}],
+    )
+    if not response.choices or not response.choices[0].message:
+        raise ValueError("No choices from VLM batched call")
+    raw = response.choices[0].message.content
+    if not raw:
+        raise ValueError("Empty batched response")
+    parsed = json_repair.loads(raw)
+    # Normalize to list of dicts in region order
+    if isinstance(parsed, dict) and "regions" in parsed:
+        parsed = parsed["regions"]
+    if isinstance(parsed, dict):
+        # single object → wrap
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        raise ValueError(f"Expected JSON array, got {type(parsed)}: {raw[:200]}")
+    # Ensure sorted by region index and padded to n
+    out: List[Dict[str, Any]] = []
+    by_region: Dict[int, Dict[str, Any]] = {}
+    for item in parsed:
+        if isinstance(item, dict):
+            r = item.get("region")
+            try:
+                ri = int(r) if r is not None else len(by_region) + 1
+            except Exception:
+                ri = len(by_region) + 1
+            by_region[ri] = item
+    for i in range(1, n + 1):
+        out.append(by_region.get(i, {"class": "error", "confidence": 0, "reasoning": f"Missing region {i} in batched response"}))
+    return out
+
+
 def render_recls_table(rows: List[str], class_mode: str = "strict") -> str:
     """Render the HTML table showing region classifications with mode badges."""
     body = (
@@ -600,7 +726,7 @@ def render_recls_table(rows: List[str], class_mode: str = "strict") -> str:
     )
 
 
-def classify_regions_gui(
+async def classify_regions_gui(
     editor_value: Any,
     classes_str: str,
     class_definitions: str,
@@ -612,11 +738,15 @@ def classify_regions_gui(
     ext_api_key: str = "",
     ext_model_name: str = "",
     local_server_port: int | str | None = None,
-) -> Tuple[str, Optional[Image.Image], str, str]:
-    """Interactive Draw-and-Recognize handler for Gradio UI supporting Strict, Hybrid, and Free modes.
+    request_mode: str = "parallel",
+) -> Tuple[str, Any, str, str]:
+    """Interactive Draw-and-Recognize handler – now returns a DetectionViewer payload.
 
     Returns:
-        (status_str, annotated_pil_or_None, results_html, yolo_txt)
+        (status_str, viewer_payload_or_None, results_html, yolo_txt)
+        viewer_payload is ``(background PIL, [viewer annotations])`` for
+        ``DetectionViewer`` – client-side box rendering is 10× faster than
+        server-side PIL drawing and avoids re-encoding per region.
     """
     mode_norm = (class_mode or "strict").lower().strip()
     classes = [c.strip().lower() for c in (classes_str or "").split(",") if c.strip()]
@@ -666,19 +796,15 @@ def classify_regions_gui(
 
     regions = extract_regions(editor_value)
     if not regions:
+        # Return DetectionViewer payload even for empty regions (image + no boxes)
         return (
             "No drawn regions detected. Draw strokes or boxes over objects, then run again.",
-            background,
+            (background, []),
             _RECLS_EMPTY_TABLE,
             "",
         )
 
-    annotated = background.copy()
-    draw = ImageDraw.Draw(annotated)
     w_img, h_img = background.size
-
-    font_size = max(14, min(w_img, h_img) // 40)
-    font = _load_font(font_size)
 
     class_ids = {c: i for i, c in enumerate(classes)}
     discovered_new_classes = []
@@ -686,16 +812,65 @@ def classify_regions_gui(
     rows = []
     yolo_lines = []
     conf_min = float(conf_threshold or 0)
+    # Collect viewer annotations – built in one pass without PIL drawing
+    viewer_labels: List[str] = []
+    viewer_scores: List[float] = []
+    viewer_regions: List[Dict[str, int]] = []
 
-    for idx, reg in enumerate(regions):
-        crop = crop_with_padding(background, reg, pad_pct)
+    # ── Prepare crops once (shared across request modes) ──
+    crops = [crop_with_padding(background, reg, pad_pct) for reg in regions]
+    mode_req = (request_mode or "parallel").lower().strip()
+
+    results: List[Dict[str, Any]] = []
+    if mode_req == "batched":
+        # Optional single multi-image request: 1×N images, 1 round-trip
         try:
-            result = classify_region(
-                crop, client, model_name, classes, class_definitions, class_mode
+            results = classify_regions_batched(
+                crops, client, model_name, classes, class_definitions, class_mode
             )
+            if len(results) != len(regions):
+                raise ValueError(f"Batched returned {len(results)} results for {len(regions)} regions")
         except Exception as e:
-            result = {"class": "error", "confidence": 0, "reasoning": f"API error: {e}"}
+            logger.warning(f"Batched single-request failed ({e}), falling back to sequential")
+            results = []
+            for crop in crops:
+                try:
+                    results.append(
+                        classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                    )
+                except Exception as ex:
+                    results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {ex}"})
+    elif mode_req == "parallel":
+        # Parallel via asyncio.gather + to_thread – ~4× faster than sequential, keeps per-region prompts
+        try:
+            # classify_regions_gui is async, so we can await gather directly
+            tasks = [
+                _classify_one_async(crop, client, model_name, classes, class_definitions, class_mode)
+                for crop in crops
+            ]
+            results = await asyncio.gather(*tasks)
+        except Exception as e:
+            logger.warning(f"Parallel asyncio.gather failed ({e}), falling back to sequential")
+            results = []
+            for crop in crops:
+                try:
+                    results.append(
+                        classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                    )
+                except Exception as ex:
+                    results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {ex}"})
+    else:  # sequential
+        results = []
+        for crop in crops:
+            try:
+                results.append(
+                    classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                )
+            except Exception as e:
+                results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {e}"})
 
+    # ── Build UI rows/YOLO/viewer from results (order-preserving) ──
+    for idx, (reg, result) in enumerate(zip(regions, results)):
         cls = (str(result.get("class") or "").strip()).lower()
         confidence = result.get("confidence", 0)
         try:
@@ -712,28 +887,21 @@ def classify_regions_gui(
                 if cls not in discovered_new_classes:
                     discovered_new_classes.append(cls)
 
-        color = _RECLS_PALETTE[idx % len(_RECLS_PALETTE)]
-        
-        # Tag formatting
+        # Tag formatting & viewer label
         if confidence < conf_min:
-            label_text = f"#{idx + 1} {cls} (LOW {confidence:.0f}%)"
+            viewer_label = f"{cls} (LOW {confidence:.0f}%)"
             origin_badge = '<span class="status-badge badge-stopped">Low Conf</span>'
         elif is_new:
-            label_text = f"#{idx + 1} ✨{cls} ({confidence:.0f}%)"
+            viewer_label = f"✨{cls} ({confidence:.0f}%)"
             origin_badge = '<span class="status-badge" style="background:#818cf8;color:#000;font-weight:700">NEW</span>'
         else:
-            label_text = f"#{idx + 1} {cls} ({confidence:.0f}%)"
+            viewer_label = f"{cls} ({confidence:.0f}%)"
             origin_badge = '<span class="status-badge badge-running">Target</span>'
 
-        # Draw bounding box
-        draw_recls_bbox(
-            draw,
-            (reg["x1"], reg["y1"], reg["x2"], reg["y2"]),
-            label_text,
-            color,
-            font,
-            (w_img, h_img),
-        )
+        # Collect for viewer (no PIL drawing – client renders)
+        viewer_labels.append(viewer_label)
+        viewer_scores.append(float(confidence))
+        viewer_regions.append(reg)
 
         # Generate YOLO line if confidence meets threshold and not none/error
         if cls in class_ids and cls != "none" and confidence >= conf_min:
@@ -760,6 +928,13 @@ def classify_regions_gui(
             f"<td>{origin_badge}</td><td>{conf_txt}</td><td>{reason_esc}</td></tr>"
         )
 
+    # Build viewer payload – defer all box rendering to DetectionViewer JS canvas
+    from interface.viewer_utils import region_results_to_annotations, build_viewer_payload as _build_payload
+
+    # Reuse palette colours; region_results_to_annotations assigns per-index colour
+    viewer_anns = region_results_to_annotations(viewer_regions, viewer_labels, viewer_scores)
+    viewer_payload = _build_payload(background, viewer_anns)
+
     # Build YOLO output header with class mapping
     yolo_header_lines = [f"# Class Index Mapping:"]
     for c_name, c_idx in class_ids.items():
@@ -770,4 +945,4 @@ def classify_regions_gui(
 
     new_info = f" (discovered {len(discovered_new_classes)} new class(es): {', '.join(discovered_new_classes)})" if discovered_new_classes else ""
     status = f"Mode: {class_mode.capitalize()} | Recognized {len(regions)} region(s) -> {len(yolo_lines)} YOLO label(s){new_info}"
-    return status, annotated, render_recls_table(rows, class_mode), full_yolo_text
+    return status, viewer_payload, render_recls_table(rows, class_mode), full_yolo_text

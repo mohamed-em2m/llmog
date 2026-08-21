@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import gradio as gr
 
+from detection_viewer import DetectionViewer
 from interface.batch.reclassification import (
     classify_regions_gui,
     _RECLS_EMPTY_TABLE,
@@ -105,13 +106,57 @@ def _get_sample_image_b64() -> str:
 
 
 def _clear_draw_results():
-    """Reset recognition status, image viewer, and YOLO textbox."""
+    """Reset recognition status, viewer, and YOLO textbox."""
     return (
         "**Status: Idle**",
         None,
         _RECLS_EMPTY_TABLE,
         "",
     )
+
+
+def _check_draw_endpoint(
+    use_external_api: bool,
+    ext_api_url: str,
+    ext_api_key: str,
+    ext_model_name: str,
+    server_port: float | int | None,
+) -> str:
+    """Lightweight endpoint check for Draw tab – mirrors Batch/Realtime logic."""
+    try:
+        from interface.realtime.state import resolve_endpoint
+        from openai import OpenAI
+
+        base_url, api_key, model_name = resolve_endpoint(
+            int(server_port) if server_port else 8080,
+            bool(use_external_api),
+            ext_api_url or "",
+            ext_api_key or "",
+            ext_model_name or "",
+        )
+        # External requires key, local requires healthy manager
+        if use_external_api:
+            if not ext_api_key or ext_api_key.strip() in ("", "your-key"):
+                return "**Status: ⚠️ External API selected but no API key set – configure in 🧠 Model / Endpoint tab.**"
+            # Light ping – list models or fail fast
+            client = OpenAI(base_url=base_url, api_key=api_key)
+            try:
+                client.models.list()
+                return f"**Status: ✅ Connected to External API `{model_name}` at `{base_url}`**"
+            except Exception as e:
+                return f"**Status: ⚠️ External API reachable but ping failed: {e} – check URL/key.**"
+        else:
+            from interface.state import state
+
+            with state.server_lock:
+                mgr = state.server_manager
+                if mgr is None:
+                    return "**Status: ❌ Local server not running – start it in 🧠 Model / Endpoint tab.**"
+                if not mgr.is_healthy():
+                    return "**Status: ⏳ Local server starting – check logs in 🧠 Model / Endpoint tab.**"
+                return f"**Status: ✅ Local server healthy on port {mgr.port} (model `{mgr.model}`)**"
+    except Exception as e:
+        return f"**Status: ❌ Connection check failed: {e}**"
 
 
 def _on_preset_change(preset_name: str) -> Tuple[gr.update, gr.update]:
@@ -1059,17 +1104,96 @@ def _load_sample_bridge():
     return json.dumps(payload)
 
 
+def _handle_draw_upload(file) -> str:
+    """Handle persistent Upload New Image – robust for File/UploadButton on Windows."""
+    if file is None:
+        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+    # Gradio may pass list (file_count multiple), dict, string path, or file object
+    if isinstance(file, (list, tuple)):
+        file = file[0] if file else None
+        if file is None:
+            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+    try:
+        # Normalize to path string
+        path = None
+        if isinstance(file, dict):
+            path = file.get("path") or file.get("name") or file.get("orig_name")
+        elif isinstance(file, str):
+            path = file
+        else:
+            path = getattr(file, "name", None) or getattr(file, "path", None)
+            if not path:
+                # file-like object
+                try:
+                    file.seek(0)
+                    data = base64.b64encode(file.read()).decode("utf-8")
+                    return json.dumps({"background": f"data:image/jpeg;base64,{data}", "regions": [], "layers": [], "composite": None})
+                except Exception:
+                    path = str(file)
+        if not path or path in ("", "None"):
+            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+        p = Path(path)
+        # Handle Windows file lock – try read_bytes with retry
+        data = None
+        for _ in range(3):
+            try:
+                if p.is_file():
+                    data = p.read_bytes()
+                    break
+            except PermissionError:
+                import time
+                time.sleep(0.05)
+                continue
+            except Exception:
+                break
+        if data is None:
+            # fallback open
+            try:
+                with open(str(p), "rb") as f:
+                    data = f.read()
+            except Exception:
+                return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+        if not data:
+            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+        b64_data = base64.b64encode(data).decode("utf-8")
+        suffix = p.suffix.lower() if p else ".jpg"
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        if suffix in (".webp", ".bmp", ".gif"):
+            mime = f"image/{suffix[1:]}"
+        b64 = f"data:{mime};base64,{b64_data}"
+    except Exception as e:
+        # log but don't crash UI
+        try:
+            import logging
+            logging.getLogger("detection_pipeline").warning(f"_handle_draw_upload failed: {e}")
+        except Exception:
+            pass
+        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+    payload = {"background": b64, "regions": [], "layers": [], "composite": None}
+    return json.dumps(payload)
+
+
 def build_draw_tab() -> Dict[str, Any]:
-    """Build the dedicated Draw & Recognize tab with Custom Frontend Canvas, Expectation Modes, and Gradio Backend."""
-    with gr.Row(equal_height=False):
+    """Build the dedicated Draw & Recognize tab with Custom Frontend Canvas + DetectionViewer."""
+    with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
         # ── Left / Main: Custom Interactive HTML5 Canvas Frontend ────────────
         with gr.Column(scale=3, min_width=520):
             gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
+            # Persistent upload – visible even after image loaded (empty overlay hides otherwise)
+            # Use gr.File (change event) – more reliable than UploadButton on Windows/gradio 6
+            recls_upload_btn = gr.File(
+                label="📁 Upload New Image (click or drag & drop)",
+                file_types=["image"],
+                type="filepath",
+                elem_id="draw-upload-btn",
+            )
+            gr.HTML('<span class="drag-hint" style="color:#7d8590; font-size:0.7rem;">Tip: you can also drag & drop or paste (Ctrl+V) directly on canvas</span>')
 
             # Embedded Custom Canvas Frontend with js_on_load handler
             custom_canvas_view = gr.HTML(
                 value=_CUSTOM_CANVAS_HTML,
                 js_on_load=_CUSTOM_CANVAS_JS,
+                elem_id="draw-canvas-html",
             )
 
             # Hidden payload and sample bridge components
@@ -1085,6 +1209,12 @@ def build_draw_tab() -> Dict[str, Any]:
             )
 
             with gr.Row(elem_classes=["btn-group"]):
+                recls_connect_btn = gr.Button(
+                    "🔌 Check Connection",
+                    variant="secondary",
+                    scale=1,
+                    elem_id="draw-connect-btn",
+                )
                 recls_run_btn = gr.Button(
                     "🔎  Recognize Drawn Regions",
                     variant="primary",
@@ -1098,7 +1228,7 @@ def build_draw_tab() -> Dict[str, Any]:
                 )
 
         # ── Right: Config & Recognition Results ───────────────────────────
-        with gr.Column(scale=2, min_width=380):
+        with gr.Column(scale=2, min_width=380, elem_classes=["draw-right-panel"]):
             gr.HTML('<p class="section-label">⚙️ Detection Strategy &amp; Classes</p>')
 
             # ── 1. Class Expectation Strategy ─────────────────────────────
@@ -1155,12 +1285,25 @@ def build_draw_tab() -> Dict[str, Any]:
                     info="Extra visual context around each drawn region sent to the VLM.",
                 )
 
+                recls_request_mode = gr.Radio(
+                    label="⚡ Request Mode (optional)",
+                    choices=[
+                        ("Sequential – 1 request per region", "sequential"),
+                        ("Parallel – asyncio.gather concurrent", "parallel"),
+                        ("Batched – single request with N images", "batched"),
+                    ],
+                    value="parallel",
+                    info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
+                )
+
             recls_status = gr.Markdown("**Status: Idle**")
-            recls_annotated = gr.Image(
-                label="Annotated Recognition Result",
-                type="pil",
-                interactive=False,
-            )
+            with gr.Group(elem_classes=["img-viewer-wrap"]):
+                recls_annotated = DetectionViewer(
+                    label="Annotated Recognition Result",
+                    panel_title="Recognized Regions",
+                    list_height=340,
+                    elem_id="draw-detection-viewer",
+                )
 
             recls_results = gr.HTML(value=_RECLS_EMPTY_TABLE)
 
@@ -1175,12 +1318,15 @@ def build_draw_tab() -> Dict[str, Any]:
         custom_canvas_view=custom_canvas_view,
         custom_draw_payload=custom_draw_payload,
         recls_sample_bridge_btn=recls_sample_bridge_btn,
+        recls_upload_btn=recls_upload_btn,
         recls_class_mode=recls_class_mode,
         recls_preset_dropdown=recls_preset_dropdown,
         recls_classes_input=recls_classes_input,
         recls_defs_input=recls_defs_input,
         recls_conf_threshold=recls_conf_threshold,
         recls_padding_slider=recls_padding_slider,
+        recls_request_mode=recls_request_mode,
+        recls_connect_btn=recls_connect_btn,
         recls_run_btn=recls_run_btn,
         recls_clear_btn=recls_clear_btn,
         recls_status=recls_status,
@@ -1214,6 +1360,27 @@ def wire_draw_events(
             ],
         )
 
+    # ── Persistent upload handler (visible even after image loaded) ──
+    # gr.File type="filepath" returns a string path – use change (not upload) for reliability
+    if "recls_upload_btn" in c_draw:
+        # Use change for gr.File; also keep upload for backward compat with UploadButton
+        for evt in ("change", "upload"):
+            if hasattr(c_draw["recls_upload_btn"], evt):
+                try:
+                    getattr(c_draw["recls_upload_btn"], evt)(
+                        fn=_handle_draw_upload,
+                        inputs=[c_draw["recls_upload_btn"]],
+                        outputs=[c_draw["custom_draw_payload"]],
+                    ).then(
+                        fn=None,
+                        inputs=None,
+                        outputs=None,
+                        js="() => { setTimeout(()=>{ const ta=document.querySelector('#custom_draw_payload_box textarea'); if(ta&&ta.value){ try{ const p=JSON.parse(ta.value); if(p.background && window.CustomCanvasController) window.CustomCanvasController.loadImageFromDataUrl(p.background); }catch(e){} } }, 250); }",
+                    )
+                    break
+                except Exception:
+                    continue
+
     # ── Sample image bridge handler ─────────────────────────────────────────
     if "recls_sample_bridge_btn" in c_draw:
         c_draw["recls_sample_bridge_btn"].click(
@@ -1223,7 +1390,43 @@ def wire_draw_events(
             js="() => { if (window.CustomCanvasController) { setTimeout(() => { const ta = document.querySelector('#custom_draw_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasController.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
         )
 
+    # ── Connect check – lets user verify global endpoint before running ─
+    # Also auto-switches to 🧠 Model / Endpoint tab if check fails
+    if "recls_connect_btn" in c_draw:
+        c_draw["recls_connect_btn"].click(
+            fn=_check_draw_endpoint,
+            inputs=[
+                c_srv["use_external_api_chk"],
+                c_srv["ext_api_url"],
+                c_srv["ext_api_key"],
+                c_srv["ext_model_name"],
+                c_srv["server_port_input"],
+            ],
+            outputs=[c_draw["recls_status"]],
+        ).then(
+            fn=None,
+            inputs=[c_draw["recls_status"]],
+            outputs=None,
+            js="""(status) => {
+                const s = document.querySelector('#draw-detection-viewer');
+                if(s) s.scrollIntoView({behavior:'smooth', block:'center'});
+                const msg = String(status||'');
+                if (msg.includes('❌') || msg.includes('⚠️') || msg.includes('not running') || msg.includes('no API key')) {
+                    const btns=[...document.querySelectorAll('.tab-nav button')];
+                    const t=btns.find(b=>b.textContent.includes('Model / Endpoint'));
+                    if(t){ 
+                        t.click();
+                        t.style.outline='2px solid #38bdf8'; 
+                        setTimeout(()=>t.style.outline='', 2500); 
+                    }
+                }
+            }""",
+        )
+
     # ── Recognition execution with Gradio Backend ───────────────────────────
+    # Endpoint is now global from Model / Endpoint tab (c_srv), not per-batch.
+    # JS must preserve all inputs – previously `()=>[payload]` dropped sliders → None error.
+    # Optional request_mode (sequential/parallel/batched) is now exposed.
     c_draw["recls_run_btn"].click(
         fn=classify_regions_gui,
         inputs=[
@@ -1233,11 +1436,12 @@ def wire_draw_events(
             c_draw["recls_padding_slider"],
             c_draw["recls_class_mode"],
             c_draw["recls_conf_threshold"],
-            c_bat["use_external_api_chk"],
-            c_bat["ext_api_url"],
-            c_bat["ext_api_key"],
-            c_bat["ext_model_name"],
+            c_srv["use_external_api_chk"],
+            c_srv["ext_api_url"],
+            c_srv["ext_api_key"],
+            c_srv["ext_model_name"],
             c_srv["server_port_input"],
+            c_draw["recls_request_mode"],
         ],
         outputs=[
             c_draw["recls_status"],
@@ -1245,7 +1449,7 @@ def wire_draw_events(
             c_draw["recls_results"],
             c_draw["recls_yolo"],
         ],
-        js="() => [window.getCustomDrawData ? window.getCustomDrawData() : '{}']",
+        js="(p,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode)=>{ const fresh=(window.getCustomDrawData?window.getCustomDrawData():p)||p; return [fresh,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode]; }",
         api_name="classify_regions",
         concurrency_limit=1,
     )

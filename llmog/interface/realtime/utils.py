@@ -94,10 +94,15 @@ def run_vlm_detect(
         preprocessing_config=prep_config,
     )
 
-    # Save numpy frame temporarily to pass to pipeline.run or run preprocessing directly
+    # Perf: avoid re-encoding at full 4K every frame – downscale >1280 before JPEG
+    # and use quality 85 (vs default 75) to reduce file size without mAP loss.
+    pil_frame = Image.fromarray(frame)
+    # Throttle: realtime frames are often 1080p+; cap at 1280 long edge for VLM
+    if max(pil_frame.size) > 1280:
+        pil_frame.thumbnail((1280, 1280), Image.Resampling.BILINEAR)
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         tmp_path = tmp.name
-        Image.fromarray(frame).save(tmp_path)
+        pil_frame.save(tmp_path, format="JPEG", quality=85, optimize=True)
 
     try:
         # Run detection using ObjectDetectionPipeline

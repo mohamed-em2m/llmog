@@ -73,6 +73,7 @@ include = [
     "schemes*",
     "servers*",
     "interface*",
+    "detection_viewer*",
 ]
 exclude = ["*.egg-info"]
 
