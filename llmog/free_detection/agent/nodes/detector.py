@@ -254,7 +254,6 @@ def _run_full_image_detection(
     category_definitions: str,
     feedback: Optional[str],
     judge_actions: Optional[str],
-    previous_detections_prep: Optional[List[Dict[str, Any]]],
     annotated_prep_uri: Optional[str],
     round_num: int,
     som_enabled: bool,
@@ -286,7 +285,6 @@ def _run_full_image_detection(
         category_definitions=category_definitions,
         feedback=feedback,
         actions=judge_actions,
-        previous_detections=previous_detections_prep,
         som_proposals=som_proposals,
     )
 
@@ -361,7 +359,6 @@ def node_detector(state: DetectionState) -> Dict[str, Any]:
             category_definitions=category_definitions,
             feedback=feedback,
             judge_actions=judge_actions,
-            previous_detections_prep=previous_detections_prep,
             annotated_prep_uri=annotated_prep_uri,
             round_num=round_num,
             som_enabled=prep_cfg.get("som_enabled", False),

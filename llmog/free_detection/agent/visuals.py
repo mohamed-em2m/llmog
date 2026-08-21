@@ -62,7 +62,9 @@ def draw_grid(
     )
 
 
-def render_detections(base_image: Image.Image, detections: List[Dict[str, Any]]) -> Image.Image:
+def render_detections(
+    base_image: Image.Image, detections: List[Dict[str, Any]]
+) -> Image.Image:
     """Draw lime bounding boxes and indexed labels onto the base image."""
     img = base_image.copy()
     draw = ImageDraw.Draw(img)

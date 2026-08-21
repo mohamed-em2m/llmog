@@ -123,14 +123,40 @@ def run_batch_detection_gui(
         ), *_empty_yield
         return
 
+    # Normalize image_files into a list (prevent iterating character-by-character if a string is passed)
+    raw_list: List[Any]
+    if isinstance(image_files, (str, Path)):
+        raw_list = [image_files]
+    elif isinstance(image_files, (list, tuple, set)):
+        raw_list = list(image_files)
+    else:
+        raw_list = [image_files]
+
     image_paths: List[Path] = []
-    for f in image_files:
-        if isinstance(f, str):
-            image_paths.append(Path(f))
-        elif hasattr(f, "name"):
-            image_paths.append(Path(f.name))
-        elif isinstance(f, dict) and "name" in f:
-            image_paths.append(Path(f["name"]))
+    for f in raw_list:
+        if f is None:
+            continue
+        p: Optional[Path] = None
+        if isinstance(f, (str, Path)):
+            p = Path(f)
+        elif hasattr(f, "path") and f.path:
+            p = Path(f.path)
+        elif hasattr(f, "name") and f.name:
+            p = Path(f.name)
+        elif isinstance(f, dict):
+            p_val = f.get("path") or f.get("name")
+            if p_val:
+                p = Path(p_val)
+
+        if p is not None:
+            if p.is_dir():
+                valid_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff", ".tif"}
+                for child in sorted(p.iterdir()):
+                    if child.is_file() and child.suffix.lower() in valid_exts:
+                        image_paths.append(child)
+            else:
+                image_paths.append(p)
+
     if not image_paths:
         yield "Error: Could not resolve uploaded files.", _render_progress_bar(
             0
@@ -139,6 +165,16 @@ def run_batch_detection_gui(
 
     cleaned_paths: List[Path] = []
     for p in image_paths:
+        if not p.exists():
+            yield f"Error: Image file '{p}' not found.", _render_progress_bar(
+                0
+            ), *_empty_yield
+            return
+        if not p.is_file():
+            yield f"Error: '{p}' is not a file.", _render_progress_bar(
+                0
+            ), *_empty_yield
+            return
         try:
             with Image.open(p) as im:
                 im.verify()

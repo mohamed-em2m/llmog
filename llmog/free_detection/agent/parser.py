@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
-
 import json
 import logging
 import re
 import json_repair
-from json_repair import repair_json, loads as repair_loads
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 logger = logging.getLogger("detection_pipeline")
 
 
 def _strip_think_blocks(text: str) -> str:
-    """Remove <think>...</think> blocks emitted by thinking-mode models."""
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    """Remove thinking-mode artifacts from model output.
+
+    Handles both the ``<thinking>…</thinking>`` tags some backends wrap around
+    reasoning and the `` thinking…response `` suffix form emitted by others.
+    """
+    text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
+    text = re.sub(r" thinking.*? response", "", text, flags=re.DOTALL)
+    return text.strip()
 
 
 def _strip_code_fences(text: str) -> str:

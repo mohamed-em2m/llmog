@@ -16,27 +16,32 @@ Interactive test console for assessing Vision-Language Models (VLMs) on object d
 | `uv run auto-annotation` | `auto_annotation:main` | Shortcut for `llmog --task auto_label` (batch YOLO relabeling from a `data.yaml`) |
 | `uv run detection-gui` | `interface.gui:main` | Launch the Gradio web interface |
 
-Single source of truth for every CLI flag: `src/schemes/argument.py:PipelineConfig`
-(a pydantic v2 model). `src/main.py:build_parser` mirrors every field of
+Single source of truth for every CLI flag: `llmog/schemes/argument.py:PipelineConfig`
+(a pydantic v2 model). `llmog/main.py:build_parser` mirrors every field of
 `PipelineConfig` onto an `argparse.ArgumentParser`; `parse_args()` then
 overlays an optional `--config <yaml>` file and finally constructs the
 validated `PipelineConfig`.
 
 ## Key Directories
-- `src/` — Main source code (package root via `tool.setuptools.package-dir`)
-- `src/schemes/` — `PipelineConfig` pydantic model + argparse mirror (unified config)
-- `src/main.py` — Unified CLI dispatcher (`--task free_detection | auto_label`)
-- `src/free_detection/` — Detector/Judge pipeline package
-- `src/auto_annotation/` — Batch YOLO relabeling package
-- `src/prompts/` — Markdown prompt templates for detector/judge agents
-- `src/servers/` — `LlamaServerManager` / `VllmServerManager` + `servers_factory` registry
-- `src/interface/` — Gradio console theme (CSS/JS)
+- `llmog/` — Main source code (package root via `tool.setuptools.package-dir`)
+- `llmog/schemes/` — `PipelineConfig` pydantic model + argparse mirror (unified config)
+- `llmog/main.py` — Unified CLI dispatcher (`--task free_detection | auto_label`)
+- `llmog/free_detection/` — Detector/Judge pipeline package
+- `llmog/free_detection/agent/` — LangGraph nodes, pipeline, state, prompts, parser, visuals
+- `llmog/auto_annotation/` — Batch YOLO relabeling package
+- `llmog/prompts/` — Markdown prompt templates for detector/judge agents (loaded by DynaPrompt)
+- `llmog/servers/` — `LlamaServerManager` / `VllmServerManager` + `servers_factory` registry
+- `llmog/interface/` — Gradio console theme (CSS/JS) and Streamlit interface
 - `scripts/` — Installation scripts (Linux-focused)
 
 ## Core Modules
-- `free_detection/detection_pipeline.py` — Core `ObjectDetectionPipeline` class, prompt loading, JSON parsing, retry logic, NMS, tiling, crop-verify
+- `free_detection/agent/pipeline.py` — Core `ObjectDetectionPipeline` class; builds and invokes the LangGraph
+- `free_detection/agent/graph.py` — `build_detection_graph()`: wires up all LangGraph nodes and conditional edges
+- `free_detection/agent/nodes/` — Individual LangGraph nodes: `preprocess`, `detector`, `crop_verify`, `judge`, `loop`, `finalize`
+- `free_detection/agent/prompts.py` — Prompt loading (DynaPrompt + Jinja2 fallback), `render_detector_prompt`, `render_judge_prompt`
+- `free_detection/agent/parser.py` — JSON extraction, `parse_detections`, `validate_detections`
+- `free_detection/detection_pipeline.py` — Backward-compat shim; re-exports everything from `free_detection.agent`
 - `free_detection/image_preprocessing.py` — Resolution tuning, CLAHE/autocontrast, gamma, bilateral/NLM denoise, unsharp mask, white balance, SoM proposals, grid drawing, tiling
-- `free_detection/app.py` — Gradio web UI (server management, batch testing, live results, zip export)
 - `free_detection/gui.py` — `detection-gui` entry point (parses Gradio-specific `--host`/`--port`/`--share` flags, then launches `build_app()`)
 - `free_detection/__init__.py:main` — `detection-cli` entry point (accepts a validated `PipelineConfig` or parses argv itself)
 - `auto_annotation/main.py` — `auto-annotation` entry point (drives `read_images_with_labels`, checkpoint/yaml persistence, server lifecycle)
@@ -81,7 +86,7 @@ uv run llmog --task free_detection --config pipeline.yaml -i img.jpg --max_round
 ```
 
 ## Important Conventions
-- **Prompt templates**: Loaded from `src/prompts/*.md` with hardcoded fallbacks in `detection_pipeline.py`
+- **Prompt templates**: Loaded from `llmog/prompts/*.md` via DynaPrompt; Jinja2 template rendering is the fallback. Hardcoded empty strings in `prompts.py` are the last resort.
 - **Output structure**: Each image gets a subdir under `--output_folder` with `best_annotated.jpg`, `best_detections.json`, `history.json`
 - **API compatibility**: Uses OpenAI Python SDK; works with any OpenAI-compatible endpoint (`llama-server`, vLLM, Ollama)
 - **Extra body params**: `min_pixels`/`max_pixels` sent via `extra_body` for Qwen-VL/vLLM backends (controlled by `--prep-send-pixel-bounds`)
@@ -94,6 +99,6 @@ uv run llmog --task free_detection --config pipeline.yaml -i img.jpg --max_round
 ## Development Notes
 - No test suite currently exists
 - No lint/typecheck configured in `pyproject.toml`
-- Gradio UI loads custom CSS/JS from `src/interface/` at startup
+- Gradio UI loads custom CSS/JS from `llmog/interface/` at startup
 - Matplotlib backend forced to 'Agg' in `detection_pipeline.py` (line 27)
 - Logging uses standard `logging` module with `[LEVEL] message` format

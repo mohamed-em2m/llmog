@@ -27,8 +27,9 @@ def persist_results(
     if best["annotated"] is not None:
         best["annotated"].save(out / "best_annotated.jpg")
 
+    detections_payload = best.get("detections") or []
     (out / "best_detections.json").write_text(
-        json.dumps(best["detections"], indent=2)
+        json.dumps(detections_payload, indent=2)
     )
 
     history_payload = [
@@ -39,6 +40,7 @@ def persist_results(
             "feedback": r.feedback,
             "actions": r.actions,
             "parse_error": r.parse_error,
+            "raw_detector_output": r.raw_detector_output,
         }
         for r in history
     ]

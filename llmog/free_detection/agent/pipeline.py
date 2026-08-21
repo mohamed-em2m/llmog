@@ -22,6 +22,7 @@ from free_detection.agent.prompts import (
     DEFAULT_JUDGE_TEMPLATE,
     render_detector_prompt,
     render_judge_prompt,
+    render_crop_verify_prompt,
 )
 from free_detection.agent.state import DetectionState, RoundResult
 from free_detection.agent.visuals import pil_to_data_uri
@@ -119,7 +120,6 @@ class ObjectDetectionPipeline:
         category_definitions: str,
         feedback: Optional[str] = None,
         actions: Optional[str] = None,
-        previous_detections: Optional[str] = None,
         som_proposals: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         return render_detector_prompt(
@@ -149,7 +149,6 @@ class ObjectDetectionPipeline:
         category_definitions: str,
         feedback: Optional[str] = None,
         actions: Optional[str] = None,
-        previous_detections: Optional[str] = None,
         som_proposals: Optional[List[Dict[str, Any]]] = None,
         custom_prompt: Optional[str] = None,
     ) -> str:
@@ -162,7 +161,6 @@ class ObjectDetectionPipeline:
                 category_definitions,
                 feedback=feedback,
                 actions=actions,
-                previous_detections="",
                 som_proposals=som_proposals,
             )
 
@@ -207,7 +205,7 @@ class ObjectDetectionPipeline:
     def verify_crop(self, crop_image: Image.Image, label: str) -> bool:
         """Verify if target label is present in cropped image."""
         crop_uri = pil_to_data_uri(crop_image)
-        prompt = f"Analyze this image crop carefully. Is there a visible '{label}' present inside this crop? You must respond in exactly this format, with nothing else: <present>YES</present> or <present>NO</present>."
+        prompt = render_crop_verify_prompt(label)
 
         extra_args = self._pixel_bounds_extra_args()
 

@@ -10,7 +10,7 @@ from free_detection.image_preprocessing import (
     map_bbox_to_original,
 )
 from free_detection.agent.state import DetectionState, RoundResult
-from free_detection.agent.visuals import draw_grid, render_detections, pil_to_data_uri
+from free_detection.agent.visuals import render_detections, pil_to_data_uri
 
 logger = logging.getLogger("detection_pipeline")
 
@@ -31,6 +31,7 @@ def node_judge(state: DetectionState) -> Dict[str, Any]:
             "best",
             {"score": -1, "annotated": None, "detections": None, "round": 0},
         )
+        or {}
     )
 
     grid_style = state["grid_style"]

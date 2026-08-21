@@ -10,7 +10,7 @@ from PIL import Image
 @dataclass
 class RoundResult:
     round: int
-    detections: list
+    detections: List[Dict[str, Any]]
     score: int
     feedback: str
     raw_detector_output: str
