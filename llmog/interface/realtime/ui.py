@@ -101,9 +101,9 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     ),
                 )
                 c["same_window_chk"] = gr.Checkbox(
-                    value=True,
+                    value=False,
                     label="⚡ Same-window overlay (fastest – no WebP re-encode)",
-                    info="ON: boxes drawn directly on video (max FPS). OFF: use interactive DetectionViewer (more features, adds WebP).",
+                    info="ON: boxes drawn directly on video (max FPS). OFF: use interactive DetectionViewer (more features, adds WebP). Default OFF for reliability.",
                 )
                 c["category_strategy"] = gr.Radio(
                     label="🎯 Class Expectation Mode",
@@ -320,6 +320,7 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         elem_id="rt_webcam_input",
                     )
                     # Same-window overlay canvas – positioned over video, no WebP re-encode (max FPS)
+                    # Hidden by default (same_window off) – viewer is primary for reliability
                     c["same_window_html"] = gr.HTML(
                         value="""
                         <canvas id="rt_same_window_canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
@@ -328,15 +329,15 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         #rt_same_window_canvas{position:absolute; top:0; left:0; width:100%; height:100%;}
                         </style>
                         """,
-                        visible=True,
+                        visible=False,
                         elem_id="rt_same_window_html",
                     )
                 c["webcam_wrap_group"] = webcam_wrap
                 c["realtime_viewer"] = DetectionViewer(
-                    label="Live Detections (interactive viewer – disable ⚡ for features)",
+                    label="Live Detections (interactive viewer – enable ⚡ for same-window max FPS)",
                     panel_title="Live Detections",
                     list_height=380,
-                    visible=False,
+                    visible=True,
                 )
                 c["boxes_json_state"] = gr.JSON(visible=False)
                 c["video_input"] = gr.Video(
