@@ -1,0 +1,83 @@
+[
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      156,
+      70,
+      252,
+      149
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      349,
+      105,
+      437,
+      237
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      546,
+      158,
+      638,
+      663
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      404,
+      318,
+      599,
+      699
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      248,
+      503,
+      329,
+      581
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      549,
+      456,
+      608,
+      725
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      469,
+      551,
+      700,
+      600
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      284,
+      391,
+      793,
+      705
+    ]
+  },
+  {
+    "label": "airplane",
+    "bbox_2d": [
+      309,
+      417,
+      901,
+      803
+    ]
+  }
+]

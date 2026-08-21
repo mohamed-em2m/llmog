@@ -1,0 +1,93 @@
+[
+  {
+    "round": 1,
+    "score": 0,
+    "detections": [
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          156,
+          66,
+          253,
+          153
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          348,
+          105,
+          442,
+          226
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          542,
+          158,
+          664,
+          240
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          601,
+          320,
+          692,
+          401
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          614,
+          457,
+          725,
+          549
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          247,
+          500,
+          328,
+          582
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          457,
+          595,
+          552,
+          698
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          281,
+          704,
+          388,
+          794
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          307,
+          806,
+          417,
+          898
+        ]
+      }
+    ],
+    "feedback": "```json\n[\n  {\"box_2d\": [65, 154, 153, 253], \"label\": \"airplane\"},\n  {\"box_2d\": [107,",
+    "actions": "",
+    "parse_error": null,
+    "raw_detector_output": "```json\n<analysis>\nGrid-based scan of airplanes across the tarmac:\n1. Top-left area: White airplane at [156, 66, 253, 153].\n2. Top-center area: White airplane pointing down-left at [348, 105, 442, 226].\n3. Top-right area: White airplane docked at gate at [542, 158, 664, 240].\n4. Center-right (upper) area: White airplane with red tail at gate at [601, 320, 692, 401].\n5. Center-right (lower) area: White airplane near gate at [614, 457, 725, 549].\n6. Center-left area: White airplane pointing right at [247, 500, 328, 582].\n7. Lower-center area: White airplane pointing down-right at [457, 595, 552, 698].\n8. Bottom-left (upper) area: White airplane at [281, 704, 388, 794].\n9. Bottom-left (lower) area: White airplane at [307, 806, 417, 898].\n\nAll identified candidates match the \"airplane\" category definition.\n</analysis>\n<answer>\n[\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      156,\n      66,\n      253,\n      153\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      348,\n      105,\n      442,\n      226\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      542,\n      158,\n      664,\n      240\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      601,\n      320,\n      692,\n      401\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      614,\n      457,\n      725,\n      549\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      247,\n      500,\n      328,\n      582\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      457,\n      595,\n      552,\n      698\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      281,\n      704,\n      388,\n      794\n    ]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [\n      307,\n      806,\n      417,\n      898\n    ]\n  }\n]\n</answer>\n```"
+  }
+]
