@@ -9,6 +9,51 @@ from typing import Dict, List, Tuple
 from interface.state import _STATUS_PILL
 
 
+def render_status_header(
+    message: str,
+    *,
+    done: int = 0,
+    total: int = 0,
+    running: int = 0,
+    failed: int = 0,
+    state: str = "idle",
+) -> str:
+    """Professional processing header: status text + live metric chips.
+
+    States map to accent colors: idle / running / done / error / cancelled.
+    Metric chips show done/total progress, concurrent workers and failures
+    at a glance — no need to scan the full queue table.
+    """
+    msg = html.escape(message)
+    state_cls = {
+        "idle": "st-idle",
+        "running": "st-running",
+        "done": "st-done",
+        "error": "st-error",
+        "cancelled": "st-cancelled",
+    }.get(state, "st-idle")
+    chips: List[str] = []
+    if total:
+        pct = int((done / total) * 100) if total else 0
+        chips.append(
+            f'<span class="mchip"><b>{done}</b>&thinsp;/&thinsp;{total} done'
+            f'<span class="mchip-pct">&nbsp;{pct}%</span></span>'
+        )
+    if running:
+        chips.append(f'<span class="mchip mrun">⏵ {running} running</span>')
+    if failed:
+        chips.append(f'<span class="mchip mfail">✕ {failed} failed</span>')
+    if not chips:
+        chips.append('<span class="mchip">ready</span>')
+    return (
+        f'<div class="batch-status-header {state_cls}">'
+        '<div class="bsh-left"><span class="bsh-dot"></span>'
+        f'<span class="bsh-text">{msg}</span></div>'
+        f'<div class="bsh-metrics">{"".join(chips)}</div>'
+        '</div>'
+    )
+
+
 def render_status_table(image_status: Dict[str, dict], order: List[str]) -> str:
     """Render the HTML batch progress status table."""
     rows = []
@@ -32,12 +77,12 @@ def render_status_table(image_status: Dict[str, dict], order: List[str]) -> str:
     body = (
         "".join(rows)
         if rows
-        else '<tr><td colspan="5" style="color:#7d8590;text-align:center;padding:1rem;">No images yet.</td></tr>'
+        else '<tr><td colspan="5" style="color:#7d8590;text-align:center;padding:1rem;">No images queued yet.</td></tr>'
     )
     return f"""
 <div class="output-panel" style="margin-top:0.75rem">
   <div class="out-header"><div class="out-header-left">
-    <span class="out-header-dot"></span><span class="out-header-title">Batch Status ({len(order)} images)</span>
+    <span class="out-header-dot"></span><span class="out-header-title">Queue Monitor — {len(order)} images</span>
   </div></div>
   <div style="max-height:260px; overflow-y:auto;">
   <table class="batch-status-table">

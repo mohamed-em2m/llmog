@@ -1,22 +1,16 @@
 """
-Real-Time Interactive Draw tab – live capture + Draw-style region classification.
-
-Uses the same CustomCanvasController as Draw & Recognize but the background
-is a captured webcam frame (via Capture button). Regions are classified via
-classify_regions_gui with global endpoint and request_mode parallel/batched.
+Real-Time Interactive Camera & Draw Tab Module.
+Allows users to open their webcam directly inside the interactive canvas,
+draw bounding boxes, circles, or brush strokes directly over live or frozen camera feeds,
+and classify the selected objects using Vision-Language Models (VLM) in Strict, Hybrid, or Free mode.
 """
 
 from __future__ import annotations
 
-import base64
-import io
 import json
 from pathlib import Path
-from typing import Dict, Any
-
+from typing import Dict, Any, Tuple
 import gradio as gr
-import numpy as np
-from PIL import Image
 
 from detection_viewer import DetectionViewer
 from interface.batch.reclassification import (
@@ -25,159 +19,1319 @@ from interface.batch.reclassification import (
     CATEGORY_PRESETS,
 )
 
-
-def _frame_to_payload(frame: np.ndarray | Image.Image | None) -> str:
-    if frame is None:
-        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-    try:
-        if isinstance(frame, np.ndarray):
-            pil = Image.fromarray(frame).convert("RGB")
-        elif isinstance(frame, Image.Image):
-            pil = frame.convert("RGB")
-        else:
-            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-        buf = io.BytesIO()
-        pil.save(buf, format="JPEG", quality=92)
-        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-        payload = {"background": f"data:image/jpeg;base64,{b64}", "regions": [], "layers": [], "composite": None}
-        return json.dumps(payload)
-    except Exception:
-        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
+_SAMPLE_IMAGE_PATH = Path(__file__).resolve().parents[2] / "assets" / "image.png"
 
 
-def _on_realtime_interactive_preset_change(preset_name: str):
+def _get_sample_image_b64() -> str:
+    if _SAMPLE_IMAGE_PATH.exists():
+        try:
+            import base64
+
+            with open(_SAMPLE_IMAGE_PATH, "rb") as f:
+                data = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/png;base64,{data}"
+        except Exception:
+            pass
+    return ""
+
+
+def _on_realtime_interactive_preset_change(preset_name: str) -> Tuple[gr.update, gr.update]:
     preset = CATEGORY_PRESETS.get(preset_name, CATEGORY_PRESETS["Custom / Blank"])
     return gr.update(value=preset["classes"]), gr.update(value=preset["defs"])
 
 
-def _on_realtime_interactive_mode_change(mode: str):
+def _on_realtime_interactive_mode_change(mode: str) -> Tuple[gr.update, gr.update, gr.update]:
     if mode == "free":
         return (
-            gr.update(label="Domain / Focus Hint (Optional)", placeholder="e.g. defects, wildlife...", info="Free: names any object"),
-            gr.update(label="Domain Guidance (Optional)", placeholder="Optional context...", info="Optional"),
+            gr.update(
+                label="Domain / Focus Hint (Optional)",
+                placeholder="e.g. Focus on defects, wildlife, tools, packaging... (or leave blank)",
+                info="Free Mode: Agent autonomously identifies and names whatever objects are drawn.",
+            ),
+            gr.update(
+                label="Domain Guidance (Optional)",
+                placeholder="Optional domain context or special inspection criteria...",
+                info="Optional domain guidance.",
+            ),
             gr.update(visible=False),
         )
     elif mode == "hybrid":
         return (
-            gr.update(label="Priority Target Classes", placeholder="e.g. hole, stain", info="Hybrid: prioritize + discover"),
-            gr.update(label="Category Definitions & Discovery", placeholder="Definitions...", info="Definitions"),
+            gr.update(
+                label="Priority Target Classes (comma-separated)",
+                placeholder="e.g. person, car, phone, cup",
+                info="Hybrid Mode: Agent prioritizes these classes, but will name novel objects if detected.",
+            ),
+            gr.update(
+                label="Category Definitions & Discovery Guidelines",
+                placeholder="Definitions for priority classes...",
+                info="Definitions for priority classes.",
+            ),
             gr.update(visible=True),
         )
-    else:
+    else:  # strict
         return (
-            gr.update(label="Target Classes (Strict)", placeholder="hole, stain, tear", info="Strict: locked to list"),
-            gr.update(label="Class Definitions", placeholder="Write instructions...", info="Criteria"),
+            gr.update(
+                label="Target Classes (Strict - Comma Separated)",
+                placeholder="person, car, bottle, laptop, chair",
+                info="Strict Mode: Agent is strictly restricted to these classes (or 'none').",
+            ),
+            gr.update(
+                label="Class Definitions / Distinguishing Rules",
+                placeholder="Write criteria for distinguishing each class...",
+                info="Detailed criteria for distinguishing each class.",
+            ),
             gr.update(visible=True),
         )
 
 
-# Reuse Draw's custom canvas but with RT-specific ids to avoid singleton clash
-from interface.tab_draw import _CUSTOM_CANVAS_HTML as _DRAW_HTML, _CUSTOM_CANVAS_JS as _DRAW_JS
+# ── Interactive HTML5 Canvas with Native Live Camera Feed ──────────────────────
+_RT_DRAW_CANVAS_HTML = """
+<div id="llmog-custom-canvas-app-rt" class="custom-canvas-container">
+    <!-- Top Interactive Toolbar -->
+    <div class="canvas-toolbar">
+        <!-- Live Camera Controls -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Camera</span>
+            <button type="button" class="canvas-tool-btn camera-btn" id="rt-btn-start-camera" title="Start Live Webcam Feed">
+                <span class="tool-icon">📹</span> Start Camera
+            </button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-freeze-camera" style="display:none;" title="Freeze / Resume Live Video [Space]">
+                <span class="tool-icon">⏸️</span> Freeze
+            </button>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-flip-camera" style="display:none;" title="Flip Front / Back Camera">
+                🔄
+            </button>
+            <button type="button" class="canvas-tool-btn danger" id="rt-btn-stop-camera" style="display:none;" title="Stop Camera">
+                ⏹️ Stop
+            </button>
+        </div>
 
-# Generate RT-specific HTML/JS by replacing ids – keeps Draw and RT canvases independent
-# Must replace ALL toolbar ids that are duplicated across tabs (else Draw tab controls RT canvas)
-_RT_CUSTOM_CANVAS_HTML = (
-    _DRAW_HTML.replace('id="llmog-custom-canvas-app"', 'id="llmog-custom-canvas-app-rt"')
-    .replace('id="custom-annotation-canvas"', 'id="rt-custom-annotation-canvas"')
-    .replace('id="canvas-stage-wrapper"', 'id="rt-canvas-stage-wrapper"')
-    .replace('id="canvas-empty-overlay"', 'id="rt-canvas-empty-overlay"')
-    .replace('id="canvas-file-input"', 'id="rt-canvas-file-input"')
-    .replace('id="tool-bbox"', 'id="rt-tool-bbox"')
-    .replace('id="tool-brush"', 'id="rt-tool-brush"')
-    .replace('id="tool-circle"', 'id="rt-tool-circle"')
-    .replace('id="tool-eraser"', 'id="rt-tool-eraser"')
-    .replace('id="palette-swatches"', 'id="rt-palette-swatches"')
-    .replace('id="custom-color-picker"', 'id="rt-custom-color-picker"')
-    .replace('id="brush-size-slider"', 'id="rt-brush-size-slider"')
-    .replace('id="brush-size-val"', 'id="rt-brush-size-val"')
-    .replace('id="btn-undo"', 'id="rt-btn-undo"')
-    .replace('id="btn-redo"', 'id="rt-btn-redo"')
-    .replace('id="btn-clear-drawings"', 'id="rt-btn-clear-drawings"')
-    .replace('id="btn-clear-all"', 'id="rt-btn-clear-all"')
-    .replace('id="btn-zoom-in"', 'id="rt-btn-zoom-in"')
-    .replace('id="btn-zoom-out"', 'id="rt-btn-zoom-out"')
-    .replace('id="btn-zoom-fit"', 'id="rt-btn-zoom-fit"')
-    .replace('id="zoom-level-text"', 'id="rt-zoom-level-text"')
-    .replace('id="btn-empty-upload"', 'id="rt-btn-empty-upload"')
-    .replace('id="btn-empty-sample"', 'id="rt-btn-empty-sample"')
-    .replace('id="regions-count-badge"', 'id="rt-regions-count-badge"')
-    .replace('id="regions-chips-container"', 'id="rt-regions-chips-container"')
-)
-_RT_CUSTOM_CANVAS_JS = (
-    _DRAW_JS.replace("window.CustomCanvasController", "window.CustomCanvasControllerRT")
-    .replace("CustomCanvasController", "CustomCanvasControllerRT")
-    .replace("getCustomDrawData", "getRtInteractiveDrawData")
-    .replace("__llmog_custom_canvas_payload__", "__rt_interactive_payload__")
-    .replace("llmog-custom-canvas-app", "llmog-custom-canvas-app-rt")
-    .replace("custom-annotation-canvas", "rt-custom-annotation-canvas")
-    .replace("canvas-stage-wrapper", "rt-canvas-stage-wrapper")
-    .replace("canvas-empty-overlay", "rt-canvas-empty-overlay")
-    .replace("canvas-file-input", "rt-canvas-file-input")
-    .replace("custom_draw_payload_box", "rt_interactive_payload_box")
-    .replace("recls_sample_bridge_btn", "rt_capture_bridge_btn")
-    .replace("tool-bbox", "rt-tool-bbox")
-    .replace("tool-brush", "rt-tool-brush")
-    .replace("tool-circle", "rt-tool-circle")
-    .replace("tool-eraser", "rt-tool-eraser")
-    .replace("palette-swatches", "rt-palette-swatches")
-    .replace("custom-color-picker", "rt-custom-color-picker")
-    .replace("brush-size-slider", "rt-brush-size-slider")
-    .replace("brush-size-val", "rt-brush-size-val")
-    .replace("btn-undo", "rt-btn-undo")
-    .replace("btn-redo", "rt-btn-redo")
-    .replace("btn-clear-drawings", "rt-btn-clear-drawings")
-    .replace("btn-clear-all", "rt-btn-clear-all")
-    .replace("btn-zoom-in", "rt-btn-zoom-in")
-    .replace("btn-zoom-out", "rt-btn-zoom-out")
-    .replace("btn-zoom-fit", "rt-btn-zoom-fit")
-    .replace("zoom-level-text", "rt-zoom-level-text")
-    .replace("btn-empty-upload", "rt-btn-empty-upload")
-    .replace("btn-empty-sample", "rt-btn-empty-sample")
-    .replace("regions-count-badge", "rt-regions-count-badge")
-    .replace("regions-chips-container", "rt-regions-chips-container")
-)
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Annotation Tools -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Tools</span>
+            <button type="button" class="canvas-tool-btn active" id="rt-tool-bbox" title="Bounding Box (Drag rectangle) [B]">
+                <span class="tool-icon">🔲</span> Box
+            </button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-brush" title="Freehand Brush [P]">
+                <span class="tool-icon">🖌️</span> Brush
+            </button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-circle" title="Circle / Ellipse [C]">
+                <span class="tool-icon">⭕</span> Circle
+            </button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-eraser" title="Eraser / Delete Region [E]">
+                <span class="tool-icon">🧽</span> Eraser
+            </button>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Color Palette -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Color</span>
+            <div class="color-palette-bar" id="rt-palette-swatches">
+                <button type="button" class="color-swatch active" style="background:#00ffcc" data-color="#00ffcc"></button>
+                <button type="button" class="color-swatch" style="background:#ff3c3c" data-color="#ff3c3c"></button>
+                <button type="button" class="color-swatch" style="background:#0096ff" data-color="#0096ff"></button>
+                <button type="button" class="color-swatch" style="background:#ffd214" data-color="#ffd214"></button>
+                <button type="button" class="color-swatch" style="background:#963cff" data-color="#963cff"></button>
+                <button type="button" class="color-swatch" style="background:#ffffff" data-color="#ffffff"></button>
+            </div>
+            <input type="color" id="rt-custom-color-picker" value="#00ffcc" title="Custom color" class="color-picker-input">
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Size Slider -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Size: <b id="rt-brush-size-val">3</b>px</span>
+            <input type="range" id="rt-brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Actions -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Actions</span>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
+            <button type="button" class="canvas-tool-btn danger" id="rt-btn-clear-all" title="Clear camera & drawings completely">🧹 Reset All</button>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Zoom Controls -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Zoom</span>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-in" title="Zoom in">➕</button>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-out" title="Zoom out">➖</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
+            <span id="rt-zoom-level-text" class="zoom-indicator">100%</span>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- File Fallback Upload -->
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">File</span>
+            <button type="button" class="canvas-tool-btn upload-btn" id="rt-btn-toolbar-upload" title="Upload an image from your computer">
+                📁 Upload
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas Stage Viewport with Live Camera -->
+    <div class="canvas-stage-wrapper" id="rt-canvas-stage-wrapper">
+        <video id="rt-camera-video" playsinline muted autoplay style="display:none;"></video>
+        <canvas id="rt-custom-annotation-canvas"></canvas>
+        
+        <div id="rt-canvas-empty-overlay" class="canvas-empty-state">
+            <div class="empty-icon">📹</div>
+            <h3>Real-Time Interactive Camera &amp; Draw</h3>
+            <p>Start your camera and draw bounding boxes or brush strokes directly over objects to recognize them.</p>
+            <div class="empty-actions">
+                <button type="button" class="btn-canvas-primary" id="rt-btn-empty-camera">📹 Start Camera</button>
+                <button type="button" class="btn-canvas-secondary" id="rt-btn-empty-upload">📁 Choose Image</button>
+                <button type="button" class="btn-canvas-secondary" id="rt-btn-empty-sample">🖼️ Load Sample</button>
+            </div>
+            <span class="drag-hint">or drag &amp; drop an image here / paste from clipboard (Ctrl+V)</span>
+        </div>
+
+        <input type="file" id="rt-canvas-file-input" accept="image/*" style="display:none">
+    </div>
+
+    <!-- Regions Live Summary Bar -->
+    <div class="canvas-status-bar">
+        <div class="status-left">
+            <span class="regions-count-badge" id="rt-regions-count-badge">0 Region(s)</span>
+            <span class="canvas-hint-text">💡 Tip: Start camera, select <b>Box</b> to mark objects directly on the camera feed, then click <b>🔎 Recognize Drawn Objects</b>.</span>
+        </div>
+        <div class="regions-list-chips" id="rt-regions-chips-container">
+            <!-- Dynamically populated region chips -->
+        </div>
+    </div>
+</div>
+"""
+
+# ── JavaScript Controller for Real-Time Interactive Canvas ───────────────────
+_RT_DRAW_CANVAS_JS = """
+(function() {
+    window.CustomCanvasControllerRT = {
+        video: null,
+        stream: null,
+        isCameraRunning: false,
+        isFrozen: false,
+        facingMode: 'user',
+        animFrameId: null,
+
+        image: null,
+        imageSrc: null,
+        imageWidth: 0,
+        imageHeight: 0,
+
+        mode: 'bbox',
+        color: '#00ffcc',
+        size: 3,
+
+        scale: 1.0,
+        offsetX: 0,
+        offsetY: 0,
+        isPanning: false,
+        panStartX: 0,
+        panStartY: 0,
+
+        isDrawing: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        currentY: 0,
+
+        currentStroke: [],
+        regions: [],
+        undoStack: [],
+        redoStack: [],
+
+        container: null,
+        canvas: null,
+        ctx: null,
+        wrapper: null,
+        emptyOverlay: null,
+        fileInput: null,
+
+        init: function() {
+            this.container = document.getElementById('llmog-custom-canvas-app-rt');
+            if (!this.container) return;
+
+            this.canvas = document.getElementById('rt-custom-annotation-canvas');
+            if (!this.canvas) return;
+            this.ctx = this.canvas.getContext('2d');
+            this.wrapper = document.getElementById('rt-canvas-stage-wrapper');
+            this.emptyOverlay = document.getElementById('rt-canvas-empty-overlay');
+            this.fileInput = document.getElementById('rt-canvas-file-input');
+            this.video = document.getElementById('rt-camera-video');
+
+            this.bindEvents();
+            this.resizeCanvas();
+            this.syncGradioPayload();
+        },
+
+        bindEvents: function() {
+            const self = this;
+            window.addEventListener('resize', () => self.resizeCanvas());
+
+            // ── Camera Controls ───────────────────────────────────────────
+            const btnStartCam = document.getElementById('rt-btn-start-camera');
+            const btnEmptyCam = document.getElementById('rt-btn-empty-camera');
+            const btnStopCam = document.getElementById('rt-btn-stop-camera');
+            const btnFreezeCam = document.getElementById('rt-btn-freeze-camera');
+            const btnFlipCam = document.getElementById('rt-btn-flip-camera');
+
+            if (btnStartCam) btnStartCam.onclick = () => self.startCamera();
+            if (btnEmptyCam) btnEmptyCam.onclick = () => self.startCamera();
+            if (btnStopCam) btnStopCam.onclick = () => self.stopCamera();
+            if (btnFreezeCam) btnFreezeCam.onclick = () => self.toggleFreezeCamera();
+            if (btnFlipCam) btnFlipCam.onclick = () => self.flipCamera();
+
+            // ── Drawing Tools ─────────────────────────────────────────────
+            const toolBbox = document.getElementById('rt-tool-bbox');
+            const toolBrush = document.getElementById('rt-tool-brush');
+            const toolCircle = document.getElementById('rt-tool-circle');
+            const toolEraser = document.getElementById('rt-tool-eraser');
+
+            const setTool = (mode, btn) => {
+                self.mode = mode;
+                [toolBbox, toolBrush, toolCircle, toolEraser].forEach(b => b && b.classList.remove('active'));
+                if (btn) btn.classList.add('active');
+                if (mode === 'brush' && self.size < 6) {
+                    self.size = 10;
+                    const sl = document.getElementById('rt-brush-size-slider');
+                    const sv = document.getElementById('rt-brush-size-val');
+                    if (sl) sl.value = 10;
+                    if (sv) sv.textContent = 10;
+                } else if (mode === 'bbox' && self.size > 8) {
+                    self.size = 3;
+                    const sl = document.getElementById('rt-brush-size-slider');
+                    const sv = document.getElementById('rt-brush-size-val');
+                    if (sl) sl.value = 3;
+                    if (sv) sv.textContent = 3;
+                }
+                self.render();
+            };
+
+            if (toolBbox) toolBbox.onclick = () => setTool('bbox', toolBbox);
+            if (toolBrush) toolBrush.onclick = () => setTool('brush', toolBrush);
+            if (toolCircle) toolCircle.onclick = () => setTool('circle', toolCircle);
+            if (toolEraser) toolEraser.onclick = () => setTool('eraser', toolEraser);
+
+            // ── Color Swatches ────────────────────────────────────────────
+            const swatches = document.querySelectorAll('#rt-palette-swatches .color-swatch');
+            const customPicker = document.getElementById('rt-custom-color-picker');
+
+            swatches.forEach(sw => {
+                sw.onclick = () => {
+                    swatches.forEach(s => s.classList.remove('active'));
+                    sw.classList.add('active');
+                    self.color = sw.dataset.color;
+                    if (customPicker) customPicker.value = self.color;
+                };
+            });
+
+            if (customPicker) {
+                customPicker.oninput = (e) => {
+                    self.color = e.target.value;
+                    swatches.forEach(s => s.classList.remove('active'));
+                };
+            }
+
+            // ── Size Slider ───────────────────────────────────────────────
+            const sizeSlider = document.getElementById('rt-brush-size-slider');
+            const sizeVal = document.getElementById('rt-brush-size-val');
+            if (sizeSlider) {
+                sizeSlider.oninput = (e) => {
+                    self.size = parseInt(e.target.value, 10);
+                    if (sizeVal) sizeVal.textContent = self.size;
+                };
+            }
+
+            // ── Actions ───────────────────────────────────────────────────
+            const btnUndo = document.getElementById('rt-btn-undo');
+            const btnRedo = document.getElementById('rt-btn-redo');
+            const btnClearDrawings = document.getElementById('rt-btn-clear-drawings');
+            const btnClearAll = document.getElementById('rt-btn-clear-all');
+
+            if (btnUndo) btnUndo.onclick = () => self.undo();
+            if (btnRedo) btnRedo.onclick = () => self.redo();
+            if (btnClearDrawings) btnClearDrawings.onclick = () => self.clearDrawings();
+            if (btnClearAll) btnClearAll.onclick = () => self.clearAll();
+
+            // ── Zoom Controls ─────────────────────────────────────────────
+            const btnZoomIn = document.getElementById('rt-btn-zoom-in');
+            const btnZoomOut = document.getElementById('rt-btn-zoom-out');
+            const btnZoomFit = document.getElementById('rt-btn-zoom-fit');
+
+            if (btnZoomIn) btnZoomIn.onclick = () => self.zoom(1.2);
+            if (btnZoomOut) btnZoomOut.onclick = () => self.zoom(1 / 1.2);
+            if (btnZoomFit) btnZoomFit.onclick = () => self.fitToScreen();
+
+            // ── Upload & Sample ───────────────────────────────────────────
+            const btnToolbarUpload = document.getElementById('rt-btn-toolbar-upload');
+            const btnEmptyUpload = document.getElementById('rt-btn-empty-upload');
+            const btnEmptySample = document.getElementById('rt-btn-empty-sample');
+
+            if (btnToolbarUpload) btnToolbarUpload.onclick = () => self.triggerFileUpload();
+            if (btnEmptyUpload) btnEmptyUpload.onclick = () => self.triggerFileUpload();
+            if (btnEmptySample) btnEmptySample.onclick = () => self.loadSampleImage();
+
+            // ── Mouse & Touch Pointer Handlers ────────────────────────────
+            self.canvas.addEventListener('mousedown', (e) => self.onPointerDown(e));
+            window.addEventListener('mousemove', (e) => self.onPointerMove(e));
+            window.addEventListener('mouseup', (e) => self.onPointerUp(e));
+
+            self.canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    self.onPointerDown({ clientX: touch.clientX, clientY: touch.clientY, button: 0, preventDefault: () => e.preventDefault() });
+                }
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (self.isDrawing || self.isPanning) {
+                    if (e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        self.onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
+                    }
+                }
+            }, { passive: false });
+
+            window.addEventListener('touchend', (e) => {
+                if (self.isDrawing || self.isPanning) {
+                    self.onPointerUp(e);
+                }
+            });
+
+            self.wrapper.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                const rect = self.canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                self.zoomAt(zoomFactor, mouseX, mouseY);
+            }, { passive: false });
+
+            // ── Drag & Drop ───────────────────────────────────────────────
+            ['dragenter', 'dragover'].forEach(name => {
+                self.wrapper.addEventListener(name, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    self.wrapper.classList.add('drag-active');
+                });
+            });
+            ['dragleave', 'drop'].forEach(name => {
+                self.wrapper.addEventListener(name, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    self.wrapper.classList.remove('drag-active');
+                });
+            });
+            self.wrapper.addEventListener('drop', (e) => {
+                const files = e.dataTransfer && e.dataTransfer.files;
+                if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+                    self.loadImageFromFile(files[0]);
+                }
+            });
+
+            // ── Clipboard Paste ───────────────────────────────────────────
+            window.addEventListener('paste', (e) => {
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        const blob = items[i].getAsFile();
+                        self.loadImageFromFile(blob);
+                        break;
+                    }
+                }
+            });
+
+            // ── Keyboard Shortcuts ────────────────────────────────────────
+            window.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                    e.preventDefault();
+                    if (e.shiftKey) self.redo();
+                    else self.undo();
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+                    e.preventDefault();
+                    self.redo();
+                } else if (e.key === 'b' || e.key === 'B') {
+                    setTool('bbox', toolBbox);
+                } else if (e.key === 'p' || e.key === 'P') {
+                    setTool('brush', toolBrush);
+                } else if (e.key === 'c' || e.key === 'C') {
+                    setTool('circle', toolCircle);
+                } else if (e.key === 'e' || e.key === 'E') {
+                    setTool('eraser', toolEraser);
+                } else if (e.key === ' ' && self.isCameraRunning) {
+                    e.preventDefault();
+                    self.toggleFreezeCamera();
+                }
+            });
+        },
+
+        // ── Camera Streaming Logic ────────────────────────────────────────
+        startCamera: function() {
+            const self = this;
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Webcam access is not supported by your browser or connection is not HTTPS/localhost.");
+                return;
+            }
+
+            const constraints = {
+                video: {
+                    facingMode: self.facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(stream) {
+                    self.stream = stream;
+                    if (!self.video) {
+                        self.video = document.getElementById('rt-camera-video');
+                    }
+                    self.video.srcObject = stream;
+                    self.video.play();
+
+                    self.video.onloadedmetadata = function() {
+                        self.isCameraRunning = true;
+                        self.isFrozen = false;
+                        self.imageWidth = self.video.videoWidth || 1280;
+                        self.imageHeight = self.video.videoHeight || 720;
+                        self.image = null; // streaming live video
+
+                        if (self.emptyOverlay) self.emptyOverlay.style.display = 'none';
+                        self.updateCameraUI(true);
+                        self.fitToScreen();
+                        self.startRenderLoop();
+                    };
+                })
+                .catch(function(err) {
+                    console.error("Camera access error:", err);
+                    alert("Could not access camera: " + (err.message || err.name));
+                });
+        },
+
+        stopCamera: function() {
+            if (this.stream) {
+                this.stream.getTracks().forEach(t => t.stop());
+                this.stream = null;
+            }
+            if (this.video) {
+                this.video.pause();
+                this.video.srcObject = null;
+            }
+            this.isCameraRunning = false;
+            this.isFrozen = false;
+            if (this.animFrameId) {
+                cancelAnimationFrame(this.animFrameId);
+                this.animFrameId = null;
+            }
+            this.updateCameraUI(false);
+            if (!this.image) {
+                if (this.emptyOverlay) this.emptyOverlay.style.display = 'flex';
+                this.render();
+            }
+        },
+
+        toggleFreezeCamera: function() {
+            if (!this.isCameraRunning && !this.isFrozen) return;
+
+            if (!this.isFrozen) {
+                // Freeze: snapshot current video frame into static Image
+                const offscreen = document.createElement('canvas');
+                offscreen.width = this.imageWidth;
+                offscreen.height = this.imageHeight;
+                const octx = offscreen.getContext('2d');
+                octx.drawImage(this.video, 0, 0, this.imageWidth, this.imageHeight);
+                const dataUrl = offscreen.toDataURL('image/jpeg', 0.95);
+
+                const frozenImg = new Image();
+                const self = this;
+                frozenImg.onload = function() {
+                    self.image = frozenImg;
+                    self.imageSrc = dataUrl;
+                    self.isFrozen = true;
+                    if (self.animFrameId) {
+                        cancelAnimationFrame(self.animFrameId);
+                        self.animFrameId = null;
+                    }
+                    const btnFreeze = document.getElementById('rt-btn-freeze-camera');
+                    if (btnFreeze) {
+                        btnFreeze.innerHTML = '<span class="tool-icon">▶️</span> Resume';
+                        btnFreeze.classList.add('camera-active');
+                    }
+                    self.render();
+                    self.syncGradioPayload();
+                };
+                frozenImg.src = dataUrl;
+            } else {
+                // Resume live streaming
+                this.isFrozen = false;
+                this.image = null;
+                const btnFreeze = document.getElementById('rt-btn-freeze-camera');
+                if (btnFreeze) {
+                    btnFreeze.innerHTML = '<span class="tool-icon">⏸️</span> Freeze';
+                    btnFreeze.classList.remove('camera-active');
+                }
+                this.startRenderLoop();
+            }
+        },
+
+        flipCamera: function() {
+            this.facingMode = (this.facingMode === 'user') ? 'environment' : 'user';
+            this.stopCamera();
+            this.startCamera();
+        },
+
+        updateCameraUI: function(running) {
+            const btnStart = document.getElementById('rt-btn-start-camera');
+            const btnStop = document.getElementById('rt-btn-stop-camera');
+            const btnFreeze = document.getElementById('rt-btn-freeze-camera');
+            const btnFlip = document.getElementById('rt-btn-flip-camera');
+
+            if (btnStart) btnStart.style.display = running ? 'none' : 'inline-flex';
+            if (btnStop) btnStop.style.display = running ? 'inline-flex' : 'none';
+            if (btnFreeze) btnFreeze.style.display = running ? 'inline-flex' : 'none';
+            if (btnFlip) btnFlip.style.display = running ? 'inline-flex' : 'none';
+        },
+
+        startRenderLoop: function() {
+            const self = this;
+            if (self.animFrameId) cancelAnimationFrame(self.animFrameId);
+
+            function loop() {
+                if (self.isCameraRunning && !self.isFrozen) {
+                    self.render();
+                    self.animFrameId = requestAnimationFrame(loop);
+                }
+            }
+            loop();
+        },
+
+        // ── Canvas Sizing & Navigation ────────────────────────────────────
+        resizeCanvas: function() {
+            if (!this.wrapper || !this.canvas) return;
+            const w = this.wrapper.clientWidth;
+            const h = this.wrapper.clientHeight || 580;
+            this.canvas.width = w;
+            this.canvas.height = h;
+            this.render();
+        },
+
+        loadImageFromDataUrl: function(dataUrl) {
+            const self = this;
+            const img = new Image();
+            img.onload = function() {
+                if (self.isCameraRunning) {
+                    self.stopCamera();
+                }
+                self.image = img;
+                self.imageSrc = dataUrl;
+                self.imageWidth = img.naturalWidth || img.width;
+                self.imageHeight = img.naturalHeight || img.height;
+                self.regions = [];
+                self.undoStack = [];
+                self.redoStack = [];
+
+                if (self.emptyOverlay) self.emptyOverlay.style.display = 'none';
+                self.fitToScreen();
+                self.syncGradioPayload();
+                self.render();
+            };
+            img.src = dataUrl;
+        },
+
+        loadImageFromFile: function(file) {
+            const self = this;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                self.loadImageFromDataUrl(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        },
+
+        triggerFileUpload: function() {
+            const self = this;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+            input.onchange = function(e) {
+                const file = e.target.files && e.target.files[0];
+                if (file) self.loadImageFromFile(file);
+                document.body.removeChild(input);
+            };
+            input.addEventListener('cancel', function() {
+                try { document.body.removeChild(input); } catch(_) {}
+            });
+            window.addEventListener('focus', function cleanup() {
+                setTimeout(function() {
+                    try { if (input.parentNode) document.body.removeChild(input); } catch(_) {}
+                    window.removeEventListener('focus', cleanup);
+                }, 500);
+            }, { once: true });
+            input.click();
+        },
+
+        loadSampleImage: function() {
+            const sampleBtn = document.getElementById('rt_sample_bridge_btn');
+            if (sampleBtn) {
+                sampleBtn.click();
+            }
+        },
+
+        fitToScreen: function() {
+            if ((!this.image && !this.isCameraRunning) || !this.canvas) return;
+            const cw = this.canvas.width;
+            const ch = this.canvas.height;
+            const iw = this.imageWidth || 1280;
+            const ih = this.imageHeight || 720;
+
+            const scaleX = (cw - 40) / iw;
+            const scaleY = (ch - 40) / ih;
+            this.scale = Math.min(scaleX, scaleY, 1.0);
+            if (this.scale <= 0) this.scale = 1.0;
+
+            this.offsetX = (cw - iw * this.scale) / 2;
+            this.offsetY = (ch - ih * this.scale) / 2;
+
+            this.updateZoomIndicator();
+            this.render();
+        },
+
+        zoom: function(factor) {
+            const cw = this.canvas.width / 2;
+            const ch = this.canvas.height / 2;
+            this.zoomAt(factor, cw, ch);
+        },
+
+        zoomAt: function(factor, mouseX, mouseY) {
+            const prevScale = this.scale;
+            let newScale = this.scale * factor;
+            newScale = Math.max(0.1, Math.min(newScale, 15.0));
+
+            this.offsetX = mouseX - (mouseX - this.offsetX) * (newScale / prevScale);
+            this.offsetY = mouseY - (mouseY - this.offsetY) * (newScale / prevScale);
+            this.scale = newScale;
+
+            this.updateZoomIndicator();
+            this.render();
+        },
+
+        updateZoomIndicator: function() {
+            const ind = document.getElementById('rt-zoom-level-text');
+            if (ind) ind.textContent = `${Math.round(this.scale * 100)}%`;
+        },
+
+        screenToImageCoords: function(screenX, screenY) {
+            const imgX = (screenX - this.offsetX) / this.scale;
+            const imgY = (screenY - this.offsetY) / this.scale;
+            return {
+                x: Math.max(0, Math.min(this.imageWidth, imgX)),
+                y: Math.max(0, Math.min(this.imageHeight, imgY))
+            };
+        },
+
+        // ── Pointer Handlers ──────────────────────────────────────────────
+        onPointerDown: function(e) {
+            if (!this.image && !this.isCameraRunning) return;
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (e.button === 1 || e.spaceKey || (e.button === 0 && e.altKey)) {
+                this.isPanning = true;
+                this.panStartX = mouseX - this.offsetX;
+                this.panStartY = mouseY - this.offsetY;
+                return;
+            }
+
+            if (e.button !== 0) return;
+
+            const pt = this.screenToImageCoords(mouseX, mouseY);
+
+            if (this.mode === 'eraser') {
+                this.eraseAt(pt.x, pt.y);
+                return;
+            }
+
+            this.isDrawing = true;
+            this.startX = pt.x;
+            this.startY = pt.y;
+            this.currentX = pt.x;
+            this.currentY = pt.y;
+
+            if (this.mode === 'brush') {
+                this.currentStroke = [{ x: pt.x, y: pt.y }];
+            }
+        },
+
+        onPointerMove: function(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (this.isPanning) {
+                this.offsetX = mouseX - this.panStartX;
+                this.offsetY = mouseY - this.panStartY;
+                this.render();
+                return;
+            }
+
+            if (!this.isDrawing) return;
+
+            const pt = this.screenToImageCoords(mouseX, mouseY);
+            this.currentX = pt.x;
+            this.currentY = pt.y;
+
+            if (this.mode === 'brush') {
+                this.currentStroke.push({ x: pt.x, y: pt.y });
+            }
+
+            if (!this.isCameraRunning || this.isFrozen) {
+                this.render();
+            }
+        },
+
+        onPointerUp: function(e) {
+            if (this.isPanning) {
+                this.isPanning = false;
+                return;
+            }
+
+            if (!this.isDrawing) return;
+            this.isDrawing = false;
+
+            let newRegion = null;
+
+            if (this.mode === 'bbox') {
+                const x1 = Math.min(this.startX, this.currentX);
+                const y1 = Math.min(this.startY, this.currentY);
+                const x2 = Math.max(this.startX, this.currentX);
+                const y2 = Math.max(this.startY, this.currentY);
+
+                if ((x2 - x1) > 5 && (y2 - y1) > 5) {
+                    newRegion = {
+                        type: 'bbox',
+                        x1: Math.round(x1),
+                        y1: Math.round(y1),
+                        x2: Math.round(x2),
+                        y2: Math.round(y2),
+                        color: this.color,
+                        size: this.size
+                    };
+                }
+            } else if (this.mode === 'circle') {
+                const x1 = Math.min(this.startX, this.currentX);
+                const y1 = Math.min(this.startY, this.currentY);
+                const x2 = Math.max(this.startX, this.currentX);
+                const y2 = Math.max(this.startY, this.currentY);
+
+                if ((x2 - x1) > 5 && (y2 - y1) > 5) {
+                    newRegion = {
+                        type: 'circle',
+                        x1: Math.round(x1),
+                        y1: Math.round(y1),
+                        x2: Math.round(x2),
+                        y2: Math.round(y2),
+                        color: this.color,
+                        size: this.size
+                    };
+                }
+            } else if (this.mode === 'brush' && this.currentStroke.length > 1) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                this.currentStroke.forEach(p => {
+                    minX = Math.min(minX, p.x);
+                    minY = Math.min(minY, p.y);
+                    maxX = Math.max(maxX, p.x);
+                    maxY = Math.max(maxY, p.y);
+                });
+
+                const pad = (this.size || 10) / 2;
+                newRegion = {
+                    type: 'stroke',
+                    points: this.currentStroke.slice(),
+                    x1: Math.max(0, Math.round(minX - pad)),
+                    y1: Math.max(0, Math.round(minY - pad)),
+                    x2: Math.min(this.imageWidth, Math.round(maxX + pad)),
+                    y2: Math.min(this.imageHeight, Math.round(maxY + pad)),
+                    color: this.color,
+                    size: this.size
+                };
+            }
+
+            if (newRegion) {
+                this.saveHistoryState();
+                this.regions.push(newRegion);
+                this.redoStack = [];
+                this.updateRegionsList();
+                this.syncGradioPayload();
+            }
+
+            this.currentStroke = [];
+            this.render();
+        },
+
+        eraseAt: function(imgX, imgY) {
+            for (let i = this.regions.length - 1; i >= 0; i--) {
+                const r = this.regions[i];
+                if (imgX >= r.x1 && imgX <= r.x2 && imgY >= r.y1 && imgY <= r.y2) {
+                    this.saveHistoryState();
+                    this.regions.splice(i, 1);
+                    this.redoStack = [];
+                    this.updateRegionsList();
+                    this.syncGradioPayload();
+                    this.render();
+                    break;
+                }
+            }
+        },
+
+        removeRegion: function(idx) {
+            if (idx >= 0 && idx < this.regions.length) {
+                this.saveHistoryState();
+                this.regions.splice(idx, 1);
+                this.redoStack = [];
+                this.updateRegionsList();
+                this.syncGradioPayload();
+                this.render();
+            }
+        },
+
+        // ── History (Undo / Redo) ─────────────────────────────────────────
+        saveHistoryState: function() {
+            this.undoStack.push(JSON.parse(JSON.stringify(this.regions)));
+            if (this.undoStack.length > 30) this.undoStack.shift();
+        },
+
+        undo: function() {
+            if (this.undoStack.length === 0) return;
+            this.redoStack.push(JSON.parse(JSON.stringify(this.regions)));
+            this.regions = this.undoStack.pop();
+            this.updateRegionsList();
+            this.syncGradioPayload();
+            this.render();
+        },
+
+        redo: function() {
+            if (this.redoStack.length === 0) return;
+            this.undoStack.push(JSON.parse(JSON.stringify(this.regions)));
+            this.regions = this.redoStack.pop();
+            this.updateRegionsList();
+            this.syncGradioPayload();
+            this.render();
+        },
+
+        clearDrawings: function() {
+            if (this.regions.length === 0) return;
+            this.saveHistoryState();
+            this.regions = [];
+            this.redoStack = [];
+            this.updateRegionsList();
+            this.syncGradioPayload();
+            this.render();
+        },
+
+        clearAll: function() {
+            if (this.isCameraRunning) {
+                this.stopCamera();
+            }
+            this.image = null;
+            this.imageSrc = null;
+            this.regions = [];
+            this.undoStack = [];
+            this.redoStack = [];
+            if (this.emptyOverlay) this.emptyOverlay.style.display = 'flex';
+            this.updateRegionsList();
+            this.syncGradioPayload();
+            this.render();
+        },
+
+        updateRegionsList: function() {
+            const countBadge = document.getElementById('rt-regions-count-badge');
+            if (countBadge) countBadge.textContent = `${this.regions.length} Region(s)`;
+
+            const container = document.getElementById('rt-regions-chips-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            this.regions.forEach((r, idx) => {
+                const chip = document.createElement('div');
+                chip.className = 'canvas-region-chip';
+                const w = r.x2 - r.x1;
+                const h = r.y2 - r.y1;
+                chip.innerHTML = `
+                    <span class="chip-color-dot" style="background:${r.color}"></span>
+                    <span class="chip-title">#${idx + 1} ${r.type.toUpperCase()}</span>
+                    <span class="chip-coords">${w}×${h}</span>
+                    <button type="button" class="chip-del-btn" title="Delete region">✕</button>
+                `;
+                chip.querySelector('.chip-del-btn').onclick = (e) => {
+                    e.stopPropagation();
+                    window.CustomCanvasControllerRT.removeRegion(idx);
+                };
+                container.appendChild(chip);
+            });
+        },
+
+        // ── Canvas Rendering Engine ───────────────────────────────────────
+        render: function() {
+            if (!this.ctx || !this.canvas) return;
+            const ctx = this.ctx;
+            const w = this.canvas.width;
+            const h = this.canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+            this.drawBackgroundPattern(ctx, w, h);
+
+            const hasSource = (this.isCameraRunning && this.video && this.video.readyState >= 2) || this.image;
+            if (!hasSource) return;
+
+            ctx.save();
+            ctx.translate(this.offsetX, this.offsetY);
+            ctx.scale(this.scale, this.scale);
+
+            // Draw video or static image
+            if (this.isCameraRunning && !this.isFrozen && this.video) {
+                ctx.drawImage(this.video, 0, 0, this.imageWidth, this.imageHeight);
+            } else if (this.image) {
+                ctx.drawImage(this.image, 0, 0, this.imageWidth, this.imageHeight);
+            }
+
+            // Draw all completed regions
+            this.regions.forEach((r, idx) => {
+                this.drawSingleRegion(ctx, r, idx + 1);
+            });
+
+            // Draw live in-progress drawing preview
+            if (this.isDrawing) {
+                if (this.mode === 'bbox') {
+                    const x1 = Math.min(this.startX, this.currentX);
+                    const y1 = Math.min(this.startY, this.currentY);
+                    const x2 = Math.max(this.startX, this.currentX);
+                    const y2 = Math.max(this.startY, this.currentY);
+                    this.drawSingleRegion(ctx, {
+                        type: 'bbox',
+                        x1, y1, x2, y2,
+                        color: this.color,
+                        size: this.size
+                    }, this.regions.length + 1, true);
+                } else if (this.mode === 'circle') {
+                    const x1 = Math.min(this.startX, this.currentX);
+                    const y1 = Math.min(this.startY, this.currentY);
+                    const x2 = Math.max(this.startX, this.currentX);
+                    const y2 = Math.max(this.startY, this.currentY);
+                    this.drawSingleRegion(ctx, {
+                        type: 'circle',
+                        x1, y1, x2, y2,
+                        color: this.color,
+                        size: this.size
+                    }, this.regions.length + 1, true);
+                } else if (this.mode === 'brush' && this.currentStroke.length > 1) {
+                    ctx.save();
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = this.size;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(this.currentStroke[0].x, this.currentStroke[0].y);
+                    for (let i = 1; i < this.currentStroke.length; i++) {
+                        ctx.lineTo(this.currentStroke[i].x, this.currentStroke[i].y);
+                    }
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            ctx.restore();
+        },
+
+        drawSingleRegion: function(ctx, r, labelNumber, isLive = false) {
+            ctx.save();
+            const strokeW = Math.max(2, (r.size || 3) / this.scale);
+
+            if (r.type === 'bbox') {
+                const rx = r.x1;
+                const ry = r.y1;
+                const rw = r.x2 - r.x1;
+                const rh = r.y2 - r.y1;
+
+                ctx.fillStyle = isLive ? 'rgba(0, 255, 204, 0.2)' : 'rgba(0, 255, 204, 0.12)';
+                ctx.fillRect(rx, ry, rw, rh);
+
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = strokeW + (2 / this.scale);
+                ctx.strokeRect(rx, ry, rw, rh);
+
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = strokeW;
+                ctx.strokeRect(rx, ry, rw, rh);
+
+                this.drawRegionBadge(ctx, rx, ry, `#${labelNumber}`, r.color);
+            } else if (r.type === 'circle') {
+                const cx = (r.x1 + r.x2) / 2;
+                const cy = (r.y1 + r.y2) / 2;
+                const rx = (r.x2 - r.x1) / 2;
+                const ry = (r.y2 - r.y1) / 2;
+
+                ctx.fillStyle = isLive ? 'rgba(0, 255, 204, 0.2)' : 'rgba(0, 255, 204, 0.12)';
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = strokeW + (2 / this.scale);
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = strokeW;
+                ctx.beginPath();
+                ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                this.drawRegionBadge(ctx, r.x1, r.y1, `#${labelNumber}`, r.color);
+            } else if (r.type === 'stroke' && r.points && r.points.length > 0) {
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = (r.size || 10) + (3 / this.scale);
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(r.points[0].x, r.points[0].y);
+                for (let i = 1; i < r.points.length; i++) {
+                    ctx.lineTo(r.points[i].x, r.points[i].y);
+                }
+                ctx.stroke();
+
+                ctx.strokeStyle = r.color;
+                ctx.lineWidth = r.size || 10;
+                ctx.beginPath();
+                ctx.moveTo(r.points[0].x, r.points[0].y);
+                for (let i = 1; i < r.points.length; i++) {
+                    ctx.lineTo(r.points[i].x, r.points[i].y);
+                }
+                ctx.stroke();
+
+                this.drawRegionBadge(ctx, r.x1, r.y1, `#${labelNumber}`, r.color);
+            }
+            ctx.restore();
+        },
+
+        drawRegionBadge: function(ctx, x, y, text, color) {
+            const fontSize = Math.max(12, Math.round(14 / this.scale));
+            ctx.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
+            const textWidth = ctx.measureText(text).width;
+            const pad = 4 / this.scale;
+            const badgeW = textWidth + pad * 2;
+            const badgeH = fontSize + pad * 2;
+
+            const badgeY = Math.max(0, y - badgeH);
+
+            ctx.fillStyle = '#080d14';
+            ctx.fillRect(x, badgeY, badgeW, badgeH);
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5 / this.scale;
+            ctx.strokeRect(x, badgeY, badgeW, badgeH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, x + pad, badgeY + badgeH - pad * 1.5);
+        },
+
+        drawBackgroundPattern: function(ctx, w, h) {
+            ctx.fillStyle = '#0a0e17';
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.04)';
+            const step = 24;
+            for (let x = 0; x < w; x += step) {
+                for (let y = 0; y < h; y += step) {
+                    ctx.fillRect(x, y, 2, 2);
+                }
+            }
+        },
+
+        syncGradioPayload: function() {
+            let bgData = this.imageSrc || null;
+
+            // If camera is streaming live and not frozen, capture current frame
+            if (this.isCameraRunning && !this.isFrozen && this.video && this.video.readyState >= 2) {
+                try {
+                    const snapCanvas = document.createElement('canvas');
+                    snapCanvas.width = this.imageWidth || this.video.videoWidth || 1280;
+                    snapCanvas.height = this.imageHeight || this.video.videoHeight || 720;
+                    const sctx = snapCanvas.getContext('2d');
+                    sctx.drawImage(this.video, 0, 0, snapCanvas.width, snapCanvas.height);
+                    bgData = snapCanvas.toDataURL('image/jpeg', 0.92);
+                } catch(e) {
+                    console.error("Frame capture error:", e);
+                }
+            }
+
+            const payload = {
+                background: bgData,
+                regions: this.regions.map(r => ({
+                    x1: r.x1,
+                    y1: r.y1,
+                    x2: r.x2,
+                    y2: r.y2,
+                    type: r.type,
+                    color: r.color
+                })),
+                layers: [],
+                composite: null
+            };
+
+            const jsonStr = JSON.stringify(payload);
+            window.__rt_interactive_payload__ = jsonStr;
+
+            const hiddenTa = document.querySelector('#rt_interactive_payload_box textarea');
+            if (hiddenTa) {
+                hiddenTa.value = jsonStr;
+                hiddenTa.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return jsonStr;
+        }
+    };
+
+    window.getRtInteractiveDrawData = function() {
+        if (window.CustomCanvasControllerRT) {
+            return window.CustomCanvasControllerRT.syncGradioPayload();
+        }
+        return window.__rt_interactive_payload__ || "{}";
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => window.CustomCanvasControllerRT.init());
+    } else {
+        setTimeout(() => window.CustomCanvasControllerRT.init(), 100);
+    }
+})();
+"""
+
+
+def _load_sample_bridge_rt():
+    """Server-side handler to deliver the sample image to the Real-Time Canvas."""
+    b64 = _get_sample_image_b64()
+    if not b64:
+        return ""
+    payload = {
+        "background": b64,
+        "regions": [],
+        "layers": [],
+        "composite": None,
+    }
+    return json.dumps(payload)
+
+
+def _check_rt_interactive_endpoint(
+    use_external_api: bool,
+    ext_api_url: str,
+    ext_api_key: str,
+    ext_model_name: str,
+    server_port: float | int | None,
+) -> str:
+    """Check endpoint connectivity for the Real-Time Draw tab."""
+    try:
+        from interface.realtime.state import resolve_endpoint
+        from openai import OpenAI
+
+        base_url, api_key, model_name = resolve_endpoint(
+            int(server_port) if server_port else 8080,
+            bool(use_external_api),
+            ext_api_url or "",
+            ext_api_key or "",
+            ext_model_name or "",
+        )
+        if use_external_api:
+            if not ext_api_key or ext_api_key.strip() in ("", "your-key"):
+                return "**Status: ⚠️ External API selected but no API key set – configure in 🧠 Model / Endpoint tab.**"
+            client = OpenAI(base_url=base_url, api_key=api_key)
+            try:
+                client.models.list()
+                return f"**Status: ✅ Connected to External API `{model_name}` at `{base_url}`**"
+            except Exception as e:
+                return f"**Status: ⚠️ External API reachable but ping failed: {e}**"
+        else:
+            from interface.state import state
+
+            with state.server_lock:
+                mgr = state.server_manager
+                if mgr is None:
+                    return "**Status: ❌ Local server not running – start it in 🧠 Model / Endpoint tab.**"
+                if not mgr.is_healthy():
+                    return "**Status: ⏳ Local server starting – check logs in 🧠 Model / Endpoint tab.**"
+                return f"**Status: ✅ Local server healthy on port {mgr.port} (model `{mgr.model}`)**"
+    except Exception as e:
+        return f"**Status: ❌ Connection check failed: {e}**"
 
 
 def build_realtime_interactive_tab() -> Dict[str, Any]:
-    """Build Real-Time Interactive Draw tab (live capture + Draw canvas)."""
+    """Build the Real-Time Interactive Camera Draw & Recognition tab."""
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
-        # Left: Live preview + capture + interactive canvas
+        # ── Left / Main: Real-Time Interactive Canvas with Camera ─────────────
         with gr.Column(scale=3, min_width=520):
-            gr.HTML('<p class="section-label">🎥 Live Capture & Draw</p>')
-            with gr.Row():
-                live_preview = gr.Image(
-                    sources=["webcam"],
-                    streaming=True,
-                    label="Live Preview (for capture)",
-                    type="numpy",
-                    elem_id="rt_interactive_live_preview",
-                )
-            gr.HTML('<p style="color:#7d8590; font-size:0.7rem; margin-bottom:0.5rem;">Tip: Click <b>📸 Capture</b> to freeze the current frame into the draw canvas below, then draw boxes. Uses its own camera – keep <b>🎥 Real-Time Detection</b> tab\'s webcam running or not, both work.</p>')
-            with gr.Row(elem_classes=["btn-group"]):
-                capture_btn = gr.Button("📸 Capture Frame from Real-Time Tab", variant="secondary", elem_id="rt_capture_btn")
-                clear_canvas_btn = gr.Button("🧹 Clear Canvas", variant="secondary")
-            # Custom canvas – RT-specific ids to avoid Draw tab singleton clash
-            gr.HTML('<p class="section-label">🎨 Draw on Captured Frame</p>')
+            gr.HTML('<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>')
+
+            # Embedded Custom Canvas with js_on_load handler
             custom_canvas = gr.HTML(
-                value=_RT_CUSTOM_CANVAS_HTML,
-                js_on_load=_RT_CUSTOM_CANVAS_JS,
+                value=_RT_DRAW_CANVAS_HTML,
+                js_on_load=_RT_DRAW_CANVAS_JS,
                 elem_id="rt-interactive-canvas-html",
             )
+
+            # Hidden payload and sample bridge components
             payload_box = gr.Textbox(
                 value="{}",
                 visible=False,
                 elem_id="rt_interactive_payload_box",
             )
-            # Hidden bridge for sample/capture
-            capture_bridge_btn = gr.Button(visible=False, elem_id="rt_capture_bridge_btn")
+            sample_bridge_btn = gr.Button(
+                "Sample Bridge",
+                visible=False,
+                elem_id="rt_sample_bridge_btn",
+            )
 
             with gr.Row(elem_classes=["btn-group"]):
-                run_btn = gr.Button("🔎  Recognize Drawn Regions", variant="primary", scale=2)
-                clear_btn = gr.Button("🗑️ Clear Results", variant="secondary", scale=1)
+                connect_btn = gr.Button(
+                    "🔌 Check Connection",
+                    variant="secondary",
+                    scale=1,
+                    elem_id="rt-interactive-connect-btn",
+                )
+                run_btn = gr.Button(
+                    "🔎  Recognize Drawn Objects",
+                    variant="primary",
+                    scale=2,
+                )
+                clear_btn = gr.Button(
+                    "🗑️ Clear Results",
+                    variant="secondary",
+                    scale=1,
+                )
 
-        # Right: config + viewer (mirrors Draw tab)
+        # ── Right: Config & Recognition Results ───────────────────────────────
         with gr.Column(scale=2, min_width=380, elem_classes=["draw-right-panel"]):
-            gr.HTML('<p class="section-label">⚙️ Detection Strategy & Classes</p>')
+            gr.HTML('<p class="section-label">⚙️ Detection Strategy &amp; Classes</p>')
+
+            # ── 1. Class Expectation Strategy ─────────────────────────────────
             class_mode = gr.Radio(
                 label="🎯 Class Expectation Mode",
                 choices=[
@@ -186,38 +1340,51 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                     ("🌐 Free (Open-World)", "free"),
                 ],
                 value="strict",
-                info="Control how VLM assigns classes to drawn regions.",
+                info="Control how the VLM assigns classes to your drawn camera regions.",
             )
+
+            # ── 2. Preset library ──────────────────────────────────────────────
             preset_dropdown = gr.Dropdown(
                 label="📋 Category Domain Presets",
                 choices=list(CATEGORY_PRESETS.keys()),
-                value="Fabric & Surface Defects",
-                info="Quickly load target classes & definitions.",
+                value="General Objects (COCO)",
+                info="Quickly load target classes & expert distinguishing definitions.",
             )
+
             classes_input = gr.Textbox(
                 label="Target Classes (Strict - Comma Separated)",
-                placeholder="hole, stain, tear, cut, knot, weaving_defect",
-                value="hole, stain, tear, cut, knot, weaving_defect",
+                placeholder="person, car, bicycle, dog, cat, chair, bottle, laptop, cell_phone, book",
+                value=CATEGORY_PRESETS["General Objects (COCO)"]["classes"],
                 lines=2,
                 info="Strict Mode: Agent is locked to these classes (or 'none').",
             )
+
             defs_input = gr.Textbox(
                 label="Class Definitions / Distinguishing Rules",
                 lines=4,
-                value=CATEGORY_PRESETS["Fabric & Surface Defects"]["defs"],
+                value=CATEGORY_PRESETS["General Objects (COCO)"]["defs"],
                 info="Detailed criteria for distinguishing each class.",
             )
+
             with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
                 conf_threshold = gr.Slider(
                     label="Minimum Confidence Threshold (%)",
-                    minimum=0, maximum=100, step=5, value=20,
-                    info="Omit or flag recognitions below this threshold in YOLO outputs.",
+                    minimum=0,
+                    maximum=100,
+                    step=5,
+                    value=20,
+                    info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
                 )
+
                 padding_slider = gr.Slider(
                     label="Region Context Padding (%)",
-                    minimum=0, maximum=50, step=1, value=10,
-                    info="Extra visual context around each drawn region sent to VLM.",
+                    minimum=0,
+                    maximum=50,
+                    step=1,
+                    value=10,
+                    info="Extra visual context around each drawn region sent to the VLM.",
                 )
+
                 request_mode = gr.Radio(
                     label="⚡ Request Mode (optional)",
                     choices=[
@@ -226,28 +1393,31 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                         ("Batched – single request with N images", "batched"),
                     ],
                     value="parallel",
-                    info="Sequential: simple. Parallel: ~N× faster. Batched: 1 round-trip.",
+                    info="Parallel: N concurrent requests (~N× faster). Batched: 1 request with N crops.",
                 )
-            connect_btn = gr.Button("🔌 Check Connection", variant="secondary", elem_id="rt-interactive-connect-btn")
-            status = gr.Markdown("**Status: Idle – capture a frame, draw boxes, then Recognize**")
+
+            status = gr.Markdown("**Status: Idle – open camera, draw boxes over objects, then Recognize**")
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 viewer = DetectionViewer(
                     label="Annotated Recognition Result",
-                    panel_title="Recognized Regions (Live Capture)",
+                    panel_title="Recognized Camera Objects",
                     list_height=340,
                     elem_id="rt-interactive-viewer",
                 )
+
             results = gr.HTML(value=_RECLS_EMPTY_TABLE)
+
             with gr.Accordion("YOLO Labels (<class_id> <xc> <yc> <w> <h>)", open=False):
-                yolo = gr.Textbox(lines=8, interactive=False, label="Copy these lines into the image's .txt label file")
+                yolo = gr.Textbox(
+                    lines=8,
+                    interactive=False,
+                    label="Copy these lines into the image's .txt label file",
+                )
 
     return dict(
-        live_preview=live_preview,
-        capture_btn=capture_btn,
-        clear_canvas_btn=clear_canvas_btn,
         custom_canvas=custom_canvas,
         payload_box=payload_box,
-        capture_bridge_btn=capture_bridge_btn,
+        sample_bridge_btn=sample_bridge_btn,
         class_mode=class_mode,
         preset_dropdown=preset_dropdown,
         classes_input=classes_input,
@@ -265,89 +1435,50 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
     )
 
 
-def _check_rt_interactive_endpoint(use_external_api: bool, ext_api_url: str, ext_api_key: str, ext_model_name: str, server_port):
-    try:
-        from interface.realtime.state import resolve_endpoint
-        from openai import OpenAI
-        base_url, api_key, model_name = resolve_endpoint(int(server_port) if server_port else 8080, bool(use_external_api), ext_api_url or "", ext_api_key or "", ext_model_name or "")
-        if use_external_api:
-            if not ext_api_key or ext_api_key.strip() in ("", "your-key"):
-                return "**Status: ⚠️ External API selected but no API key set – configure in 🧠 Model / Endpoint tab.**"
-            client = OpenAI(base_url=base_url, api_key=api_key)
-            try:
-                client.models.list()
-                return f"**Status: ✅ Connected to External API `{model_name}` at `{base_url}`**"
-            except Exception as e:
-                return f"**Status: ⚠️ External API reachable but ping failed: {e}**"
-        else:
-            from interface.state import state
-            with state.server_lock:
-                mgr = state.server_manager
-                if mgr is None:
-                    return "**Status: ❌ Local server not running – start it in 🧠 Model / Endpoint tab.**"
-                if not mgr.is_healthy():
-                    return "**Status: ⏳ Local server starting – check logs in 🧠 Model / Endpoint tab.**"
-                return f"**Status: ✅ Local server healthy on port {mgr.port} (model `{mgr.model}`)**"
-    except Exception as e:
-        return f"**Status: ❌ Connection check failed: {e}**"
-
-
-def wire_realtime_interactive_events(c_rt_interactive: Dict[str, Any], c_srv: Dict[str, Any]) -> None:
-    # Preset / mode
+def wire_realtime_interactive_events(
+    c_rt_interactive: Dict[str, Any], c_srv: Dict[str, Any]
+) -> None:
+    """Wire interactive camera drawing, preset selection, and recognition events."""
+    # ── Category preset change ──────────────────────────────────────────────
     c_rt_interactive["preset_dropdown"].change(
         fn=_on_realtime_interactive_preset_change,
         inputs=[c_rt_interactive["preset_dropdown"]],
         outputs=[c_rt_interactive["classes_input"], c_rt_interactive["defs_input"]],
     )
+
+    # ── Class expectation mode change ───────────────────────────────────────
     c_rt_interactive["class_mode"].change(
         fn=_on_realtime_interactive_mode_change,
         inputs=[c_rt_interactive["class_mode"]],
-        outputs=[c_rt_interactive["classes_input"], c_rt_interactive["defs_input"], c_rt_interactive["preset_dropdown"]],
+        outputs=[
+            c_rt_interactive["classes_input"],
+            c_rt_interactive["defs_input"],
+            c_rt_interactive["preset_dropdown"],
+        ],
     )
-    # Capture: take live_preview numpy frame → payload_box → canvas (RT controller)
-    c_rt_interactive["capture_btn"].click(
-        fn=None,
+
+    # ── Sample bridge handler ───────────────────────────────────────────────
+    c_rt_interactive["sample_bridge_btn"].click(
+        fn=_load_sample_bridge_rt,
         inputs=None,
-        outputs=None,
-        js="""() => {
-            const video = document.querySelector('#rt_interactive_live_preview video');
-            const wrap = document.getElementById('rt_interactive_live_preview');
-            const target = video || (wrap ? wrap.querySelector('video') : null);
-            if (!target || !target.videoWidth || target.readyState < 2) {
-                alert('No live video found - start the webcam in Real-Time Detection tab (Webcam Stream) first.');
-                return;
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = target.videoWidth;
-            canvas.height = target.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(target, 0, 0, canvas.width, canvas.height);
-            const dataUri = canvas.toDataURL('image/jpeg', 0.92);
-            if (window.CustomCanvasControllerRT) {
-                window.CustomCanvasControllerRT.loadImageFromDataUrl(dataUri);
-            } else {
-                const ta = document.querySelector('#rt_interactive_payload_box textarea');
-                if (ta) {
-                    ta.value = JSON.stringify({background: dataUri, regions: [], layers: [], composite: null});
-                    ta.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-            }
-        }""",
+        outputs=[c_rt_interactive["payload_box"]],
+        js="() => { if (window.CustomCanvasControllerRT) { setTimeout(() => { const ta = document.querySelector('#rt_interactive_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasControllerRT.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
     )
-    # Clear canvas (RT controller)
-    c_rt_interactive["clear_canvas_btn"].click(
-        fn=None, inputs=None, outputs=None,
-        js="() => { if(window.CustomCanvasControllerRT) window.CustomCanvasControllerRT.clearAll(); }",
-    )
-    # Check connection
+
+    # ── Check endpoint connection ───────────────────────────────────────────
     c_rt_interactive["connect_btn"].click(
         fn=_check_rt_interactive_endpoint,
-        inputs=[c_srv["use_external_api_chk"], c_srv["ext_api_url"], c_srv["ext_api_key"], c_srv["ext_model_name"], c_srv["server_port_input"]],
+        inputs=[
+            c_srv["use_external_api_chk"],
+            c_srv["ext_api_url"],
+            c_srv["ext_api_key"],
+            c_srv["ext_model_name"],
+            c_srv["server_port_input"],
+        ],
         outputs=[c_rt_interactive["status"]],
     )
-    # Run recognition – uses same payload as Draw tab (custom canvas)
-    # Note: payload_box is updated continuously by CustomCanvasController.syncGradioPayload()
-    # We need a JS to ensure latest payload is flushed before Python call (like Draw tab)
+
+    # ── Run recognition on drawn camera regions ─────────────────────────────
     c_rt_interactive["run_btn"].click(
         fn=classify_regions_gui,
         inputs=[
@@ -370,11 +1501,24 @@ def wire_realtime_interactive_events(c_rt_interactive: Dict[str, Any], c_srv: Di
             c_rt_interactive["results"],
             c_rt_interactive["yolo"],
         ],
-        js="(p,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode)=>{ const fresh=(window.getRtInteractiveDrawData?window.getRtInteractiveDrawData(): (window.CustomCanvasControllerRT?window.CustomCanvasControllerRT.syncGradioPayload() : p))||p; if(window.CustomCanvasControllerRT) { try{ const ta=document.querySelector('#rt_interactive_payload_box textarea'); if(ta) fresh=ta.value||fresh; }catch(e){} } return [fresh,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode]; }",
+        js="(p,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode)=>{ const fresh=(window.getRtInteractiveDrawData?window.getRtInteractiveDrawData():p)||p; return [fresh,c,d,pad,mode,conf,useExt,url,key,model,port,reqMode]; }",
+        api_name="classify_realtime_regions",
         concurrency_limit=1,
     )
+
+    # ── Clear results ───────────────────────────────────────────────────────
     c_rt_interactive["clear_btn"].click(
-        fn=lambda: ("**Status: Idle – capture a frame, draw boxes, then Recognize**", None, _RECLS_EMPTY_TABLE, ""),
+        fn=lambda: (
+            "**Status: Idle – open camera, draw boxes over objects, then Recognize**",
+            None,
+            _RECLS_EMPTY_TABLE,
+            "",
+        ),
         inputs=None,
-        outputs=[c_rt_interactive["status"], c_rt_interactive["viewer"], c_rt_interactive["results"], c_rt_interactive["yolo"]],
+        outputs=[
+            c_rt_interactive["status"],
+            c_rt_interactive["viewer"],
+            c_rt_interactive["results"],
+            c_rt_interactive["yolo"],
+        ],
     )

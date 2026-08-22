@@ -38,6 +38,10 @@ from interface.tab_batch import (
     on_explorer_image_change,
     on_explorer_round_change,
 )
+from interface.batch.explorer import _viewer_payload_for as _hero_payload_builder
+from interface.state import _cache_get as _hero_cache_get
+from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
+from PIL import Image as _PILImage
 from interface.batch.components import on_batch_preset_change, on_batch_strategy_change
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
@@ -46,6 +50,57 @@ from interface.tab_realtime_interactive import (
     build_realtime_interactive_tab,
     wire_realtime_interactive_events,
 )
+
+
+def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id: str):
+    """Sync top hero preview to current explorer selection (instant feedback)."""
+    try:
+        batch_results = _hero_cache_get(batch_id)
+        if not batch_results or not selected_image or selected_image not in batch_results:
+            return None, None, '<div class="hero-empty">No results yet — run batch to see a large live preview here.</div>'
+        img_data = batch_results[selected_image]
+        viewer_base = img_data.get("raw_original")
+        if viewer_base is None:
+            return None, None, f'<div class="hero-meta">{selected_image} — waiting…</div>'
+        # Determine which detections to show (Final Best vs specific round)
+        if not selected_round or selected_round == "Final Best":
+            dets = img_data.get("detections") or []
+            # fallback to best round if empty
+            if not dets and img_data.get("rounds"):
+                try:
+                    best = max(img_data["rounds"], key=lambda r: r.get("score", -1))
+                    dets = best.get("detections") or []
+                    score = best.get("score", "-")
+                except Exception:
+                    score = "-"
+            else:
+                # compute best score for info
+                try:
+                    score = max(r.get("score", -1) for r in img_data.get("rounds", [])) if img_data.get("rounds") else "-"
+                except Exception:
+                    score = "-"
+        else:
+            try:
+                r_idx = int(selected_round) - 1
+                r = img_data["rounds"][r_idx]
+                dets = r.get("detections") or []
+                score = r.get("score", "-")
+            except Exception:
+                dets = img_data.get("detections") or []
+                score = "-"
+        anns = pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
+        payload = _build_hero_payload(viewer_base, anns)
+        # source image is raw_original (keep grid off for hero to avoid double grid)
+        info = (
+            f'<div class="hero-meta">'
+            f'<span class="hero-title">{selected_image}</span> '
+            f'<span class="score-badge">Score: {score}/10</span> '
+            f'<span class="hero-count">{len(dets)} detections</span>'
+            f'</div>'
+        )
+        return viewer_base, payload, info
+    except Exception:
+        return None, None, '<div class="hero-empty">Preview unavailable</div>'
 
 
 def _on_endpoint_mode_change(mode: str):
@@ -238,6 +293,9 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_bat["explorer_image_select"],
             c_bat["pipeline_logs_viewer"],
             c_bat["batch_status_table"],
+            c_bat["hero_source_image"],
+            c_bat["hero_viewer"],
+            c_bat["hero_info"],
         ],
         concurrency_limit=1,
     ).then(
@@ -270,6 +328,17 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         c_bat["show_grid_chk"],
     ]
 
+    _hero_outputs = [
+        c_bat["hero_source_image"],
+        c_bat["hero_viewer"],
+        c_bat["hero_info"],
+    ]
+    _hero_inputs = [
+        c_bat["explorer_image_select"],
+        c_bat["explorer_round_select"],
+        batch_id_state,
+    ]
+
     c_bat["explorer_image_select"].change(
         on_explorer_image_change,
         inputs=[c_bat["explorer_image_select"], batch_id_state],
@@ -278,12 +347,20 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         on_explorer_round_change,
         inputs=_explorer_inputs,
         outputs=_explorer_outputs,
+    ).then(
+        _hero_view_for_selection,
+        inputs=_hero_inputs,
+        outputs=_hero_outputs,
     )
 
     c_bat["explorer_round_select"].change(
         on_explorer_round_change,
         inputs=_explorer_inputs,
         outputs=_explorer_outputs,
+    ).then(
+        _hero_view_for_selection,
+        inputs=_hero_inputs,
+        outputs=_hero_outputs,
     )
 
     c_bat["show_grid_chk"].change(
@@ -325,7 +402,7 @@ def build_app() -> gr.Blocks:
             with gr.TabItem("🎨 Draw & Recognize"):
                 c_draw = build_draw_tab()
 
-            with gr.TabItem("🧪 Batch Sandbox"):
+            with gr.TabItem("🗂️ Batch Processing"):
                 c_bat = _build_batch_tab()
 
             with gr.TabItem("✍️ Prompts"):

@@ -1,0 +1,201 @@
+[
+  {
+    "round": 1,
+    "score": 0,
+    "detections": [
+      {
+        "label": "referee",
+        "bbox_2d": [
+          431,
+          432,
+          510,
+          453
+        ]
+      },
+      {
+        "label": "ball",
+        "bbox_2d": [
+          405,
+          798,
+          417,
+          804
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          786,
+          30,
+          847,
+          56
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          602,
+          770,
+          703,
+          791
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          404,
+          722,
+          477,
+          742
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          399,
+          680,
+          467,
+          699
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          317,
+          831,
+          386,
+          853
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          508,
+          492,
+          599,
+          510
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          289,
+          569,
+          353,
+          584
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          283,
+          545,
+          332,
+          557
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          299,
+          510,
+          360,
+          523
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          214,
+          498,
+          269,
+          508
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          196,
+          466,
+          235,
+          478
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          257,
+          462,
+          309,
+          473
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          271,
+          390,
+          329,
+          400
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          347,
+          316,
+          423,
+          333
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          389,
+          261,
+          458,
+          276
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          457,
+          276,
+          526,
+          297
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          473,
+          296,
+          558,
+          309
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          522,
+          116,
+          608,
+          134
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          217,
+          642,
+          264,
+          655
+        ]
+      }
+    ],
+    "feedback": "```json\n[\n  {\"box_2d\": [187, 447, 246, 497], \"label\": \"players\"},\n  {\"box_2d\": [273, 460, 318, 472], \"label\": \"players\"},\n  {\"box_2d\": [304, 510, 370, 521], \"label\": \"players\"},\n  {\"box_2d\": [284, 545, 332, 555], \"label\": \"players\"},\n  {\"box_2d\": [301, 569, 363, 584], \"label\": \"players\"},\n  {\"box_2d\": [221, 645, 273, 655], \"label\": \"players\"},\n  {\"box_2d\": [332, 834, 401, 852], \"label\": \"players\"},\n  {\"box_2d\": [419, 724, 488, 740], \"label\": \"players\"},\n  {\"box_2d\": [415, 681, 491, 698], \"label\": \"players\"},\n  {\"box_2d\": [630, 771, 727, 793], \"label\": \"players\"},\n  {\"box_2d\": [533, 491, 623, 510], \"label\": \"players\"},\n  {\"box_2d\": [453, 431, 533, 452], \"label\": \"referee\"},\n  {\"box_2d\": [550, 117, 633, 133], \"label\": \"players\"},\n  {\"box_2d\": [488, 297, 578, 309], \"label\": \"players\"},\n  {\"box_2d\": [474, 279, 550, 297], \"label\": \"players\"},\n  {\"box_2d\": [405, 262, 478, 276], \"label\": \"players\"},\n  {\"box_2d\": [360, 316, 446, 333], \"label\": \"players\"},\n  {\"box_2d\": [280, 391, 343, 398], \"label\": \"players\"},\n  {\"box_2d\": [211, 495, 287, 509], \"label\": \"players\"},\n  {\"box_2d\": [734, 31, 803, 55], \"label\": \"players\"},\n  {\"box_2d\": [979, 64, 1000, 86], \"label\": \"players\"},\n  {\"box_2d\": [958, 590, 1000, 609], \"label\": \"players\"}\n]\n```",
+    "actions": "",
+    "parse_error": null,
+    "raw_detector_output": "<analysis>\n- Scanned grid quadrant by quadrant for players, ball, and referee.\n- Identified:\n  - referee: wearing blue uniform around [431, 432, 510, 453]\n  - ball: small white object near [405, 799, 417, 804]\n  - players: multiple players across the pitch:\n    - [786, 30, 847, 56]\n    - [602, 770, 703, 791]\n    - [404, 722, 477, 742]\n    - [399, 680, 467, 699]\n    - [317, 831, 386, 853]\n    - [508, 492, 599, 510]\n    - [289, 569, 353, 584]\n    - [283, 545, 332, 557]\n    - [299, 510, 360, 523]\n    - [214, 498, 269, 508]\n    - [196, 466, 235, 478]\n    - [257, 462, 309, 473]\n    - [271, 390, 329, 400]\n    - [347, 316, 423, 333]\n    - [389, 261, 458, 276]\n    - [457, 276, 526, 297]\n    - [473, 296, 558, 309]\n    - [522, 116, 608, 134]\n    - [217, 642, 264, 655]\n- Coordinates checked against grid lines.\n</analysis>\n\n<answer>\n[\n  {\n    \"label\": \"referee\",\n    \"bbox_2d\": [431, 432, 510, 453]\n  },\n  {\n    \"label\": \"ball\",\n    \"bbox_2d\": [405, 799, 417, 804]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [786, 30, 847, 56]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [602, 770, 703, 791]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [404, 722, 477, 742]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [399, 680, 467, 699]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [317, 831, 386, 853]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [508, 492, 599, 510]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [289, 569, 353, 584]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [283, 545, 332, 557]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [299, 510, 360, 523]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [214, 498, 269, 508]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [196, 466, 235, 478]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [257, 462, 309, 473]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [271, 390, 329, 400]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [347, 316, 423, 333]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [389, 261, 458, 276]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [457, 276, 526, 297]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [473, 296, 558, 309]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [522, 116, 608, 134]\n  },\n  {\n    \"label\": \"players\",\n    \"bbox_2d\": [217, 642, 264, 655]\n  }\n]\n</answer>"
+  }
+]
