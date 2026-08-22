@@ -225,6 +225,12 @@ def run_batch_detection_gui(
         api_url = f"http://localhost:{port}/v1"
         api_key = "not-needed"
 
+    # Gemini free tier: 15 RPM => cap concurrency to avoid 429 bursts
+    if "gemini" in (model_name or "").lower():
+        if concurrency > 2:
+            logger.info("Gemini free tier detected – capping concurrency %d → 2 to respect 15 RPM", concurrency)
+            concurrency = 2
+
     try:
         http_client = httpx.Client(
             timeout=httpx.Timeout(None),
@@ -410,6 +416,9 @@ def run_batch_detection_gui(
                         indent=2,
                     )
             q.put(("finish_image", stem))
+            # Gemini free tier pacing: 4s between images to respect 15 RPM
+            if "gemini" in (model_name or "").lower():
+                time.sleep(4.0)
 
         except PipelineCancelledException:
             q.put(("image_cancelled", stem))

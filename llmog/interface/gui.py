@@ -10,6 +10,27 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import warnings
+
+# Suppress Starlette/Gradio deprecation spam (HTTP_422_UNPROCESSABLE_ENTITY → CONTENT)
+# This is a Gradio internal (gradio/routes.py:1379) not our code; fixed in Gradio 5.8+
+try:
+    warnings.filterwarnings(
+        "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=DeprecationWarning
+    )
+    warnings.filterwarnings(
+        "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=UserWarning
+    )
+    # Starlette's own warning class if available
+    try:
+        from starlette.warnings import StarletteDeprecationWarning  # type: ignore
+
+        warnings.filterwarnings("ignore", category=StarletteDeprecationWarning)
+    except Exception:
+        pass
+except Exception:
+    pass
+
 from interface.app_builder import build_app
 
 

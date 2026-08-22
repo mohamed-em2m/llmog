@@ -2,6 +2,24 @@
 Aggregator application builder assembling interface tabs, CSS styling, and event handlers.
 """
 
+import warnings
+
+# Suppress noisy Starlette/Gradio deprecation (HTTP_422_UNPROCESSABLE_ENTITY → CONTENT)
+# Gradio 6 routes.py:1379 still uses the old name; fixed upstream in 5.8+ but we pin 6.19
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_CONTENT.*")
+try:
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="gradio.*")
+    warnings.filterwarnings("ignore", category=UserWarning, module="gradio.*")
+except Exception:
+    pass
+try:
+    from starlette.warnings import StarletteDeprecationWarning  # type: ignore
+
+    warnings.filterwarnings("ignore", category=StarletteDeprecationWarning)
+except Exception:
+    pass
+
 import gradio as gr
 
 from interface.console_theme import theme

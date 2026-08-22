@@ -220,7 +220,10 @@ def _run_tiled_detection(
             grid_kwargs=grid_kwargs,
         )
 
-    with ThreadPoolExecutor(max_workers=min(4, len(tiles))) as pool:
+    # Cap tiling concurrency for Gemini free tier (15 RPM) – 4 parallel tiles would burst quota
+    is_gemini = "gemini" in (getattr(pipeline, "detector_model", "") or "").lower()
+    max_tile_workers = 1 if is_gemini else min(4, len(tiles))
+    with ThreadPoolExecutor(max_workers=max_tile_workers) as pool:
         tile_results = list(pool.map(process_item, enumerate(tiles, 1)))
 
     tile_results.sort(key=lambda x: x[0])

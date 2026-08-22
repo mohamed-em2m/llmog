@@ -18,38 +18,27 @@ Use the grid lines and axis labels as your ruler. Estimate each edge by reading 
 ## Categories to detect
 {{ categories_list }}
 
-## Task
-Scan the entire image in a single pass. Detect every clearly visible instance of the requested categories. Estimate a tight bounding box for each detected object using the grid as reference.
+## Task (single-pass, low-latency)
+Scan once, detect every clearly visible instance. No iterative refinement.
 
-## Detection procedure
-Work through these steps **before** writing your answer:
-
-1. **Grid-based scan** — Divide the image into grid quadrants (top-left → top-right → center → bottom-left → bottom-right) and inspect each region in turn. Do not skip any region, including the edges and corners.
-2. **Candidate listing** — For each candidate, note its approximate grid coordinates, visual characteristics (shape, color, texture, boundary contrast), and which category it likely belongs to.
-3. **Classification** — Match each candidate against the category definitions above. When two categories are plausible, apply the distinguishing details to select exactly one. Reject candidates with no clear categorical match — when in doubt, exclude.
-4. **Tight bounding box** — Draw the box to hug the *visible* extent of the object. The box should NOT include surrounding background, shadows, or padding. Pin each edge to the nearest grid coordinate:
-   - Left edge: the leftmost visible pixel of the object.
-   - Right edge: the rightmost visible pixel.
-   - Top edge: the topmost visible pixel.
-   - Bottom edge: the bottommost visible pixel.
-5. **Deduplication** — Verify that no single real-world object is reported twice. Overlapping or near-identical boxes for the same instance must be merged into one. IoU > 0.5 between two boxes of the same label is a strong indicator of duplication.
-6. **Final check** — Confirm every grid region was scanned, every detection has a valid label, and no box is degenerate (zero-width or zero-height).
+## Detection procedure (fast)
+1. **Scan** – sweep grid quadrants (TL→TR→center→BL→BR), include edges/corners.
+2. **Classify** – match against definitions; if ambiguous, use distinguishing details; when in doubt, exclude.
+3. **Box** – hug visible extent (no background/shadow/padding). Pin edges to nearest grid tick.
+4. **Dedup** – merge IoU>0.5 same-label overlaps; drop degenerate (zero-area) boxes.
 
 ## Output format
-First, write your step-by-step reasoning inside `<analysis>` tags (this is internal — not part of your final answer):
+Write brief `<analysis>` (internal), then **pure JSON** inside `<answer>`:
 
 <analysis>
-[Your grid-by-grid reasoning, candidate evaluation, and deduplication notes here.]
+[brief grid reasoning]
 </analysis>
 
-Respond with **only** a valid JSON array — no surrounding text, no markdown code fences:
-
+<answer>
 [
-  {"label": "object_name", "bbox_2d": [x1, y1, x2, y2]},
-  ...
+  {"label": "category_name", "bbox_2d": [x1, y1, x2, y2]}
 ]
-Then output your final answer inside `<answer>` tags — **pure JSON only**:
-=
+</answer>
 
 ## Hard rules
 - Coordinates must be **integers** in the **0–1000** range with **x1 < x2** and **y1 < y2**.

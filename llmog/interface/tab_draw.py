@@ -278,6 +278,15 @@ _CUSTOM_CANVAS_HTML = """
             <button type="button" class="canvas-tool-btn" id="btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
             <span id="zoom-level-text" class="zoom-indicator">100%</span>
         </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Image</span>
+            <button type="button" class="canvas-tool-btn upload-btn" id="btn-toolbar-upload" title="Upload an image from your computer">
+                📁 Upload Image
+            </button>
+        </div>
     </div>
 
     <!-- Canvas Stage Viewport -->
@@ -445,19 +454,29 @@ _CUSTOM_CANVAS_JS = """
             if (btnZoomOut) btnZoomOut.onclick = () => self.zoom(1 / 1.2);
             if (btnZoomFit) btnZoomFit.onclick = () => self.fitToScreen();
             
+            // Toolbar upload button — always visible
+            const btnToolbarUpload = document.getElementById('btn-toolbar-upload');
+            if (btnToolbarUpload) {
+                btnToolbarUpload.onclick = () => self.triggerFileUpload();
+            }
+
             const btnEmptyUpload = document.getElementById('btn-empty-upload');
             const btnEmptySample = document.getElementById('btn-empty-sample');
             
-            if (btnEmptyUpload && self.fileInput) {
-                btnEmptyUpload.onclick = () => self.fileInput.click();
+            if (btnEmptyUpload) {
+                btnEmptyUpload.onclick = () => self.triggerFileUpload();
             }
             if (btnEmptySample) {
                 btnEmptySample.onclick = () => self.loadSampleImage();
             }
+
+            // Wire the static hidden file input as a fallback
             if (self.fileInput) {
                 self.fileInput.onchange = (e) => {
                     const file = e.target.files && e.target.files[0];
                     if (file) self.loadImageFromFile(file);
+                    // Reset so the same file can be re-selected
+                    self.fileInput.value = '';
                 };
             }
             
@@ -585,6 +604,34 @@ _CUSTOM_CANVAS_JS = """
                 self.loadImageFromDataUrl(e.target.result);
             };
             reader.readAsDataURL(file);
+        },
+        
+        triggerFileUpload: function() {
+            // Create a fresh <input type="file"> every time.
+            // This bypasses the Gradio innerHTML DOM issue where getElementById
+            // may return null for elements injected via gr.HTML's innerHTML path.
+            const self = this;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+            input.onchange = function(e) {
+                const file = e.target.files && e.target.files[0];
+                if (file) self.loadImageFromFile(file);
+                document.body.removeChild(input);
+            };
+            // Ensure the dialog is removed if the user cancels (focus returns)
+            input.addEventListener('cancel', function() {
+                try { document.body.removeChild(input); } catch(_) {}
+            });
+            window.addEventListener('focus', function cleanup() {
+                setTimeout(function() {
+                    try { if (input.parentNode) document.body.removeChild(input); } catch(_) {}
+                    window.removeEventListener('focus', cleanup);
+                }, 500);
+            }, { once: true });
+            input.click();
         },
         
         loadSampleImage: function() {
@@ -1104,90 +1151,12 @@ def _load_sample_bridge():
     return json.dumps(payload)
 
 
-def _handle_draw_upload(file) -> str:
-    """Handle persistent Upload New Image – robust for File/UploadButton on Windows."""
-    if file is None:
-        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-    # Gradio may pass list (file_count multiple), dict, string path, or file object
-    if isinstance(file, (list, tuple)):
-        file = file[0] if file else None
-        if file is None:
-            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-    try:
-        # Normalize to path string
-        path = None
-        if isinstance(file, dict):
-            path = file.get("path") or file.get("name") or file.get("orig_name")
-        elif isinstance(file, str):
-            path = file
-        else:
-            path = getattr(file, "name", None) or getattr(file, "path", None)
-            if not path:
-                # file-like object
-                try:
-                    file.seek(0)
-                    data = base64.b64encode(file.read()).decode("utf-8")
-                    return json.dumps({"background": f"data:image/jpeg;base64,{data}", "regions": [], "layers": [], "composite": None})
-                except Exception:
-                    path = str(file)
-        if not path or path in ("", "None"):
-            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-        p = Path(path)
-        # Handle Windows file lock – try read_bytes with retry
-        data = None
-        for _ in range(3):
-            try:
-                if p.is_file():
-                    data = p.read_bytes()
-                    break
-            except PermissionError:
-                import time
-                time.sleep(0.05)
-                continue
-            except Exception:
-                break
-        if data is None:
-            # fallback open
-            try:
-                with open(str(p), "rb") as f:
-                    data = f.read()
-            except Exception:
-                return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-        if not data:
-            return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-        b64_data = base64.b64encode(data).decode("utf-8")
-        suffix = p.suffix.lower() if p else ".jpg"
-        mime = "image/png" if suffix == ".png" else "image/jpeg"
-        if suffix in (".webp", ".bmp", ".gif"):
-            mime = f"image/{suffix[1:]}"
-        b64 = f"data:{mime};base64,{b64_data}"
-    except Exception as e:
-        # log but don't crash UI
-        try:
-            import logging
-            logging.getLogger("detection_pipeline").warning(f"_handle_draw_upload failed: {e}")
-        except Exception:
-            pass
-        return json.dumps({"background": None, "regions": [], "layers": [], "composite": None})
-    payload = {"background": b64, "regions": [], "layers": [], "composite": None}
-    return json.dumps(payload)
-
-
 def build_draw_tab() -> Dict[str, Any]:
     """Build the dedicated Draw & Recognize tab with Custom Frontend Canvas + DetectionViewer."""
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
         # ── Left / Main: Custom Interactive HTML5 Canvas Frontend ────────────
         with gr.Column(scale=3, min_width=520):
             gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
-            # Persistent upload – visible even after image loaded (empty overlay hides otherwise)
-            # Use gr.File (change event) – more reliable than UploadButton on Windows/gradio 6
-            recls_upload_btn = gr.File(
-                label="📁 Upload New Image (click or drag & drop)",
-                file_types=["image"],
-                type="filepath",
-                elem_id="draw-upload-btn",
-            )
-            gr.HTML('<span class="drag-hint" style="color:#7d8590; font-size:0.7rem;">Tip: you can also drag & drop or paste (Ctrl+V) directly on canvas</span>')
 
             # Embedded Custom Canvas Frontend with js_on_load handler
             custom_canvas_view = gr.HTML(
@@ -1318,7 +1287,6 @@ def build_draw_tab() -> Dict[str, Any]:
         custom_canvas_view=custom_canvas_view,
         custom_draw_payload=custom_draw_payload,
         recls_sample_bridge_btn=recls_sample_bridge_btn,
-        recls_upload_btn=recls_upload_btn,
         recls_class_mode=recls_class_mode,
         recls_preset_dropdown=recls_preset_dropdown,
         recls_classes_input=recls_classes_input,
@@ -1359,27 +1327,6 @@ def wire_draw_events(
                 c_draw["recls_preset_dropdown"],
             ],
         )
-
-    # ── Persistent upload handler (visible even after image loaded) ──
-    # gr.File type="filepath" returns a string path – use change (not upload) for reliability
-    if "recls_upload_btn" in c_draw:
-        # Use change for gr.File; also keep upload for backward compat with UploadButton
-        for evt in ("change", "upload"):
-            if hasattr(c_draw["recls_upload_btn"], evt):
-                try:
-                    getattr(c_draw["recls_upload_btn"], evt)(
-                        fn=_handle_draw_upload,
-                        inputs=[c_draw["recls_upload_btn"]],
-                        outputs=[c_draw["custom_draw_payload"]],
-                    ).then(
-                        fn=None,
-                        inputs=None,
-                        outputs=None,
-                        js="() => { setTimeout(()=>{ const ta=document.querySelector('#custom_draw_payload_box textarea'); if(ta&&ta.value){ try{ const p=JSON.parse(ta.value); if(p.background && window.CustomCanvasController) window.CustomCanvasController.loadImageFromDataUrl(p.background); }catch(e){} } }, 250); }",
-                    )
-                    break
-                except Exception:
-                    continue
 
     # ── Sample image bridge handler ─────────────────────────────────────────
     if "recls_sample_bridge_btn" in c_draw:
