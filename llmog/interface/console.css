@@ -1,105 +1,100 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Neo-Brutalist Theme — STRICT one-accent (#FFFF00)
-   Applied via gr.Blocks(theme=theme, css=custom_css) — extends Base tokens
-   in console_theme.py. This CSS overrides anything tokens can't reach.
+   Retro-Playful Guitar Theme — Warm Cream + Charcoal + Magenta + Mustard
+   Inspired by guitar learning app: cozy, bold, rounded pills, soft corners.
 
-   STRICT RULES ENFORCED:
-     Background #FFFFFF, accent #FFFF00 only, text #000000 (black on neon too)
-     Every button/input/group/tabs/dataframe: 3px solid #000, radius 0
-     Hard shadow 5px 5px 0 #000, hover 2px 2px + translate 3px, 0.1s linear
-     Headings 900 uppercase, body 700+, numbers mono, sharp 90° corners
-     Tabs = physical raised tabs, no underline-slide animation
-     No gradients, no soft purple/orange, no rgba blur, no radius>0
+   PALETTE:
+     cream      #FFF8EC  main screen bg
+     charcoal   #1E1E1E  button bg (dark pill), card bg, primary text
+     magenta    #E84B8A  accent (guitar, active tab highlight)
+     yellow     #F5C842  buttons/badges/interactive, progress on navy
+     orange     #D4641A  icons inside dark buttons
+     navy       #1A1145  "Continue where you left off" cards
+     soft-pink  #F9C6D2  active nav pill highlight
+     light-gray #A0A0A0  inactive bottom-nav icons
+     white      #FFFFFF  card face on cream
+
+   CHARACTER: rounded pill buttons (999px), cards 20px, inputs 14px,
+              bold high-contrast type (dark on cream, yellow on dark)
    ════════════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@700;800&family=Space+Mono:wght@700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=Outfit:wght@500;700;800&family=JetBrains+Mono:wght@700;800&family=Space+Mono:wght@700&display=swap');
 
 :root {
-  --ink: #000000;
+  --cream: #FFF8EC;
+  --ink: #1E1E1E;
+  --magenta: #E84B8A;
+  --yellow: #F5C842;
+  --orange: #D4641A;
+  --navy: #1A1145;
+  --soft-pink: #F9C6D2;
+  --light-gray: #A0A0A0;
   --paper: #FFFFFF;
-  --accent: #FFFF00;
-  --border: 3px solid var(--ink);
-  --border-thin: 3px solid var(--ink);
-  --shadow: 5px 5px 0px #000000;
-  --shadow-sm: 5px 5px 0px #000000;
-  --shadow-btn: 5px 5px 0px #000000;
-  --shadow-hover: 2px 2px 0px #000000;
+  --border: 2.5px solid var(--ink);
+  --border-thin: 2px solid var(--ink);
+  --shadow: 0 6px 0 var(--ink);
+  --shadow-sm: 0 4px 0 var(--ink);
+  --shadow-btn: 0 4px 0 var(--ink);
 }
 
-@keyframes fade-in { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
+@keyframes fade-in { from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)} }
 
-/* ── Base: kill Gradio soft tokens ── */
-*, *::before, *::after { box-sizing: border-box; border-radius: 0 !important; }
-
+/* ── Base — warm cream desktop ── */
+*, *::before, *::after { box-sizing: border-box; }
 html, body {
-  background: #FFFFFF !important;
-  color: #000000 !important;
-  font-family: 'Space Grotesk', system-ui, sans-serif !important;
+  background: var(--cream) !important;
+  color: var(--ink) !important;
+  font-family: 'Space Grotesk','Outfit', system-ui, sans-serif !important;
 }
 body::after { display: none !important; }
 
-/* Force no rounded-lg/xl anywhere — brutal 0 radius */
-.gradio-container, .gradio-container-4-24-0,
-.gr-button, .gr-box, .gr-panel, .block, .form, .gr-input, .gr-text-input,
-.gr-dropdown, .gr-slider, .gr-group, .gr-tabs, .tabitem, .gr-accordion,
-.gr-dataframe, .gr-image, .gr-file, .gr-gallery, .gr-chatbot, .gr-audio, .gr-video,
-.chatbot .message, .chatbot .bubble, .wrap, .gr-form, .gr-padded {
-  border-radius: 0 !important;
-  --radius-sm: 0px !important;
-  --radius-md: 0px !important;
-  --radius-lg: 0px !important;
-  --radius-xl: 0px !important;
-  --shadow-drop: 5px 5px 0px #000000 !important;
-  --shadow-drop-lg: 5px 5px 0px #000000 !important;
-}
-
-/* Gradio root — white brutal card */
+/* Gradio root — cream, soft shell */
 .gradio-container, .gradio-container-4-24-0 {
-  background: var(--paper) !important;
-  border: 3px solid #000000 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  background: var(--cream) !important;
+  border: none !important;
+  box-shadow: none !important;
   max-width: 1320px !important;
   width: 1320px !important;
   max-width: calc(100vw - 28px) !important;
-  margin: 18px auto !important;
-  padding: 6px !important;
+  margin: 20px auto !important;
+  padding: 0 !important;
 }
 .gradio-container > .main, .gradio-container > div { background: transparent !important; }
 
-/* ── App Header — brutal black bar ── */
+/* ── App Header — cream with bold charcoal type, magenta accent ── */
 .app-header {
-  background: #000000 !important;
-  border: 3px solid #000000 !important;
-  padding: 10px 12px !important;
-  margin: -6px -6px 6px -6px !important;
+  background: var(--cream) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 20px !important;
+  padding: 12px 16px !important;
+  margin: 0 0 16px 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   gap: 12px !important;
-  min-height: 48px !important;
-  box-shadow: none !important;
+  min-height: 56px !important;
+  box-shadow: var(--shadow) !important;
 }
 .app-header::before, .app-header::after { display: none !important; }
 .app-header h1 {
   font-family: 'Space Grotesk', sans-serif !important;
   font-size: 22px !important;
   font-weight: 900 !important;
-  letter-spacing: -0.03em !important;
-  text-transform: uppercase !important;
-  color: #FFFFFF !important;
+  letter-spacing: -0.02em !important;
+  text-transform: none !important;
+  color: var(--ink) !important;
   margin: 0 !important;
   display: flex; align-items: center; gap: 10px;
 }
-.app-header h1 span { color: #FFFF00 !important; }
+.app-header h1 span { color: var(--magenta) !important; }
 .app-header h1::before {
-  content: '◼';
+  content: '♫';
   font-size: 16px;
-  color: #000000;
-  background: #FFFF00;
-  border: 3px solid #000000;
-  width: 24px; height: 24px;
+  color: var(--yellow);
+  background: var(--ink);
+  border: 2.5px solid var(--ink);
+  width: 30px; height: 30px;
+  border-radius: 50% !important;
   display: inline-flex; align-items:center; justify-content:center;
-  box-shadow: 3px 3px 0px #000000;
 }
 .app-header p { display: none !important; }
 .app-header-meta { display:flex; align-items:center; gap:8px; }
@@ -108,469 +103,455 @@ body::after { display: none !important; }
   font-family: 'Space Grotesk', sans-serif;
   font-size: 10px; font-weight: 900;
   letter-spacing: 6px;
-  color: #000000;
-  background: #FFFFFF;
-  border: 3px solid #000000;
-  padding: 4px 8px;
-  box-shadow: 3px 3px 0px #000000;
+  color: var(--light-gray);
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px !important;
+  padding: 6px 12px;
+  box-shadow: var(--shadow-sm) !important;
 }
 .app-header-meta .status-badge { display:none !important; }
 
-/* ── Status Badges — brutal, ONE accent never pink/cyan ── */
+/* ── Status / Score Badges — yellow on charcoal where interactive ── */
 .status-badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
-  padding: 4px 10px !important;
-  border: 3px solid #000000 !important;
-  background: #FFFFFF !important;
+  padding: 6px 12px !important;
+  border: 2.5px solid var(--ink) !important;
+  background: var(--yellow) !important;
   font-family: 'Space Grotesk', sans-serif !important;
   font-size: 11px !important; font-weight: 900 !important;
-  letter-spacing: 0.04em !important; text-transform: uppercase !important;
-  color: #000000 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  letter-spacing: 0.03em !important; text-transform: uppercase !important;
+  border-radius: 999px !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.status-badge::before { width:10px; height:10px; border-radius:0; border:2px solid #000000; content:''; display:inline-block; }
-.badge-running { background: #FFFF00 !important; }
-.badge-running::before, .badge-stopped::before, .badge-starting::before, .badge-error::before { background: #000000; }
-.badge-error { background: #FFFFFF !important; color: #000000 !important; border-color:#000000 !important; }
+.status-badge::before { width:10px; height:10px; border-radius:50%; border:2px solid var(--ink); content:''; display:inline-block; background: var(--magenta); }
+.badge-running { background: var(--yellow) !important; }
+.badge-stopped::before { background: var(--light-gray); }
+.badge-starting::before { background: var(--orange); }
+.badge-error { background: var(--soft-pink) !important; }
 
 .score-badge {
   display: inline-block !important;
-  padding: 3px 10px !important;
-  background: #FFFF00 !important;
-  color: #000000 !important;
-  border: 3px solid #000000 !important;
+  padding: 5px 12px !important;
+  background: var(--yellow) !important;
+  color: var(--ink) !important;
+  border: 2.5px solid var(--ink) !important;
   font-family: 'JetBrains Mono', monospace !important;
-  font-size: 13px !important; font-weight: 800 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  font-size: 12px !important; font-weight: 800 !important;
+  border-radius: 999px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 .img-status-pill {
   display:inline-block !important;
-  padding:2px 8px !important;
-  border: 3px solid #000000 !important;
+  padding:4px 10px !important;
+  border: 2px solid var(--ink) !important;
   font-family:'Space Grotesk', sans-serif !important;
   font-size:10px !important; font-weight: 900 !important;
   text-transform:uppercase !important;
-  box-shadow: 3px 3px 0px #000000 !important;
-  background: #FFFFFF !important; color:#000000 !important;
+  border-radius: 999px !important;
+  box-shadow: 0 3px 0 var(--ink) !important;
+  background: var(--soft-pink) !important; color:var(--ink) !important;
 }
-.pill-queued, .pill-running, .pill-done, .pill-error, .pill-cancelled { background:#FFFFFF !important; color:#000000 !important; border-color:#000000 !important; }
+.pill-queued { background: var(--paper) !important; }
+.pill-running { background: var(--yellow) !important; }
+.pill-done { background: var(--ink) !important; color: var(--yellow) !important; }
+.pill-error { background: var(--magenta) !important; color: var(--paper) !important; }
+.pill-cancelled { background: var(--light-gray) !important; color: var(--paper) !important; }
 
-/* ── TABS — physical raised tabs, equal width, ONE accent ── */
-.tabs { background: #FFFFFF !important; border: 3px solid #000000 !important; padding: 0 !important; box-shadow: 5px 5px 0px #000000 !important; }
+/* ── TABS — pill nav, soft pink active ── */
+.tabs { background: transparent !important; border: none !important; padding: 0 !important; box-shadow: none !important; }
 .tabs > .tab-nav {
   display: flex !important;
   flex-wrap: nowrap !important;
-  align-items: flex-end !important;
-  justify-content: stretch !important;
-  gap: 0 !important;
+  align-items: center !important;
+  gap: 8px !important;
   width: 100% !important;
-  height: 46px !important;
-  background: #FFFFFF !important;
+  height: auto !important;
+  min-height: 48px !important;
+  background: transparent !important;
   border: none !important;
-  border-bottom: 3px solid #000000 !important;
-  padding: 0 !important;
+  padding: 4px 2px 12px !important;
   overflow: visible !important;
 }
 .tabs > .tab-nav button {
   flex: 1 1 0 !important;
   min-width: 0 !important;
-  height: 46px !important;
+  height: 42px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 900 !important;
-  text-transform: uppercase !important;
-  letter-spacing: -0.01em !important;
-  color: #000000 !important;
-  background: #FFFFFF !important;
-  border: none !important;
-  border-right: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  padding: 0 8px !important;
+  font-size: 13px !important; font-weight: 800 !important;
+  text-transform: none !important;
+  color: var(--ink) !important;
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 999px !important;
+  padding: 0 14px !important;
   margin: 0 !important;
   white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
-  transition: all 0.1s linear !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all 0.15s ease !important;
 }
-.tabs > .tab-nav button:last-child { border-right: none !important; }
-.tabs > .tab-nav button:hover { background: #FFFF00 !important; }
+.tabs > .tab-nav button:hover { background: var(--paper) !important; transform: translateY(-1px); box-shadow: 0 6px 0 var(--ink) !important; }
 .tabs > .tab-nav button.selected {
-  background: #FFFF00 !important;
-  color: #000000 !important;
-  border-right: 3px solid #000000 !important;
+  background: var(--soft-pink) !important;
+  color: var(--ink) !important;
+  border-color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
   font-weight: 900 !important;
-  /* no underline-slide, just solid fill */
 }
-.tabs > .tab-nav button.selected:last-child { border-right: none !important; }
+.tabs > .tab-nav button.selected::before {
+  content: '●';
+  color: var(--magenta);
+  font-size: 10px;
+}
 .tabitem {
-  background: #FFFFFF !important;
+  background: transparent !important;
   border: none !important;
-  border-top: none !important;
-  padding: 14px 12px 12px !important;
-  animation: fade-in 0.1s linear !important;
+  padding: 0 !important;
+  animation: fade-in 0.2s ease !important;
   min-height: 760px !important;
 }
 
-/* ── Section labels — brutal black bar, never gradient ── */
+/* ── Section labels — charcoal pill with yellow accent line ── */
 .section-label {
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 900 !important;
-  letter-spacing: 0.04em !important; text-transform: uppercase !important;
-  color: #FFFFFF !important;
-  background: #000000 !important;
-  border: 3px solid #000000 !important;
-  padding: 7px 10px !important;
-  margin: 0 0 10px 0 !important;
+  font-size: 13px !important; font-weight: 900 !important;
+  letter-spacing: 0.02em !important; text-transform: uppercase !important;
+  color: var(--ink) !important;
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-left: 6px solid var(--magenta) !important;
+  border-radius: 14px !important;
+  padding: 8px 14px !important;
+  margin: 0 0 12px 0 !important;
   display:flex !important; align-items:center !important;
-  min-height: 32px !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  min-height: 36px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.section-label::after { display:none !important; }
 
-/* ── Window-like panels / cards / groups ── */
-.gr-group, .gr-box, .gr-panel, .block,
-.config-card, .output-panel,
-.batch-hero-panel, .batch-bottom-col,
-.neo-retro-card, .custom-canvas-container,
-.pose-viewer-container, .img-viewer-wrap,
-.batch-explorer-bar, .batch-explorer-tabs,
-.json-panel, .gr-form, .gr-padded {
-  background: #FFFFFF !important;
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+/* ── Cards / Groups — white or navy, soft 20px, warm shadow ── */
+.gr-group, .gr-box, .gr-panel, .block {
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 20px !important;
+  box-shadow: var(--shadow) !important;
 }
-.gr-group { padding: 10px !important; }
-.config-card { padding:10px !important; margin-bottom:10px !important; }
-.config-card:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0px #000000 !important; }
-.config-card-title { color: #000000 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:900 !important; text-transform:uppercase !important; }
+.gr-group { padding: 12px !important; }
+.config-card {
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 16px !important;
+  padding:12px !important;
+  margin-bottom:12px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.config-card-title { color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:900 !important; text-transform:uppercase !important; }
 .config-section-title {
   font-family:'Space Grotesk', sans-serif !important;
   font-size:11px !important; font-weight:900 !important;
-  text-transform: uppercase !important;
-  color: #FFFFFF !important;
-  background: #000000 !important;
-  border: 3px solid #000000 !important;
-  padding:5px 8px !important; margin:12px 0 8px !important;
+  text-transform: uppercase !important; letter-spacing:0.06em !important;
+  color: var(--magenta) !important;
+  background: var(--soft-pink) !important;
+  border: 2px solid var(--ink) !important;
+  border-radius: 999px !important;
+  padding:6px 12px !important; margin:14px 0 8px !important;
   display:inline-block !important;
-  box-shadow: 5px 5px 0px #000000 !important;
 }
 
-/* ── Metric cards ── */
-.metric-grid { gap:8px !important; }
+/* Navy cards — "Continue where you left off" */
+.batch-hero-panel {
+  background: var(--navy) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 20px !important;
+  padding:14px !important;
+  box-shadow: var(--shadow) !important;
+  color: var(--paper) !important;
+}
+.batch-hero-panel .section-label { background: var(--paper) !important; color: var(--navy) !important; border-color: var(--ink) !important; }
+.batch-hero-panel .hero-empty { background: rgba(255,255,255,0.08) !important; border: 2px dashed rgba(255,255,255,0.3) !important; color: var(--paper) !important; }
+
+/* ── Metric cards — white with yellow number accent ── */
+.metric-grid { gap:10px !important; }
 .metric-card {
-  background: #FFFFFF !important;
-  border: 3px solid #000000 !important;
-  padding:10px !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 16px !important;
+  padding:14px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.metric-value { font-family:'JetBrains Mono', monospace !important; font-size:24px !important; font-weight: 800 !important; color: #000000 !important; }
-.metric-label { font-family:'Space Grotesk', sans-serif !important; font-size:10px !important; font-weight:900 !important; color: #000000 !important; text-transform:uppercase !important; }
+.metric-value { font-family:'Space Grotesk', sans-serif !important; font-size:26px !important; font-weight:900 !important; color: var(--ink) !important; }
+.metric-value::after { content:''; display:block; width:32px; height:4px; background: var(--yellow); border-radius:999px; margin-top:4px; }
+.metric-label { font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:800 !important; color: var(--ink) !important; text-transform:uppercase !important; opacity:0.7; }
 
-/* ── Progress — ONE accent yellow fill ── */
-.custom-progress-wrapper { margin:8px 0 !important; }
+/* ── Progress — yellow on navy/charcoal ── */
+.custom-progress-wrapper { margin:10px 0 !important; }
 .custom-progress-track {
-  background: #FFFFFF !important;
-  border: 3px solid #000000 !important;
-  height:20px !important;
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 999px !important;
+  height:14px !important;
   padding:0 !important;
   overflow:hidden !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.05) !important;
 }
+.batch-hero-panel .custom-progress-track { background: var(--ink) !important; border-color: var(--ink) !important; }
 .custom-progress-fill {
-  background: #FFFF00 !important;
-  border-right: 3px solid #000000 !important;
-  transition: width 0.1s linear !important;
+  background: var(--yellow) !important;
+  border-radius: 999px !important;
+  transition: width 0.3s ease !important;
 }
 .custom-progress-text {
-  font-family:'JetBrains Mono', monospace !important;
-  font-size:11px !important; font-weight: 800 !important; color: #000000 !important;
-  margin-top:6px !important; text-transform:uppercase !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight: 800 !important; color: var(--ink) !important;
+  margin-top:6px !important;
 }
+.batch-hero-panel .custom-progress-text { color: var(--paper) !important; }
 
-/* ── BUTTONS — one accent only, hard shadow ── */
-:root { --win-btn-h: 42px; --win-btn-pad: 0 18px; }
-.btn-group { gap:8px !important; display:flex !important; flex-wrap:wrap !important; align-items:stretch !important; margin-top:8px !important; }
+/* ── BUTTONS — dark pill (charcoal/yellow) vs yellow pill ── */
+:root { --win-btn-h: 44px; --win-btn-pad: 0 20px; }
+.btn-group { gap:10px !important; display:flex !important; flex-wrap:wrap !important; align-items:stretch !important; margin-top:10px !important; }
 .btn-group .gr-button, .btn-group button { flex:1 1 0 !important; min-width:120px !important; max-width:280px !important; }
 
 button.primary, button.secondary, .gr-button,
 .canvas-tool-btn, .pose-viewer-container .cp-btn,
-.btn-canvas-primary, .btn-canvas-secondary,
-.gr-button.lg, .gr-button.sm {
+.btn-canvas-primary, .btn-canvas-secondary {
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:13px !important; font-weight: 900 !important;
-  letter-spacing: 0.02em !important; text-transform: uppercase !important;
+  font-size:14px !important; font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
   height: var(--win-btn-h) !important;
   min-height: var(--win-btn-h) !important;
-  max-height: var(--win-btn-h) !important;
   padding: var(--win-btn-pad) !important;
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  background: #FFFFFF !important; color: #000000 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 999px !important;
   display:inline-flex !important; align-items:center !important; justify-content:center !important;
   gap:8px !important;
   white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  transition: all 0.1s linear !important;
+  transition: all 0.15s ease !important;
   cursor: pointer !important;
+  box-shadow: var(--shadow-btn) !important;
 }
 button.primary, .gr-button.primary, .btn-canvas-primary {
-  background: #FFFF00 !important; color: #000000 !important;
+  background: var(--ink) !important; color: var(--yellow) !important;
 }
+button.primary .tool-icon, .gr-button.primary i, button.primary i { color: var(--orange) !important; }
 button.secondary, .gr-button.secondary, .btn-canvas-secondary {
-  background: #FFFFFF !important; color: #000000 !important;
+  background: var(--yellow) !important; color: var(--ink) !important;
 }
-button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
-.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled) {
-  box-shadow: 2px 2px 0px #000000 !important;
-  transform: translate(3px, 3px) !important;
+button.secondary i, .gr-button.secondary i { color: var(--orange) !important; }
+.canvas-tool-btn.danger, .gr-button.danger {
+  background: var(--soft-pink) !important; color: var(--ink) !important;
 }
-button.primary:active:not(:disabled), .gr-button:active:not(:disabled) {
-  box-shadow: 0px 0px 0px #000000 !important;
-  transform: translate(5px, 5px) !important;
-}
-button:disabled, .gr-button:disabled { background: #E5E5E5 !important; color: #000000 !important; box-shadow: 5px 5px 0px #000000 !important; opacity:1 !important; }
-.gr-button[size="sm"], button[size="sm"] { height: var(--win-btn-h) !important; padding: var(--win-btn-pad) !important; font-size:13px !important; }
+button.primary:hover:not(:disabled), .gr-button.primary:hover:not(:disabled) { background: #2A2A2A !important; transform: translateY(-1px); box-shadow: 0 6px 0 var(--ink) !important; }
+button.secondary:hover:not(:disabled), .gr-button.secondary:hover:not(:disabled) { background: #FFD65A !important; transform: translateY(-1px); box-shadow: 0 6px 0 var(--ink) !important; }
+button:active:not(:disabled), .gr-button:active:not(:disabled) { transform: translateY(2px) !important; box-shadow: 0 2px 0 var(--ink) !important; }
+button:disabled, .gr-button:disabled { background: #E8E0D0 !important; color: var(--light-gray) !important; border-color: var(--light-gray) !important; box-shadow: none !important; opacity:1 !important; }
 
-.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
-.pose-viewer-container .toggle-image-btn.active {
-  background: #FFFF00 !important; color: #000000 !important;
-  border: 3px solid #000000 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active {
+  background: var(--yellow) !important; color: var(--ink) !important;
+  border-color: var(--ink) !important;
 }
 .canvas-toolbar .canvas-tool-btn {
   min-width:0 !important; flex:0 0 auto !important;
-  height:32px !important; min-height:32px !important;
-  padding:0 10px !important; font-size:11px !important;
+  height:34px !important; min-height:34px !important;
+  padding:0 12px !important; font-size:12px !important;
+  border-radius: 999px !important;
 }
+.canvas-toolbar .color-swatch { border: 2.5px solid var(--ink) !important; border-radius:50% !important; box-shadow: 0 2px 0 var(--ink) !important; }
 
-/* ── INPUTS / TEXTBOX / NUMBER — 3px, 0 radius, hard shadow ── */
+/* ── INPUTS — white, soft 14px, charcoal border ── */
 input:not([type="checkbox"]):not([type="radio"]), textarea, select,
 .gr-text-input, .gr-number input, .gr-textbox textarea {
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:13px !important; font-weight: 700 !important;
-  background: #FFFFFF !important;
-  color: #000000 !important;
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
-  padding:8px 10px !important;
-  transition: all 0.1s linear !important;
+  font-size:14px !important; font-weight: 600 !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-sm) !important;
+  padding:10px 14px !important;
 }
 input:focus, textarea:focus, select:focus {
   outline: none !important;
-  box-shadow: 2px 2px 0px #000000 !important;
-  transform: translate(3px, 3px) !important;
+  border-color: var(--magenta) !important;
+  box-shadow: 0 4px 0 var(--magenta) !important;
 }
-label span, .block-title, label > span, .gr-radio label span, .gr-checkbox label span {
+label span, .block-title, label > span {
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight: 900 !important;
-  color: #000000 !important; text-transform: uppercase !important;
+  font-size:12px !important; font-weight: 800 !important;
+  color: var(--ink) !important;
 }
 .gr-input, .gr-textbox, .gr-number, .gr-dropdown .wrap, .gr-code {
-  border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  border: 2.5px solid var(--ink) !important; background: var(--paper) !important; border-radius:14px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
-/* ── DROPDOWN — 3px, hard shadow, menu brutal ── */
-.gr-dropdown { border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important; box-shadow: 5px 5px 0px #000000 !important; }
+/* ── DROPDOWN — soft, menu bordered ── */
+.gr-dropdown { border: 2.5px solid var(--ink) !important; background: var(--paper) !important; border-radius:14px !important; box-shadow: var(--shadow-sm) !important; }
 .gr-dropdown .wrap { border:none !important; box-shadow:none !important; }
-.gr-dropdown .options, .gr-dropdown ul, .dropdown-menu, [data-testid="dropdown"] {
-  background: #FFFFFF !important;
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+.gr-dropdown .options, .gr-dropdown ul {
+  background: var(--paper) !important;
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow) !important;
+  overflow:hidden !important;
 }
-.gr-dropdown .options li, .gr-dropdown li, .dropdown-menu li {
-  border-bottom: 2px solid #000000 !important;
-  font-weight: 700 !important;
-  padding: 8px 10px !important;
-}
-.gr-dropdown .options li:hover, .gr-dropdown li:hover { background: #FFFF00 !important; color:#000000 !important; }
+.gr-dropdown .options li { border-bottom: 1px solid #E8DDC8 !important; font-weight: 700 !important; padding: 10px 12px !important; }
+.gr-dropdown .options li:hover { background: var(--soft-pink) !important; color:var(--ink) !important; }
 
-/* ── SLIDER — ONE accent yellow fill, 3px track ── */
-.gr-slider { border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important; box-shadow: 5px 5px 0px #000000 !important; padding:8px !important; }
-.gr-slider input[type="range"] { accent-color: #FFFF00 !important; }
-.gr-slider .track, .gr-slider [data-testid="slider"] {
-  background: #FFFFFF !important;
-  border: 3px solid #000000 !important;
-  height: 14px !important;
-  border-radius: 0 !important;
-}
-.gr-slider .fill, .gr-slider [data-testid="slider-fill"] {
-  background: #FFFF00 !important;
-  border-right: 3px solid #000000 !important;
-  border-radius: 0 !important;
-}
-.gr-slider .thumb, .gr-slider [data-testid="slider-thumb"] {
-  background: #000000 !important;
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  width: 18px !important; height: 18px !important;
-  box-shadow: none !important;
-}
+/* ── SLIDER — yellow fill, charcoal track ── */
+.gr-slider { border: 2.5px solid var(--ink) !important; background: var(--paper) !important; border-radius:16px !important; box-shadow: var(--shadow-sm) !important; padding:10px !important; }
+.gr-slider input[type="range"] { accent-color: var(--yellow) !important; }
+.gr-slider .track { background: var(--cream) !important; border: 2px solid var(--ink) !important; height: 12px !important; border-radius: 999px !important; }
+.gr-slider .fill { background: var(--yellow) !important; border-radius: 999px !important; }
 
-/* ── DATAFRAME — 3px container, header yellow accent ── */
-.gr-dataframe, .gr-dataframe table, .table-wrap {
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
-  background: #FFFFFF !important;
+/* ── DATAFRAME — warm, navy header where needed ── */
+.gr-dataframe, .table-wrap {
+  border: 2.5px solid var(--ink) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow) !important;
+  background: var(--paper) !important;
+  overflow:hidden !important;
 }
-.gr-dataframe thead th, .gr-dataframe th {
-  background: #FFFF00 !important;
-  color: #000000 !important;
-  border: 3px solid #000000 !important;
-  font-weight: 900 !important;
-  text-transform: uppercase !important;
-  font-family:'Space Grotesk', sans-serif !important;
+.gr-dataframe thead th {
+  background: var(--ink) !important;
+  color: var(--yellow) !important;
+  border: none !important;
+  border-bottom: 2.5px solid var(--ink) !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important; font-size:12px !important;
 }
-.gr-dataframe td, .gr-dataframe tbody td {
-  border: 2px solid #000000 !important;
+.gr-dataframe td {
+  border-bottom: 1.5px solid #E8DDC8 !important;
   font-family:'JetBrains Mono', monospace !important; font-weight:700 !important;
-  color: #000000 !important;
 }
-.gr-dataframe tbody tr:hover td { background: #FFFF00 !important; }
+.gr-dataframe tbody tr:hover td { background: var(--soft-pink) !important; }
 
-/* ── CHATBOT / BUBBLES (if present) — hard shadow, 0 radius ── */
-.gr-chatbot, .chatbot, .gr-chatbot .wrap {
-  border: 3px solid #000000 !important;
-  background: #FFFFFF !important;
-  box-shadow: 5px 5px 0px #000000 !important;
-  border-radius: 0 !important;
-}
-.chatbot .message, .gr-chatbot .message, .bubble, .gr-chatbot .bubble {
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
-  background: #FFFFFF !important;
-  color: #000000 !important;
-}
-.chatbot .message.bot, .gr-chatbot .bot { background: #FFFFFF !important; }
-.chatbot .message.user, .gr-chatbot .user { background: #FFFF00 !important; color:#000000 !important; }
+/* ── CHATBOT — not primary in this app, but keep warm ── */
+.gr-chatbot { border: 2.5px solid var(--ink) !important; background: var(--paper) !important; border-radius:20px !important; box-shadow: var(--shadow) !important; }
+.chatbot .message, .bubble { border: 2.5px solid var(--ink) !important; border-radius:18px !important; box-shadow: var(--shadow-sm) !important; }
 
-/* ── ACCORDION — brutal ── */
+/* ── ACCORDION — soft, cream ── */
 .gr-accordion {
-  border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  border: 2.5px solid var(--ink) !important; background: var(--paper) !important; border-radius:16px !important;
+  box-shadow: var(--shadow-sm) !important; overflow:hidden !important;
 }
-.gr-accordion summary, details > summary {
+.gr-accordion summary {
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight: 900 !important;
-  text-transform: uppercase !important;
-  background: #FFFF00 !important; color:#000000 !important;
-  padding:10px 12px !important;
-  border-bottom: 3px solid #000000 !important;
-  transition: all 0.1s linear !important;
+  font-size:13px !important; font-weight: 800 !important;
+  background: var(--paper) !important; color:var(--ink) !important;
+  padding:12px 14px !important;
+  border-bottom: 2.5px solid var(--ink) !important;
 }
-.gr-accordion summary:hover { background: #FFFFFF !important; }
+.gr-accordion summary:hover { background: var(--soft-pink) !important; }
 
-/* ── RADIO / CHECKBOX — brutal, NOT ghost — FIX buttons-look-like-checkbox ── */
+/* ── RADIO / CHECKBOX — pill vs soft square, fix button/checkbox confusion ── */
 .gr-radio, .gr-checkbox-group { gap: 8px !important; display:flex !important; flex-wrap:wrap !important; }
 .gr-radio label, .gr-checkbox-group label, .gr-checkbox label {
-  border: 3px solid #000000 !important;
-  background: #FFFFFF !important;
-  border-radius: 0 !important;
-  padding: 8px 12px !important;
+  border: 2.5px solid var(--ink) !important;
+  background: var(--paper) !important;
+  border-radius: 999px !important;
+  padding: 8px 14px !important;
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 900 !important;
-  text-transform: uppercase !important;
-  color: #000000 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+  font-size: 13px !important; font-weight: 700 !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
   cursor: pointer !important;
-  transition: all 0.1s linear !important;
+  transition: all 0.15s ease !important;
   min-height: 40px !important;
   display: flex !important; align-items: center !important; gap: 8px !important;
 }
-.gr-radio label:hover, .gr-checkbox-group label:hover, .gr-checkbox label:hover {
-  box-shadow: 2px 2px 0px #000000 !important; transform: translate(3px,3px) !important;
-}
-.gr-radio label:has(input:checked), .gr-checkbox-group label:has(input:checked), .gr-checkbox:has(input:checked) {
-  background: #FFFF00 !important;
+.gr-radio label:hover, .gr-checkbox-group label:hover { background: var(--soft-pink) !important; transform: translateY(-1px); }
+.gr-radio label:has(input:checked), .gr-checkbox-group label:has(input:checked) {
+  background: var(--yellow) !important;
+  border-color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 .gr-radio input[type="radio"], .gr-checkbox-group input[type="checkbox"], .gr-checkbox input[type="checkbox"] {
   appearance: none !important;
   width: 18px !important; height: 18px !important; min-width:18px !important;
-  border: 3px solid #000000 !important;
-  background: #FFFFFF !important;
-  border-radius: 0 !important;
+  border: 2.5px solid var(--ink) !important;
+  background: var(--paper) !important;
+  border-radius: 50% !important;
   display: inline-grid !important; place-items:center !important;
   margin:0 !important;
 }
-.gr-radio input[type="radio"] { border-radius: 50% !important; }
-.gr-radio input[type="radio"]:checked::before { content:'●'; font-size:10px; line-height:1; color:#000000; }
-.gr-checkbox input[type="checkbox"]:checked::before,
-.gr-checkbox-group input[type="checkbox"]:checked::before { content:'✓'; font-size:12px; font-weight:900; color:#000000; line-height:1; }
-input[type="checkbox"], input[type="radio"] { accent-color: #FFFF00 !important; }
+.gr-checkbox-group input[type="checkbox"], .gr-checkbox input[type="checkbox"] { border-radius: 6px !important; }
+.gr-radio input[type="radio"]:checked::before { content:''; width:8px; height:8px; background: var(--magenta); border-radius:50%; display:block; }
+.gr-checkbox input[type="checkbox"]:checked, .gr-checkbox-group input[type="checkbox"]:checked { background: var(--yellow) !important; }
+.gr-checkbox input[type="checkbox"]:checked::before { content:'✓'; font-size:11px; font-weight:900; color:var(--ink); }
 
-/* ── FILE UPLOAD DROPZONE — brutal ── */
-.gr-file, .gr-file .wrap, .file-preview, [data-testid="file-upload"] {
-  border: 3px solid #000000 !important;
-  background: #FFFFFF !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
+/* ── FILE UPLOAD — dashed cream ── */
+.gr-file, .file-preview, [data-testid="file-upload"] {
+  border: 2.5px dashed var(--ink) !important;
+  background: var(--paper) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.gr-file:hover, .gr-file .wrap:hover { box-shadow: 2px 2px 0px #000000 !important; transform: translate(3px,3px) !important; transition: all 0.1s linear !important; }
+.gr-file:hover { border-color: var(--magenta) !important; background: var(--soft-pink) !important; }
 
-/* ── DROPDOWN MENU / TOOLTIP / GALLERY / IMAGE FRAME ── */
-.gr-dropdown ul, .options, .tooltip, .gr-tooltip, .gr-gallery, .gr-image, .gr-audio, .gr-video {
-  border: 3px solid #000000 !important;
-  border-radius: 0 !important;
-  box-shadow: 5px 5px 0px #000000 !important;
-  background: #FFFFFF !important;
-  color: #000000 !important;
-}
-.gr-image img, .gr-gallery img, .gr-video video { border: 3px solid #000000 !important; border-radius:0 !important; }
+/* ── TOOLTIP / GALLERY / IMAGE ── */
+.tooltip, .gr-tooltip { border: 2.5px solid var(--ink) !important; border-radius: 12px !important; box-shadow: var(--shadow) !important; background: var(--ink) !important; color: var(--yellow) !important; }
+.gr-image img, .gr-gallery img { border: 2.5px solid var(--ink) !important; border-radius:16px !important; }
 
-/* ── SCROLLBAR — brutal chunky ── */
-::-webkit-scrollbar { width:16px; height:16px; background: #FFFFFF; }
-::-webkit-scrollbar-track { background: #FFFFFF; border-left: 3px solid #000000; }
-::-webkit-scrollbar-thumb { background: #000000; border: 2px solid #FFFFFF; border-radius:0; }
-::-webkit-scrollbar-corner { background: #FFFFFF; }
+/* ── SCROLLBAR — warm ── */
+::-webkit-scrollbar { width:12px; height:12px; background: var(--cream); }
+::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--cream); border-radius:999px; }
+::-webkit-scrollbar-track { background: var(--cream); }
 
-/* ── Canvas / PoseViewer / Batch — keep white brutal ── */
-.custom-canvas-container { background: #FFFFFF !important; border: 3px solid #000000 !important; box-shadow: 5px 5px 0px #000000 !important; }
-.canvas-toolbar { background: #FFFFFF !important; border-bottom: 3px solid #000000 !important; padding:6px !important; gap:6px !important; }
-.tool-group-label { font-size:10px !important; font-weight:900 !important; text-transform:uppercase !important; }
-.canvas-toolbar-divider { background: #000000 !important; width:3px !important; }
-.canvas-stage-wrapper { background: #FFFFFF !important; border: 3px solid #000000 !important; }
-.pose-viewer-container { background: #FFFFFF !important; border: 3px solid #000000 !important; box-shadow: 5px 5px 0px #000000 !important; }
-.pose-viewer-container .canvas-wrapper { background: #FFFFFF !important; border: 3px solid #000000 !important; }
-.pose-viewer-container .control-panel-header { background: #000000 !important; border-bottom: 3px solid #000000 !important; }
-.pose-viewer-container .control-panel-title { color: #FFFF00 !important; font-weight:900 !important; text-transform:uppercase !important; }
-.batch-hero-panel, .batch-bottom-col, .neo-retro-card, .output-panel, .json-panel, .batch-explorer-bar { background:#FFFFFF !important; border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
-.out-header { background:#000000 !important; border-bottom:3px solid #000000 !important; height:36px !important; }
-.out-header-title { color:#FFFF00 !important; font-weight:900 !important; text-transform:uppercase !important; }
-.batch-status-table { border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
-.batch-status-table thead th { background:#FFFF00 !important; color:#000000 !important; border:3px solid #000000 !important; font-weight:900 !important; text-transform:uppercase !important; }
-.batch-status-table tbody td { border:2px solid #000000 !important; font-weight:700 !important; }
-.gr-form, .gr-padded { background:#FFFFFF !important; }
+/* ── Canvas / Viewer — warm, soft ── */
+.custom-canvas-container { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:20px !important; box-shadow: var(--shadow) !important; }
+.canvas-toolbar { background: var(--cream) !important; border-bottom: 2.5px solid var(--ink) !important; padding:8px !important; gap:8px !important; border-radius: 20px 20px 0 0 !important; }
+.tool-group-label { font-size:10px !important; font-weight:900 !important; text-transform:uppercase !important; color: var(--ink) !important; }
+.canvas-toolbar-divider { background: var(--ink) !important; width:2px !important; opacity:0.15; }
+.canvas-tool-btn { border-radius: 999px !important; }
+.canvas-stage-wrapper { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius: 16px !important; }
+.pose-viewer-container { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:20px !important; box-shadow: var(--shadow) !important; overflow:hidden !important; }
+.pose-viewer-container .canvas-wrapper { background: var(--cream) !important; border: none !important; border-top: 2.5px solid var(--ink) !important; }
+.pose-viewer-container .control-panel-header { background: var(--ink) !important; border-bottom: 2.5px solid var(--ink) !important; }
+.pose-viewer-container .control-panel-title { color: var(--yellow) !important; font-weight:900 !important; }
+.pose-viewer-container .annotation-row:hover { background: var(--soft-pink) !important; }
+.pose-viewer-container .annotation-row.selected { background: var(--yellow) !important; border-left: 4px solid var(--magenta) !important; }
 
-/* Shared window shell already covered above — keep for legacy */
-.gr-group, .gr-box, .gr-panel, .block { background:#FFFFFF !important; border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
+/* ── Batch panels — navy hero, cream explorer ── */
+.batch-hero-panel { background: var(--navy) !important; border: 2.5px solid var(--ink) !important; border-radius:20px !important; padding:14px !important; box-shadow: var(--shadow) !important; }
+.batch-explorer-bar { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:14px !important; padding:8px !important; box-shadow: var(--shadow-sm) !important; }
+.batch-viewers-row .pose-viewer-container, .batch-viewers-row .gradio-image { border-radius:16px !important; }
+.hero-meta { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:999px !important; }
+.hero-empty { background: rgba(255,255,255,0.1) !important; border: 2px dashed rgba(255,255,255,0.4) !important; color: var(--paper) !important; border-radius:16px !important; }
+.batch-bottom-col { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:20px !important; box-shadow: var(--shadow) !important; }
+.batch-progress-card { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:16px !important; box-shadow: var(--shadow-sm) !important; }
+.batch-status-header { background: var(--soft-pink) !important; border: 2.5px solid var(--ink) !important; border-radius:999px !important; }
+.neo-retro-card { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:20px !important; box-shadow: var(--shadow) !important; }
+.output-panel { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:16px !important; box-shadow: var(--shadow) !important; overflow:hidden !important; }
+.out-header { background: var(--ink) !important; border-bottom: 2.5px solid var(--ink) !important; height:40px !important; border-radius: 0 !important; }
+.out-header-title { color: var(--yellow) !important; font-weight:900 !important; }
+.batch-status-table { border: 2.5px solid var(--ink) !important; border-radius:16px !important; overflow:hidden !important; box-shadow: var(--shadow) !important; }
+.batch-status-table thead th { background: var(--ink) !important; color: var(--yellow) !important; border: none !important; font-weight:800 !important; }
+.output-panel, .json-panel { border-radius:16px !important; }
+
+/* Shared shell — keep for legacy */
+.gr-group, .gr-box, .gr-panel, .block { background: var(--paper) !important; border: 2.5px solid var(--ink) !important; border-radius:16px !important; box-shadow: var(--shadow-sm) !important; }
 
 /* ── TAB WIDTH STABILIZATION (kept) ── */
 .gradio-container, .gradio-container-4-24-0 { width: 1320px !important; max-width: calc(100vw - 28px) !important; }
 .tabs { width: 100% !important; max-width:100% !important; overflow:hidden !important; }
 .tabs > .tab-nav { width:100% !important; overflow:visible !important; flex-wrap:nowrap !important; }
 .tabs > .tab-nav button { flex:1 1 0 !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; }
-.tabitem { width:100% !important; min-height:760px !important; overflow:hidden !important; }
+.tabitem { width:100% !important; min-height:760px !important; overflow:hidden !important; background: transparent !important; border:none !important; }
 .batch-main-container, .batch-hero-panel, .batch-bottom-row, .draw-tab-row, .neo-retro-card { width:100% !important; max-width:100% !important; }
-.batch-bottom-row, .draw-tab-row { align-items: stretch !important; gap: 10px !important; }
+.batch-bottom-row, .draw-tab-row { align-items: stretch !important; gap: 12px !important; }
 .batch-bottom-col, .draw-tab-row > .gr-column { min-width:0 !important; flex:1 1 0 !important; }
-.gr-group, .gr-box, .gr-panel, .block, .config-card, .output-panel, .img-viewer-wrap, .batch-viewers-row { min-width:0 !important; max-width:100% !important; }
 
-/* ── Responsive: tabs wrap to 2 rows ── */
 @media (max-width: 900px) {
   .gradio-container { margin:8px !important; max-width: calc(100vw - 16px) !important; }
   .batch-viewers-row, .batch-bottom-row, .draw-tab-row { flex-direction:column !important; }
   .tabitem { min-height: 0 !important; }
-  .tabs > .tab-nav { flex-wrap: wrap !important; height: auto !important; }
-  .tabs > .tab-nav button, .tabs > .tab-nav button.selected { flex:1 1 31% !important; min-width:110px !important; height:46px !important; border-bottom:3px solid #000000 !important; }
-}
-@media (max-width: 1100px) {
-  .tabs > .tab-nav button { font-size:11px !important; padding:0 6px !important; }
+  .tabs > .tab-nav { flex-wrap: wrap !important; height: auto !important; gap:8px !important; }
+  .tabs > .tab-nav button, .tabs > .tab-nav button.selected { flex:1 1 31% !important; min-width:110px !important; height:42px !important; }
 }
