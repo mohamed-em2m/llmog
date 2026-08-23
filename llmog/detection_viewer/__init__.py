@@ -98,22 +98,40 @@ class DetectionViewer(gr.HTML):
             pass
 
         has_label = label is not None
-        super().__init__(
-            value=value,
-            label=label,
-            show_label=has_label,
-            container=has_label,
-            html_template=html_template,
-            css_template=css_template,
-            js_on_load=js_on_load,
-            panel_title=panel_title,
-            list_height=list_height,
-            score_threshold_min=score_threshold[0],
-            score_threshold_max=score_threshold[1],
-            keypoint_threshold=keypoint_threshold,
-            keypoint_radius=keypoint_radius,
-            **kwargs,
-        )
+        # Gradio 5+ supports html_template/css_template/js_on_load on gr.HTML,
+        # Gradio 4 does not — fall back to placeholder so build_app still works.
+        try:
+            super().__init__(
+                value=value,
+                label=label,
+                show_label=has_label,
+                container=has_label,
+                html_template=html_template,
+                css_template=css_template,
+                js_on_load=js_on_load,
+                panel_title=panel_title,
+                list_height=list_height,
+                score_threshold_min=score_threshold[0],
+                score_threshold_max=score_threshold[1],
+                keypoint_threshold=keypoint_threshold,
+                keypoint_radius=keypoint_radius,
+                **kwargs,
+            )
+        except TypeError:
+            # Fallback for Gradio 4: render a brutal placeholder — viewer JS not supported, but app must build.
+            fallback_kwargs = {k: v for k, v in kwargs.items() if k in ("elem_id", "elem_classes", "visible", "render", "key")}
+            placeholder = (
+                f"<div style='border:3px solid #000; background:#FFFF00; padding:12px; "
+                f"font-family:Space Grotesk, sans-serif; font-weight:900; text-transform:uppercase;'>"
+                f"{panel_title} — viewer requires Gradio 5+ (current {gr.__version__})</div>"
+            )
+            super().__init__(
+                value=placeholder,
+                label=label,
+                show_label=has_label,
+                container=has_label,
+                **fallback_kwargs,
+            )
 
     def postprocess(self, value: Any) -> str | None:  # noqa: ANN401
         if isinstance(value, str):

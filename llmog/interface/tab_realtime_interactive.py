@@ -1290,10 +1290,9 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
         with gr.Column(scale=3, min_width=520):
             gr.HTML('<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>')
 
-            # Embedded Custom Canvas with js_on_load handler
+            # Embedded Custom Canvas — Gradio 4/5 compat: inject JS via <script> (js_on_load not in this Gradio)
             custom_canvas = gr.HTML(
-                value=_RT_DRAW_CANVAS_HTML,
-                js_on_load=_RT_DRAW_CANVAS_JS,
+                value=_RT_DRAW_CANVAS_HTML + f"<script>{_RT_DRAW_CANVAS_JS}</script>",
                 elem_id="rt-interactive-canvas-html",
             )
 

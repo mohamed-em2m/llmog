@@ -1,199 +1,164 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Neo-Brutalism Theme — Chunky, Raw, High-Contrast
-   Pairs with console_theme.py. Replaces Retro Win95 bevels with
-   brutalist hard shadows, thick 3px borders, flat acid colors.
+   Neo-Brutalist Theme — STRICT one-accent (#FFFF00)
+   Applied via gr.Blocks(theme=theme, css=custom_css) — extends Base tokens
+   in console_theme.py. This CSS overrides anything tokens can't reach.
 
-   PALETTE:
-     ink          #0a0a0a   primary text / borders / shadows
-     paper        #ffffff   card face
-     cream        #FFFDF0   page bg
-     acid-yellow  #FFE600   primary accent (CTA, selected tab)
-     brutal-pink  #FF90E8   secondary accent / hover
-     brutal-cyan  #2EEBFF   info / score
-     brutal-lime  #C8FF00   success
-     brutal-orange#FF6B2D  warning
-     brutal-red   #FF3B30   danger / error
-     grey-mid     #E5E5E5   disabled
+   STRICT RULES ENFORCED:
+     Background #FFFFFF, accent #FFFF00 only, text #000000 (black on neon too)
+     Every button/input/group/tabs/dataframe: 3px solid #000, radius 0
+     Hard shadow 5px 5px 0 #000, hover 2px 2px + translate 3px, 0.1s linear
+     Headings 900 uppercase, body 700+, numbers mono, sharp 90° corners
+     Tabs = physical raised tabs, no underline-slide animation
+     No gradients, no soft purple/orange, no rgba blur, no radius>0
+   ════════════════════════════════════════════════════════════════════════ */
 
-   FONTS:
-     Display: 'Space Grotesk' 700/600 — headings, tabs, buttons
-     Mono   : 'Space Mono' / 'JetBrains Mono' — code, badges, logs
-   PRINCIPLES:
-     3–3.5px solid #0a0a0a borders, 5–6px hard offset shadows (no blur),
-     0 radius, uppercase bold labels, flat fills (no gradients except header).
-   Layout classes unchanged so Batch/Draw/Realtime keep working —
-   only visuals change.
-   ════════════════════════════════════════════════════════════════ */
-
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;900&family=JetBrains+Mono:wght@700;800&family=Space+Mono:wght@700&display=swap');
 
 :root {
-  --ink: #0a0a0a;
-  --paper: #ffffff;
-  --cream: #FFFDF0;
-  --yellow: #FFE600;
-  --pink: #FF90E8;
-  --cyan: #2EEBFF;
-  --lime: #C8FF00;
-  --orange: #FF6B2D;
-  --red: #FF3B30;
-  --grey: #E5E5E5;
+  --ink: #000000;
+  --paper: #FFFFFF;
+  --accent: #FFFF00;
   --border: 3px solid var(--ink);
-  --border-thin: 2.5px solid var(--ink);
-  --shadow: 5px 5px 0 var(--ink);
-  --shadow-sm: 3px 3px 0 var(--ink);
-  --shadow-btn: 4px 4px 0 var(--ink);
+  --border-thin: 3px solid var(--ink);
+  --shadow: 5px 5px 0px #000000;
+  --shadow-sm: 5px 5px 0px #000000;
+  --shadow-btn: 5px 5px 0px #000000;
+  --shadow-hover: 2px 2px 0px #000000;
 }
 
-/* ── Keyframes ── */
-@keyframes brutal-pop { 0%{transform:scale(0.98)} 100%{transform:scale(1)} }
 @keyframes fade-in { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
 
-/* ── Base reset + brutal cream desktop with halftone dots ── */
-*, *::before, *::after { box-sizing: border-box; }
+/* ── Base: kill Gradio soft tokens ── */
+*, *::before, *::after { box-sizing: border-box; border-radius: 0 !important; }
 
 html, body {
-  background: var(--cream) !important;
-  background-image:
-    radial-gradient(var(--ink) 1.2px, transparent 1.2px) !important;
-  background-size: 18px 18px !important;
-  background-position: -2px -2px !important;
+  background: #FFFFFF !important;
+  color: #000000 !important;
   font-family: 'Space Grotesk', system-ui, sans-serif !important;
-  color: var(--ink) !important;
-  scrollbar-width: auto;
-  scrollbar-color: var(--ink) var(--cream);
 }
-html { scrollbar-gutter: stable !important; }
-
-/* Remove old CRT scanline — brutalism is flat */
 body::after { display: none !important; }
 
-/* Gradio root — brutal white card with hard shadow */
+/* Force no rounded-lg/xl anywhere — brutal 0 radius */
+.gradio-container, .gradio-container-4-24-0,
+.gr-button, .gr-box, .gr-panel, .block, .form, .gr-input, .gr-text-input,
+.gr-dropdown, .gr-slider, .gr-group, .gr-tabs, .tabitem, .gr-accordion,
+.gr-dataframe, .gr-image, .gr-file, .gr-gallery, .gr-chatbot, .gr-audio, .gr-video,
+.chatbot .message, .chatbot .bubble, .wrap, .gr-form, .gr-padded {
+  border-radius: 0 !important;
+  --radius-sm: 0px !important;
+  --radius-md: 0px !important;
+  --radius-lg: 0px !important;
+  --radius-xl: 0px !important;
+  --shadow-drop: 5px 5px 0px #000000 !important;
+  --shadow-drop-lg: 5px 5px 0px #000000 !important;
+}
+
+/* Gradio root — white brutal card */
 .gradio-container, .gradio-container-4-24-0 {
   background: var(--paper) !important;
-  border: var(--border) !important;
-  border-width: 3.5px !important;
-  box-shadow: 8px 8px 0 var(--ink) !important;
+  border: 3px solid #000000 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
   max-width: 1320px !important;
   width: 1320px !important;
   max-width: calc(100vw - 28px) !important;
   margin: 18px auto !important;
   padding: 6px !important;
-  border-radius: 0 !important;
 }
 .gradio-container > .main, .gradio-container > div { background: transparent !important; }
 
-/* ── App Header — black bar with yellow pop ── */
+/* ── App Header — brutal black bar ── */
 .app-header {
-  background: var(--ink) !important;
-  border: var(--border) !important;
-  border-width: 3px !important;
+  background: #000000 !important;
+  border: 3px solid #000000 !important;
   padding: 10px 12px !important;
   margin: -6px -6px 6px -6px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   gap: 12px !important;
-  min-height: 44px !important;
-  position: relative !important;
-  overflow: hidden !important;
+  min-height: 48px !important;
   box-shadow: none !important;
 }
 .app-header::before, .app-header::after { display: none !important; }
 .app-header h1 {
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 18px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.02em !important;
-  line-height: 1 !important;
-  color: var(--yellow) !important;
+  font-size: 22px !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.03em !important;
   text-transform: uppercase !important;
+  color: #FFFFFF !important;
   margin: 0 !important;
   display: flex; align-items: center; gap: 10px;
 }
-.app-header h1 span { color: var(--yellow) !important; font-size: 18px !important; }
+.app-header h1 span { color: #FFFF00 !important; }
 .app-header h1::before {
   content: '◼';
   font-size: 16px;
-  color: var(--pink);
-  background: var(--yellow);
-  border: 2.5px solid var(--ink);
-  width: 22px; height: 22px;
+  color: #000000;
+  background: #FFFF00;
+  border: 3px solid #000000;
+  width: 24px; height: 24px;
   display: inline-flex; align-items:center; justify-content:center;
-  box-shadow: 2px 2px 0 var(--ink);
+  box-shadow: 3px 3px 0px #000000;
 }
 .app-header p { display: none !important; }
 .app-header-meta { display:flex; align-items:center; gap:8px; }
 .app-header-meta::before {
   content: '● ● ●';
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 10px; font-weight: 700;
+  font-size: 10px; font-weight: 900;
   letter-spacing: 6px;
-  color: var(--ink);
-  background: var(--paper);
-  border: 2.5px solid var(--ink);
+  color: #000000;
+  background: #FFFFFF;
+  border: 3px solid #000000;
   padding: 4px 8px;
-  box-shadow: 2px 2px 0 var(--ink);
-  line-height: 1;
+  box-shadow: 3px 3px 0px #000000;
 }
 .app-header-meta .status-badge { display:none !important; }
 
-/* ── Status Badges — brutal pills ── */
+/* ── Status Badges — brutal, ONE accent never pink/cyan ── */
 .status-badge {
   display: inline-flex !important;
   align-items: center !important;
   gap: 6px !important;
   padding: 4px 10px !important;
-  border: var(--border-thin) !important;
-  background: var(--paper) !important;
+  border: 3px solid #000000 !important;
+  background: #FFFFFF !important;
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 11px !important; font-weight: 700 !important;
+  font-size: 11px !important; font-weight: 900 !important;
   letter-spacing: 0.04em !important; text-transform: uppercase !important;
-  border-radius: 0 !important;
-  color: var(--ink) !important;
-  box-shadow: var(--shadow-sm) !important;
+  color: #000000 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
-.status-badge::before { width:10px; height:10px; border-radius:0; border:2px solid var(--ink); }
-.badge-running { background: var(--lime) !important; color: var(--ink) !important; }
-.badge-running::before { background: var(--ink); }
-.badge-stopped::before { background: var(--grey); }
-.badge-starting::before { background: var(--orange); }
-.badge-error { background: var(--red) !important; color: var(--paper) !important; }
-.badge-error::before { background: var(--paper); }
+.status-badge::before { width:10px; height:10px; border-radius:0; border:2px solid #000000; content:''; display:inline-block; }
+.badge-running { background: #FFFF00 !important; }
+.badge-running::before, .badge-stopped::before, .badge-starting::before, .badge-error::before { background: #000000; }
+.badge-error { background: #FFFFFF !important; color: #000000 !important; border-color:#000000 !important; }
 
-/* ── Score Badge ── */
 .score-badge {
   display: inline-block !important;
   padding: 3px 10px !important;
-  background: var(--cyan) !important;
-  color: var(--ink) !important;
-  border: var(--border-thin) !important;
-  font-family: 'Space Mono', monospace !important;
-  font-size: 13px !important; font-weight: 700 !important;
-  letter-spacing: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: var(--shadow-sm) !important;
+  background: #FFFF00 !important;
+  color: #000000 !important;
+  border: 3px solid #000000 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 13px !important; font-weight: 800 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
-
-/* ── Image Status Pills ── */
 .img-status-pill {
   display:inline-block !important;
   padding:2px 8px !important;
-  border: 2.5px solid var(--ink) !important;
+  border: 3px solid #000000 !important;
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:10px !important; font-weight:700 !important;
-  letter-spacing:0.04em !important; text-transform:uppercase !important;
-  border-radius:0 !important; 
-  box-shadow: 2px 2px 0 var(--ink) !important;
+  font-size:10px !important; font-weight: 900 !important;
+  text-transform:uppercase !important;
+  box-shadow: 3px 3px 0px #000000 !important;
+  background: #FFFFFF !important; color:#000000 !important;
 }
-.pill-queued   { color: var(--ink); background: var(--paper) !important; }
-.pill-running  { color: var(--ink); background: var(--yellow) !important; }
-.pill-done     { color: var(--ink); background: var(--lime) !important; }
-.pill-error    { color: var(--paper); background: var(--red) !important; }
-.pill-cancelled{ color: var(--ink); background: var(--grey) !important; }
+.pill-queued, .pill-running, .pill-done, .pill-error, .pill-cancelled { background:#FFFFFF !important; color:#000000 !important; border-color:#000000 !important; }
 
-/* ── Tabs — brutal equal-width folder ── */
-.tabs { background: var(--paper) !important; border: var(--border) !important; padding: 0 !important; box-shadow: var(--shadow) !important; }
+/* ── TABS — physical raised tabs, equal width, ONE accent ── */
+.tabs { background: #FFFFFF !important; border: 3px solid #000000 !important; padding: 0 !important; box-shadow: 5px 5px 0px #000000 !important; }
 .tabs > .tab-nav {
   display: flex !important;
   flex-wrap: nowrap !important;
@@ -201,833 +166,411 @@ body::after { display: none !important; }
   justify-content: stretch !important;
   gap: 0 !important;
   width: 100% !important;
-  height: 44px !important;
-  background: var(--paper) !important;
+  height: 46px !important;
+  background: #FFFFFF !important;
   border: none !important;
-  border-bottom: var(--border) !important;
+  border-bottom: 3px solid #000000 !important;
   padding: 0 !important;
   overflow: visible !important;
-  box-sizing: border-box !important;
 }
 .tabs > .tab-nav button {
   flex: 1 1 0 !important;
   min-width: 0 !important;
-  max-width: none !important;
-  height: 44px !important;
+  height: 46px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 600 !important;
-  line-height: 1 !important;
-  letter-spacing: -0.01em !important; text-transform: uppercase !important;
-  color: var(--ink) !important;
-  background: var(--paper) !important;
+  font-size: 12px !important; font-weight: 900 !important;
+  text-transform: uppercase !important;
+  letter-spacing: -0.01em !important;
+  color: #000000 !important;
+  background: #FFFFFF !important;
   border: none !important;
-  border-right: var(--border) !important;
+  border-right: 3px solid #000000 !important;
   border-radius: 0 !important;
   padding: 0 8px !important;
   margin: 0 !important;
-  box-shadow: none !important;
-  position: relative !important; top: 0 !important;
   white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
-  cursor: pointer !important;
-  transition: background 80ms, transform 80ms !important;
+  transition: all 0.1s linear !important;
 }
 .tabs > .tab-nav button:last-child { border-right: none !important; }
-.tabs > .tab-nav button:hover { background: var(--pink) !important; color: var(--ink) !important; }
-.tabs > .tab-nav button:active { background: var(--pink) !important; }
+.tabs > .tab-nav button:hover { background: #FFFF00 !important; }
 .tabs > .tab-nav button.selected {
-  flex: 1 1 0 !important;
-  height: 44px !important;
-  background: var(--yellow) !important;
-  color: var(--ink) !important;
-  border-right: var(--border) !important;
-  z-index: 2 !important;
-  font-weight: 700 !important;
-  box-shadow: inset 0 -3px 0 var(--ink) !important;
+  background: #FFFF00 !important;
+  color: #000000 !important;
+  border-right: 3px solid #000000 !important;
+  font-weight: 900 !important;
+  /* no underline-slide, just solid fill */
 }
 .tabs > .tab-nav button.selected:last-child { border-right: none !important; }
 .tabitem {
-  background: var(--paper) !important;
+  background: #FFFFFF !important;
   border: none !important;
   border-top: none !important;
   padding: 14px 12px 12px !important;
-  animation: fade-in 140ms ease-out !important;
+  animation: fade-in 0.1s linear !important;
   min-height: 760px !important;
 }
 
-/* ── Section labels — brutal black bar ── */
+/* ── Section labels — brutal black bar, never gradient ── */
 .section-label {
   font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 700 !important;
+  font-size: 12px !important; font-weight: 900 !important;
   letter-spacing: 0.04em !important; text-transform: uppercase !important;
-  color: var(--yellow) !important;
-  background: var(--ink) !important;
-  border: var(--border) !important;
-  padding: 6px 10px !important;
+  color: #FFFFFF !important;
+  background: #000000 !important;
+  border: 3px solid #000000 !important;
+  padding: 7px 10px !important;
   margin: 0 0 10px 0 !important;
   display:flex !important; align-items:center !important;
-  min-height: 30px !important;
-  box-shadow: var(--shadow-sm) !important;
+  min-height: 32px !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
 .section-label::after { display:none !important; }
 
-/* ── Window-like panels — brutal cards ── */
-.gr-group, .gr-box, .gr-panel, .block {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  box-shadow: var(--shadow) !important;
-}
-.gr-group { padding: 10px !important; }
-
-.config-card {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  padding:10px !important;
-  margin-bottom:10px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.config-card:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink) !important; }
-.config-card-title { color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.03em !important; }
-
-.config-section-title {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  letter-spacing:0.05em !important; text-transform: uppercase !important;
-  color: var(--paper) !important;
-  background: var(--ink) !important;
-  border: var(--border-thin) !important;
-  padding:4px 8px !important; margin:12px 0 8px !important;
-  display:inline-block !important;
-}
-
-/* ── Metric cards ── */
-.metric-grid { gap:8px !important; }
-.metric-card {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  padding:10px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.metric-value { font-family:'Space Grotesk', sans-serif !important; font-size:24px !important; font-weight:700 !important; color: var(--ink) !important; }
-.metric-label { font-family:'Space Mono', monospace !important; font-size:10px !important; font-weight:700 !important; color: var(--ink) !important; text-transform:uppercase !important; letter-spacing:0.05em !important; }
-
-/* ── Progress — brutal yellow striped ── */
-.custom-progress-wrapper { margin:8px 0 !important; }
-.custom-progress-track {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  height:20px !important;
-  padding:0 !important;
-  overflow:hidden !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.custom-progress-fill {
-  background: var(--yellow) !important;
-  background-image: repeating-linear-gradient( -45deg, transparent 0 8px, var(--ink) 8px 10px ) !important;
-  border-radius:0 !important;
-  box-shadow:none !important;
-  animation:none !important;
-  transition: width 0.2s steps(6) !important;
-  border-right: var(--border) !important;
-}
-.custom-progress-fill.striped { animation:none !important; }
-.custom-progress-fill[style*="100%"] { background: var(--lime) !important; }
-.custom-progress-text {
-  font-family:'Space Mono', monospace !important;
-  font-size:11px !important; font-weight:700 !important; color: var(--ink) !important;
-  margin-top:6px !important; text-align:left !important; text-transform:uppercase !important;
-}
-
-/* ── Buttons — brutal hard shadow system ── */
-:root { --win-btn-h: 40px; --win-btn-pad: 0 16px; }
-.btn-group { gap:8px !important; display:flex !important; flex-wrap:wrap !important; align-items:stretch !important; margin-top:8px !important; }
-.btn-group .gr-button, .btn-group button { flex:1 1 0 !important; min-width:120px !important; max-width:280px !important; }
-
-button.primary, button.secondary, .gr-button,
-.canvas-tool-btn, .pose-viewer-container .cp-btn,
-.btn-canvas-primary, .btn-canvas-secondary {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight:700 !important;
-  letter-spacing:0.02em !important; text-transform: uppercase !important;
-  line-height:1 !important;
-  height: var(--win-btn-h) !important;
-  min-height: var(--win-btn-h) !important;
-  max-height: var(--win-btn-h) !important;
-  padding: var(--win-btn-pad) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  background: var(--paper) !important; color: var(--ink) !important;
-  box-shadow: var(--shadow-btn) !important;
-  display:inline-flex !important; align-items:center !important; justify-content:center !important;
-  gap:8px !important;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  box-sizing:border-box !important;
-  transition: transform 80ms, box-shadow 80ms, background 80ms !important;
-  flex-shrink:0 !important;
-  min-width:100px !important;
-  cursor: pointer !important;
-}
-button.primary, .gr-button.primary, .btn-canvas-primary {
-  background: var(--yellow) !important; color: var(--ink) !important;
-}
-button.secondary, .gr-button.secondary, .btn-canvas-secondary {
-  background: var(--paper) !important;
-}
-.canvas-tool-btn.danger, .gr-button.danger {
-  background: var(--red) !important; color: var(--paper) !important;
-}
-button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
-.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled) {
-  transform: translate(-1px, -1px) !important;
-  box-shadow: 5px 5px 0 var(--ink) !important;
-  background: var(--pink) !important;
-}
-button.primary:hover:not(:disabled) { background: var(--yellow) !important; filter: brightness(1.05) !important; }
-.canvas-tool-btn.danger:hover { background: var(--red) !important; color: var(--paper) !important; filter: brightness(1.1) !important; }
-button.primary:active:not(:disabled), button.secondary:active:not(:disabled),
-.gr-button:active:not(:disabled), .canvas-tool-btn:active:not(:disabled) {
-  transform: translate(3px, 3px) !important;
-  box-shadow: 1px 1px 0 var(--ink) !important;
-}
-button:disabled, .gr-button:disabled, .canvas-tool-btn:disabled {
-  background: var(--grey) !important; color: #777 !important;
-  box-shadow: 2px 2px 0 var(--ink) !important;
-  opacity: 1 !important;
-  cursor: not-allowed !important;
-}
-.gr-button[size="sm"], button[size="sm"] {
-  height: var(--win-btn-h) !important;
-  min-height: var(--win-btn-h) !important;
-  padding: var(--win-btn-pad) !important;
-  font-size:12px !important;
-  min-width:90px !important;
-}
-.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
-.pose-viewer-container .toggle-image-btn.active {
-  background: var(--yellow) !important; color: var(--ink) !important;
-  border: var(--border) !important;
-  box-shadow: var(--shadow-btn) !important;
-  transform: translate(-1px, -1px) !important;
-}
-
-/* Canvas toolbar compact */
-.canvas-toolbar .canvas-tool-btn {
-  min-width:0 !important; flex:0 0 auto !important;
-  height:30px !important; min-height:30px !important; max-height:30px !important;
-  padding:0 10px !important; font-size:11px !important;
-  box-shadow: 3px 3px 0 var(--ink) !important;
-}
-.canvas-toolbar .color-swatch { border: 2.5px solid var(--ink) !important; box-shadow: 2px 2px 0 var(--ink) !important; border-radius:0 !important; width:22px !important; height:22px !important; }
-.pose-viewer-container .cp-btn { height:30px !important; min-height:30px !important; max-height:30px !important; padding:0 10px !important; min-width:0 !important; }
-
-/* ── Inputs — brutal inset ── */
-input:not([type="checkbox"]):not([type="radio"]), textarea, select, .gr-text-input, .gr-dropdown {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:13px !important; font-weight:500 !important;
-  background: var(--paper) !important;
-  color: var(--ink) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  box-shadow: var(--shadow-sm) !important;
-  padding:6px 8px !important;
-}
-input:not([type="checkbox"]):not([type="radio"]):focus, textarea:focus, select:focus {
-  outline: none !important;
-  background: var(--cream) !important;
-  border-color: var(--ink) !important;
-  box-shadow: 4px 4px 0 var(--ink) !important;
-}
-label span, .block-title, label > span {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight:600 !important;
-  color: var(--ink) !important; letter-spacing:-0.01em !important; text-transform:none !important;
-}
-.gr-input, .gr-textbox, .gr-number, .gr-dropdown .wrap {
-  border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-
-/* ── FIX: Radios look like checkboxes — make Radio groups brutal segmented buttons ── */
-/* Hide native radio circle and style the label as a chunky button */
-.gr-radio, .gr-checkbox-group {
-  gap: 8px !important;
-}
-.gr-radio label, .gr-checkbox-group label {
-  border: var(--border) !important;
-  background: var(--paper) !important;
-  border-radius: 0 !important;
-  padding: 8px 12px !important;
-  font-family: 'Space Grotesk', sans-serif !important;
-  font-size: 12px !important; font-weight: 600 !important;
-  color: var(--ink) !important;
-  box-shadow: var(--shadow-sm) !important;
-  cursor: pointer !important;
-  transition: transform 80ms, box-shadow 80ms, background 80ms !important;
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  min-height: 38px !important;
-}
-.gr-radio label:hover, .gr-checkbox-group label:hover {
-  transform: translate(-1px, -1px) !important;
-  box-shadow: 4px 4px 0 var(--ink) !important;
-  background: var(--cream) !important;
-}
-.gr-radio label:has(input:checked), .gr-checkbox-group label:has(input:checked) {
-  background: var(--yellow) !important;
-  box-shadow: var(--shadow-sm) !important;
-  transform: translate(-1px, -1px) !important;
-  border-color: var(--ink) !important;
-}
-.gr-radio label:has(input:checked):hover, .gr-checkbox-group label:has(input:checked):hover {
-  background: var(--yellow) !important;
-}
-.gr-radio input[type="radio"], .gr-checkbox-group input[type="checkbox"] {
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  width: 18px !important; height: 18px !important;
-  min-width: 18px !important;
-  border: 2.5px solid var(--ink) !important;
-  background: var(--paper) !important;
-  border-radius: 0 !important;
-  display: inline-grid !important; place-items: center !important;
-  flex-shrink: 0 !important;
-  box-shadow: none !important;
-  margin: 0 !important;
-}
-.gr-radio input[type="radio"] { border-radius: 50% !important; }
-.gr-radio input[type="radio"]:checked::before {
-  content: '' !important;
-  width: 8px !important; height: 8px !important;
-  background: var(--ink) !important;
-  border-radius: 50% !important;
-  display: block !important;
-}
-.gr-checkbox-group input[type="checkbox"]:checked::before,
-.gr-checkbox input[type="checkbox"]:checked::before {
-  content: '✓' !important;
-  font-size: 11px !important; font-weight: 700 !important;
-  color: var(--ink) !important;
-  line-height: 1 !important;
-}
-
-/* ── Single Checkboxes (Enable Preprocessing etc.) — brutal square ── */
-input[type="checkbox"], input[type="radio"] {
-  accent-color: var(--yellow) !important;
-}
-.gr-checkbox {
-  gap: 8px !important;
-}
-.gr-checkbox label {
-  font-weight: 600 !important;
-}
-input[type="checkbox"] {
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  width: 20px !important; height: 20px !important;
-  min-width: 20px !important;
-  border: 2.5px solid var(--ink) !important;
-  background: var(--paper) !important;
-  border-radius: 0 !important;
-  display: inline-grid !important; place-items: center !important;
-  box-shadow: 2px 2px 0 var(--ink) !important;
-  cursor: pointer !important;
-}
-input[type="checkbox"]:checked {
-  background: var(--yellow) !important;
-}
-input[type="checkbox"]:checked::before {
-  content: '✓' !important;
-  font-size: 13px !important; font-weight: 800 !important;
-  color: var(--ink) !important;
-}
-
-/* ── Output panels ── */
-.output-panel {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  overflow:hidden !important;
-  margin-top:10px !important;
-  box-shadow: var(--shadow) !important;
-}
-.out-header {
-  background: var(--ink) !important;
-  border-bottom: var(--border) !important;
-  padding:6px 10px !important;
-  height:auto !important; min-height: 32px !important;
-  display:flex !important; align-items:center !important; justify-content:space-between !important;
-}
-.out-header-left { gap:8px !important; display:flex !important; align-items:center !important; }
-.out-header-dot {
-  width:12px; height:12px; border-radius:0 !important;
-  background: var(--yellow) !important; border: 2px solid var(--ink) !important;
-  box-shadow: none !important;
-}
-.out-header-title {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight:700 !important;
-  color: var(--yellow) !important; letter-spacing:0.04em !important; text-transform: uppercase !important;
-}
-.out-header-right .copy-btn {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  background: var(--yellow) !important; color: var(--ink) !important;
-  border: var(--border-thin) !important; border-radius:0 !important;
-  padding:4px 10px !important;
-  box-shadow: var(--shadow-sm) !important;
-  text-transform: uppercase !important;
-}
-.copy-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; box-shadow: 4px 4px 0 var(--ink) !important; }
-.copy-btn.copied { background: var(--lime) !important; color: var(--ink) !important; border: var(--border) !important; }
-
-.stats-bar {
-  font-family:'Space Mono', monospace !important;
-  font-size:11px !important; font-weight:700 !important; color: var(--ink) !important;
-  background: var(--yellow) !important;
-  border-bottom: var(--border) !important;
-  padding:6px 10px !important;
-}
-.stat-ok { color: var(--ink) !important; }
-
-.out-md-wrap {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  margin:0 !important;
-  max-height:300px !important;
-  border-radius: 0 !important;
-}
-.out-md-wrap .prose { color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:13px !important; line-height:1.5 !important; }
-.out-md-wrap .prose h1,.out-md-wrap .prose h2,.out-md-wrap .prose h3 { color: var(--ink) !important; border-bottom: var(--border) !important; font-family:'Space Grotesk', sans-serif !important; font-weight:700 !important; }
-.out-md-wrap .prose code { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border-thin) !important; border-radius:0 !important; padding:1px 4px !important; }
-.out-md-wrap .prose pre { background: var(--paper) !important; border: var(--border) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
-.out-md-wrap .prose blockquote { border-left:6px solid var(--ink) !important; background: var(--cream) !important; color: var(--ink) !important; }
-.out-md-wrap .prose th { background: var(--ink) !important; color: var(--yellow) !important; border: var(--border) !important; }
-
-/* ── Batch Status Table — brutal grid ── */
-.batch-status-table { font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; border: var(--border) !important; box-shadow: var(--shadow-sm) !important; }
-.batch-status-table thead tr { background: var(--ink) !important; color: var(--yellow) !important; }
-.batch-status-table thead th {
-  background: var(--ink) !important; color: var(--yellow) !important;
-  border: 1.5px solid var(--ink) !important;
-  border-right-color: #333 !important; border-bottom-color: #333 !important;
-  font-size:11px !important; font-weight:700 !important; letter-spacing:0.04em !important; text-transform: uppercase !important;
-  padding:6px 8px !important;
-}
-.batch-status-table tbody tr { border:none !important; background: var(--paper) !important; border-bottom: 2px solid var(--ink) !important; }
-.batch-status-table tbody tr:nth-child(even) { background: var(--cream) !important; }
-.batch-status-table tbody tr:hover { background: var(--yellow) !important; }
-.batch-status-table tbody tr:hover td { color: var(--ink) !important; }
-.batch-status-table tbody td {
-  color: var(--ink) !important; border-right:1.5px solid var(--ink) !important;
-  border-bottom:none !important; padding:6px 8px !important; font-weight:500 !important;
-}
-.batch-status-table tbody td:first-child { font-weight:700 !important; }
-
-/* ── Image Viewer ── */
-.img-viewer-wrap {
-  border: var(--border) !important; border-radius:0 !important;
-  background: var(--paper) !important; padding:4px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.gradio-image img { border: 2.5px solid var(--ink) !important; border-radius:0 !important; max-height:480px !important; }
-
-.explorer-header-card {
-  background: var(--paper) !important;
-  border: var(--border) !important; border-radius:0 !important;
-  padding:8px 10px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.explorer-image-name { font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; color: var(--ink) !important; }
-.step-badge { font-family:'Space Mono', monospace !important; font-size:11px !important; font-weight:700 !important; }
-.step-badge-1 .step-badge-num, .step-badge-2 .step-badge-num { border-radius:0 !important; border: 2.5px solid var(--ink) !important; box-shadow: 2px 2px 0 var(--ink) !important; }
-.step-badge-1 { color: var(--ink) !important; } .step-badge-2 { color: var(--ink) !important; }
-.step-badge-1 .step-badge-num { background: var(--yellow) !important; }
-.step-badge-2 .step-badge-num { background: var(--pink) !important; }
-
-/* ── JSON panel ── */
-.json-panel {
-  background: var(--paper) !important;
-  border: var(--border) !important; border-radius:0 !important;
-  margin-top:10px !important;
-  box-shadow: var(--shadow) !important;
-}
-.json-panel-hdr {
-  background: var(--ink) !important;
-  color: var(--yellow) !important;
-  font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important;
-  letter-spacing:0.04em !important; text-transform:uppercase !important;
-  padding:6px 10px !important; border-bottom: var(--border) !important;
-}
-.json-panel-hdr .dot-amber { background: var(--yellow) !important; border:2px solid var(--ink) !important; border-radius:0 !important; width:10px; height:10px; box-shadow: none !important; }
-.json-panel-body { background: var(--paper) !important; border: none !important; margin:0 !important; }
-.json-panel-body > div.block { background:transparent !important; border:none !important; }
-
-/* ── Accordions ── */
-.gr-accordion {
-  border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important;
-  margin:8px 0 !important; box-shadow: var(--shadow-sm) !important;
-}
-.gr-accordion summary, details > summary {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight:700 !important;
-  color: var(--ink) !important; letter-spacing:0.02em !important; text-transform: uppercase !important;
-  background: var(--yellow) !important; padding:8px 10px !important;
-  border-bottom: var(--border) !important;
-  list-style:none; cursor: pointer !important;
-}
-.gr-accordion summary:hover, details > summary:hover { background: var(--pink) !important; }
-
-/* ── Dropdown ── */
-.gr-dropdown { border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
-.gr-dropdown .wrap { border:none !important; }
-
-/* ── Scrollbars — brutal chunky ── */
-::-webkit-scrollbar { width:16px; height:16px; background: var(--paper); }
-::-webkit-scrollbar-track { background: var(--paper); border-left: var(--border); }
-::-webkit-scrollbar-thumb {
-  background: var(--ink);
-  border: 2px solid var(--paper);
-  border-radius:0;
-}
-::-webkit-scrollbar-thumb:hover { background: #333; }
-::-webkit-scrollbar-corner { background: var(--paper); }
-::-webkit-scrollbar-button {
-  background: var(--yellow); border: var(--border);
-  height:16px; width:16px; display:block;
-}
-
-/* ── Hint / misc ── */
-.hidden-raw { display:none !important; }
-.input-hint, .input-hint .hint-var { font-family:'Space Mono', monospace !important; font-size:11px !important; color: var(--ink) !important; font-weight:600 !important; }
-textarea { scrollbar-width:auto; scrollbar-color: var(--ink) var(--paper); }
-
-/* ── Custom HTML5 Canvas — brutal card ── */
-.custom-canvas-container {
-  background: var(--paper) !important;
-  border: var(--border) !important; border-width: 3.5px !important; border-radius:0 !important;
-  box-shadow: var(--shadow) !important;
-  margin-bottom:12px !important;
-}
-.canvas-toolbar {
-  background: var(--cream) !important;
-  border-bottom: var(--border) !important;
-  padding:6px !important; gap:6px !important;
-  font-family:'Space Grotesk', sans-serif !important;
-}
-.tool-group-label { font-size:10px !important; font-weight:700 !important; color: var(--ink) !important; text-transform:uppercase !important; letter-spacing:0.05em !important; }
-.canvas-toolbar-divider { background: var(--ink) !important; width:3px !important; border:none !important; }
-.canvas-tool-btn {
-  background: var(--paper) !important; color: var(--ink) !important;
-  border: var(--border-thin) !important; border-radius:0 !important;
-  font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important;
-  padding:4px 8px !important; box-shadow: var(--shadow-sm) !important;
-}
-.canvas-tool-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; box-shadow: 4px 4px 0 var(--ink) !important; }
-.canvas-tool-btn.active {
-  border: var(--border) !important; background: var(--yellow) !important; color: var(--ink) !important;
-  box-shadow: var(--shadow-sm) !important; transform: translate(-1px,-1px) !important;
-}
-.canvas-tool-btn.danger:hover { background: var(--red) !important; color: var(--paper) !important; }
-.canvas-stage-wrapper {
-  background: var(--paper) !important;
-  background-image:
-    linear-gradient(var(--ink) 1.5px, transparent 1.5px),
-    linear-gradient(90deg, var(--ink) 1.5px, transparent 1.5px) !important;
-  background-size: 22px 22px !important;
-  border: var(--border) !important;
-  border-width: 3px !important;
-}
-#custom-annotation-canvas { background: var(--paper) !important; }
-.canvas-empty-state { background: var(--cream) !important; border: var(--border) !important; }
-.canvas-empty-state h3, .canvas-empty-state p { font-family:'Space Grotesk', sans-serif !important; color: var(--ink) !important; font-weight:700 !important; }
-.btn-canvas-primary { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border) !important; border-radius:0 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; box-shadow: var(--shadow-btn) !important; }
-.btn-canvas-primary:hover { background: var(--yellow) !important; transform: translate(-1px,-1px) !important; box-shadow: 5px 5px 0 var(--ink) !important; }
-.btn-canvas-secondary { background: var(--paper) !important; color: var(--ink) !important; border: var(--border) !important; border-radius:0 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; box-shadow: var(--shadow-btn) !important; }
-.canvas-status-bar { background: var(--cream) !important; border-top: var(--border) !important; font-family:'Space Mono', monospace !important; font-size:11px !important; font-weight:700 !important; }
-.regions-count-badge { background: var(--cyan) !important; border: var(--border-thin) !important; color: var(--ink) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
-
-/* ── DetectionViewer — brutal ── */
-.pose-viewer-container {
-  background: var(--paper) !important;
-  border: var(--border) !important; border-radius:0 !important;
-  box-shadow: var(--shadow) !important;
-}
-.pose-viewer-container .canvas-wrapper {
-  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
-}
-.pose-viewer-container .canvas-wrapper canvas { border: var(--border-thin) !important; border-radius:0 !important; background: var(--paper) !important; }
-.pose-viewer-container .control-panel { background: var(--paper) !important; border-color: var(--ink) !important; border-width: 3px !important; }
-.pose-viewer-container .control-panel-header {
-  background: var(--ink) !important;
-  border-bottom: var(--border) !important;
-}
-.pose-viewer-container .control-panel-title,
-.pose-viewer-container .control-panel-count { color: var(--yellow) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
-.pose-viewer-container .cp-btn {
-  background: var(--paper) !important; color: var(--ink) !important;
-  border: var(--border-thin) !important; border-radius:0 !important;
-  font-weight:700 !important; box-shadow: var(--shadow-sm) !important;
-}
-.pose-viewer-container .cp-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; }
-.pose-viewer-container .cp-btn.active,
-.pose-viewer-container .toggle-image-btn.active {
-  background: var(--yellow) !important; color: var(--ink) !important; border: var(--border) !important;
-}
-.pose-viewer-container .annotation-row { border-bottom: 2px solid var(--ink) !important; }
-.pose-viewer-container .annotation-row:hover { background: var(--yellow) !important; color: var(--ink) !important; }
-.pose-viewer-container .annotation-row:hover .ann-label,
-.pose-viewer-container .annotation-row:hover .ann-summary { color: var(--ink) !important; }
-.pose-viewer-container .annotation-row.selected { background: var(--yellow) !important; border-left: 4px solid var(--ink) !important; }
-
-/* ── Batch Processing — brutal ── */
-.batch-main-container { gap:10px !important; }
-.batch-hero-panel {
-  background: var(--paper) !important;
-  border: var(--border) !important; border-width: 3.5px !important;
-  border-radius:0 !important; padding:10px !important;
-  box-shadow: var(--shadow) !important;
-  margin-bottom:10px !important;
-}
-.batch-explorer-bar {
-  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
-  padding:6px !important; margin-bottom:8px !important; box-shadow: var(--shadow-sm) !important;
-}
-.batch-viewers-row { gap:8px !important; margin-bottom:10px !important; }
-.batch-viewers-row .pose-viewer-container { min-height:560px !important; border: var(--border) !important; }
-.batch-viewers-row .gradio-image { border: var(--border) !important; background: var(--paper) !important; padding:4px !important; box-shadow: var(--shadow-sm) !important; }
-.batch-viewers-row .gradio-image img { max-height:560px !important; border: 2.5px solid var(--ink) !important; }
-.hero-info { margin-bottom:8px !important; }
-.hero-empty {
-  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
-  color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:600 !important;
-  padding:10px !important; box-shadow: var(--shadow-sm) !important;
-}
-.hero-meta {
-  background: var(--yellow) !important; border: var(--border) !important; border-radius:0 !important;
-  font-family:'Space Grotesk', sans-serif !important; padding:6px 10px !important; gap:8px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.hero-title { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
-.hero-count { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; }
-.hero-meta .score-badge { background: var(--cyan) !important; border: var(--border-thin) !important; color: var(--ink) !important; border-radius:0 !important; font-family:'Space Mono', monospace !important; font-size:12px !important; font-weight:700 !important; }
-.batch-explorer-tabs { margin-top:8px !important; border: var(--border) !important; background: var(--paper) !important; box-shadow: var(--shadow-sm) !important; }
-.batch-bottom-row { gap:10px !important; }
-.batch-bottom-col {
-  background: var(--paper) !important; border: var(--border) !important; border-radius:0 !important;
-  padding:10px !important; box-shadow: var(--shadow) !important;
-}
-.batch-progress-card {
-  background: var(--paper) !important; border: var(--border) !important;
-  border-radius:0 !important; padding:8px !important; margin:8px 0 !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.batch-status-header {
-  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
-  font-family:'Space Grotesk', sans-serif !important; padding:6px 10px !important;
-}
-.bsh-dot { border-radius:0 !important; border: 2.5px solid var(--ink) !important; width:12px; height:12px; box-shadow: 1px 1px 0 var(--ink) !important; }
-.batch-status-header.st-running .bsh-dot { background: var(--yellow) !important; }
-.batch-status-header.st-done .bsh-dot { background: var(--lime) !important; }
-.batch-status-header.st-error .bsh-dot { background: var(--red) !important; }
-.bsh-text { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
-.bsh-metrics .mchip { background: var(--paper) !important; border: var(--border-thin) !important; border-radius:0 !important; color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important; box-shadow: 2px 2px 0 var(--ink) !important; }
-.bsh-metrics .mchip.mrun { background: var(--yellow) !important; }
-.bsh-metrics .mchip.mfail { background: var(--red) !important; color: var(--paper) !important; }
-
-/* ── Neo-retro leftover now brutal ── */
-.neo-retro-card {
-  background: var(--paper) !important; border: var(--border) !important;
-  box-shadow: var(--shadow) !important;
-  border-radius:0 !important; padding: 6px !important;
-}
-.neo-retro-card::before { display:none !important; }
-.neo-retro-badge { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border-thin) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important; }
-.neo-retro-hud-stat { font-family:'Space Mono', monospace !important; color: var(--ink) !important; font-weight:700 !important; }
-
-.neo-retro-card > div[style*="00ffcc"],
-.neo-retro-card > div[style*="050811"] {
-  background: var(--paper) !important;
-  border: none !important;
-  border-bottom: var(--border) !important;
-  padding:0 !important;
-}
-
-.gr-form, .gr-padded { background: var(--paper) !important; }
-
-/* ════════════════════════════════════════════════════════════════════════
-   THEME UNIFICATION PATCH — brutal shared shell
-   ════════════════════════════════════════════════════════════════════════ */
+/* ── Window-like panels / cards / groups ── */
 .gr-group, .gr-box, .gr-panel, .block,
 .config-card, .output-panel,
 .batch-hero-panel, .batch-bottom-col,
 .neo-retro-card, .custom-canvas-container,
 .pose-viewer-container, .img-viewer-wrap,
 .batch-explorer-bar, .batch-explorer-tabs,
-.json-panel {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-  box-shadow: var(--shadow) !important;
-  box-sizing:border-box !important;
+.json-panel, .gr-form, .gr-padded {
+  background: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
-.out-md-wrap, .json-panel-body, .hero-empty,
-.img-viewer-wrap .gradio-image,
-.pose-viewer-container .canvas-wrapper,
-.canvas-stage-wrapper {
-  background: var(--paper) !important;
-  border: var(--border) !important;
-  border-radius:0 !important;
-}
-.section-label {
-  font-family:'Space Grotesk', sans-serif !important;
-  font-size:13px !important; font-weight:700 !important;
-  color: var(--yellow) !important;
-  background: var(--ink) !important;
-  border: var(--border) !important;
-  padding:7px 10px !important;
-  margin:0 0 10px 0 !important;
-  min-height: 32px !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-.config-section-title {
-  background: var(--ink) !important;
-  color: var(--yellow) !important;
-  border: var(--border-thin) !important;
-  padding:5px 8px !important; margin:12px 0 8px !important;
-  font-weight:700 !important; text-transform:uppercase !important;
-}
+.gr-group { padding: 10px !important; }
 .config-card { padding:10px !important; margin-bottom:10px !important; }
-.config-card-title {
+.config-card:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0px #000000 !important; }
+.config-card-title { color: #000000 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:900 !important; text-transform:uppercase !important; }
+.config-section-title {
   font-family:'Space Grotesk', sans-serif !important;
-  font-size:12px !important; font-weight:700 !important;
-  color: var(--ink) !important; text-transform:uppercase !important;
+  font-size:11px !important; font-weight:900 !important;
+  text-transform: uppercase !important;
+  color: #FFFFFF !important;
+  background: #000000 !important;
+  border: 3px solid #000000 !important;
+  padding:5px 8px !important; margin:12px 0 8px !important;
+  display:inline-block !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
 
-/* ── Unified button system brutal ── */
-:root { --win-btn-h: 40px; --win-btn-pad: 0 18px; }
-.btn-group { display:flex !important; flex-wrap:wrap !important; gap:8px !important; align-items:stretch !important; margin-top:8px !important; }
+/* ── Metric cards ── */
+.metric-grid { gap:8px !important; }
+.metric-card {
+  background: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  padding:10px !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.metric-value { font-family:'JetBrains Mono', monospace !important; font-size:24px !important; font-weight: 800 !important; color: #000000 !important; }
+.metric-label { font-family:'Space Grotesk', sans-serif !important; font-size:10px !important; font-weight:900 !important; color: #000000 !important; text-transform:uppercase !important; }
+
+/* ── Progress — ONE accent yellow fill ── */
+.custom-progress-wrapper { margin:8px 0 !important; }
+.custom-progress-track {
+  background: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  height:20px !important;
+  padding:0 !important;
+  overflow:hidden !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.custom-progress-fill {
+  background: #FFFF00 !important;
+  border-right: 3px solid #000000 !important;
+  transition: width 0.1s linear !important;
+}
+.custom-progress-text {
+  font-family:'JetBrains Mono', monospace !important;
+  font-size:11px !important; font-weight: 800 !important; color: #000000 !important;
+  margin-top:6px !important; text-transform:uppercase !important;
+}
+
+/* ── BUTTONS — one accent only, hard shadow ── */
+:root { --win-btn-h: 42px; --win-btn-pad: 0 18px; }
+.btn-group { gap:8px !important; display:flex !important; flex-wrap:wrap !important; align-items:stretch !important; margin-top:8px !important; }
 .btn-group .gr-button, .btn-group button { flex:1 1 0 !important; min-width:120px !important; max-width:280px !important; }
-.gr-row { gap:8px !important; }
-.gr-column { gap:8px !important; }
-.gr-accordion { margin:8px 0 !important; box-shadow: var(--shadow-sm) !important; }
-.gr-accordion summary, details > summary {
-  min-height:32px !important; display:flex !important; align-items:center !important;
-  padding:8px 10px !important; font-weight:700 !important; text-transform:uppercase !important;
+
+button.primary, button.secondary, .gr-button,
+.canvas-tool-btn, .pose-viewer-container .cp-btn,
+.btn-canvas-primary, .btn-canvas-secondary,
+.gr-button.lg, .gr-button.sm {
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:13px !important; font-weight: 900 !important;
+  letter-spacing: 0.02em !important; text-transform: uppercase !important;
+  height: var(--win-btn-h) !important;
+  min-height: var(--win-btn-h) !important;
+  max-height: var(--win-btn-h) !important;
+  padding: var(--win-btn-pad) !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  background: #FFFFFF !important; color: #000000 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  gap:8px !important;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  transition: all 0.1s linear !important;
+  cursor: pointer !important;
 }
+button.primary, .gr-button.primary, .btn-canvas-primary {
+  background: #FFFF00 !important; color: #000000 !important;
+}
+button.secondary, .gr-button.secondary, .btn-canvas-secondary {
+  background: #FFFFFF !important; color: #000000 !important;
+}
+button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
+.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled) {
+  box-shadow: 2px 2px 0px #000000 !important;
+  transform: translate(3px, 3px) !important;
+}
+button.primary:active:not(:disabled), .gr-button:active:not(:disabled) {
+  box-shadow: 0px 0px 0px #000000 !important;
+  transform: translate(5px, 5px) !important;
+}
+button:disabled, .gr-button:disabled { background: #E5E5E5 !important; color: #000000 !important; box-shadow: 5px 5px 0px #000000 !important; opacity:1 !important; }
+.gr-button[size="sm"], button[size="sm"] { height: var(--win-btn-h) !important; padding: var(--win-btn-pad) !important; font-size:13px !important; }
+
+.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
+.pose-viewer-container .toggle-image-btn.active {
+  background: #FFFF00 !important; color: #000000 !important;
+  border: 3px solid #000000 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.canvas-toolbar .canvas-tool-btn {
+  min-width:0 !important; flex:0 0 auto !important;
+  height:32px !important; min-height:32px !important;
+  padding:0 10px !important; font-size:11px !important;
+}
+
+/* ── INPUTS / TEXTBOX / NUMBER — 3px, 0 radius, hard shadow ── */
 input:not([type="checkbox"]):not([type="radio"]), textarea, select,
-.gr-text-input, .gr-dropdown { min-height:36px !important; }
-.gr-dropdown .wrap { min-height:36px !important; }
-
-/* ── TAB WIDTH STABILIZATION — keep equal tabs brutal ── */
-.gradio-container, .gradio-container-4-24-0 {
-  width: 1320px !important;
-  max-width: calc(100vw - 28px) !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
+.gr-text-input, .gr-number input, .gr-textbox textarea {
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:13px !important; font-weight: 700 !important;
+  background: #FFFFFF !important;
+  color: #000000 !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  padding:8px 10px !important;
+  transition: all 0.1s linear !important;
 }
-.tabs {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  box-shadow: 2px 2px 0px #000000 !important;
+  transform: translate(3px, 3px) !important;
 }
-.tabs > .tab-nav {
-  width: 100% !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-  overflow: visible !important;
-  scrollbar-width: none !important;
-  flex-wrap: nowrap !important;
-}
-.tabs > .tab-nav button {
-  flex: 1 1 0 !important;
-  white-space: nowrap !important;
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-}
-.tabitem {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  min-height: 760px !important;
-  box-sizing: border-box !important;
-  overflow: hidden !important;
-}
-.batch-main-container,
-.batch-hero-panel,
-.batch-bottom-row,
-.draw-tab-row,
-.neo-retro-card {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
-.batch-bottom-row,
-.draw-tab-row { align-items: stretch !important; gap: 10px !important; }
-.batch-bottom-col,
-.draw-tab-row > .gr-column,
-.draw-tab-row > div[class*="column"],
-.neo-retro-card > .gr-row > .gr-column,
-#tab-server-row > .gr-column {
-  min-width: 0 !important;
-  flex: 1 1 0 !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-}
-.draw-tab-row > .gr-column:first-child,
-.draw-tab-row > div:first-child { flex: 3 1 0 !important; }
-.draw-tab-row > .gr-column:last-child,
-.draw-tab-row > div:last-child { flex: 2 1 0 !important; }
 label span, .block-title, label > span, .gr-radio label span, .gr-checkbox label span {
-  overflow-wrap: anywhere !important;
-  word-break: break-word !important;
-  min-width: 0 !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight: 900 !important;
+  color: #000000 !important; text-transform: uppercase !important;
 }
-.gr-group, .gr-box, .gr-panel, .block, .config-card, .output-panel,
-.img-viewer-wrap, .batch-viewers-row, .pose-viewer-container {
-  min-width: 0 !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
-}
-.batch-viewers-row, .rt-webcam-wrap {
-  width: 100% !important;
-  max-width: 100% !important;
+.gr-input, .gr-textbox, .gr-number, .gr-dropdown .wrap, .gr-code {
+  border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
 }
 
-/* ── Responsive — brutal keeps shadow ── */
+/* ── DROPDOWN — 3px, hard shadow, menu brutal ── */
+.gr-dropdown { border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important; box-shadow: 5px 5px 0px #000000 !important; }
+.gr-dropdown .wrap { border:none !important; box-shadow:none !important; }
+.gr-dropdown .options, .gr-dropdown ul, .dropdown-menu, [data-testid="dropdown"] {
+  background: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.gr-dropdown .options li, .gr-dropdown li, .dropdown-menu li {
+  border-bottom: 2px solid #000000 !important;
+  font-weight: 700 !important;
+  padding: 8px 10px !important;
+}
+.gr-dropdown .options li:hover, .gr-dropdown li:hover { background: #FFFF00 !important; color:#000000 !important; }
+
+/* ── SLIDER — ONE accent yellow fill, 3px track ── */
+.gr-slider { border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important; box-shadow: 5px 5px 0px #000000 !important; padding:8px !important; }
+.gr-slider input[type="range"] { accent-color: #FFFF00 !important; }
+.gr-slider .track, .gr-slider [data-testid="slider"] {
+  background: #FFFFFF !important;
+  border: 3px solid #000000 !important;
+  height: 14px !important;
+  border-radius: 0 !important;
+}
+.gr-slider .fill, .gr-slider [data-testid="slider-fill"] {
+  background: #FFFF00 !important;
+  border-right: 3px solid #000000 !important;
+  border-radius: 0 !important;
+}
+.gr-slider .thumb, .gr-slider [data-testid="slider-thumb"] {
+  background: #000000 !important;
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  width: 18px !important; height: 18px !important;
+  box-shadow: none !important;
+}
+
+/* ── DATAFRAME — 3px container, header yellow accent ── */
+.gr-dataframe, .gr-dataframe table, .table-wrap {
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  background: #FFFFFF !important;
+}
+.gr-dataframe thead th, .gr-dataframe th {
+  background: #FFFF00 !important;
+  color: #000000 !important;
+  border: 3px solid #000000 !important;
+  font-weight: 900 !important;
+  text-transform: uppercase !important;
+  font-family:'Space Grotesk', sans-serif !important;
+}
+.gr-dataframe td, .gr-dataframe tbody td {
+  border: 2px solid #000000 !important;
+  font-family:'JetBrains Mono', monospace !important; font-weight:700 !important;
+  color: #000000 !important;
+}
+.gr-dataframe tbody tr:hover td { background: #FFFF00 !important; }
+
+/* ── CHATBOT / BUBBLES (if present) — hard shadow, 0 radius ── */
+.gr-chatbot, .chatbot, .gr-chatbot .wrap {
+  border: 3px solid #000000 !important;
+  background: #FFFFFF !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  border-radius: 0 !important;
+}
+.chatbot .message, .gr-chatbot .message, .bubble, .gr-chatbot .bubble {
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  background: #FFFFFF !important;
+  color: #000000 !important;
+}
+.chatbot .message.bot, .gr-chatbot .bot { background: #FFFFFF !important; }
+.chatbot .message.user, .gr-chatbot .user { background: #FFFF00 !important; color:#000000 !important; }
+
+/* ── ACCORDION — brutal ── */
+.gr-accordion {
+  border: 3px solid #000000 !important; background: #FFFFFF !important; border-radius:0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.gr-accordion summary, details > summary {
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight: 900 !important;
+  text-transform: uppercase !important;
+  background: #FFFF00 !important; color:#000000 !important;
+  padding:10px 12px !important;
+  border-bottom: 3px solid #000000 !important;
+  transition: all 0.1s linear !important;
+}
+.gr-accordion summary:hover { background: #FFFFFF !important; }
+
+/* ── RADIO / CHECKBOX — brutal, NOT ghost — FIX buttons-look-like-checkbox ── */
+.gr-radio, .gr-checkbox-group { gap: 8px !important; display:flex !important; flex-wrap:wrap !important; }
+.gr-radio label, .gr-checkbox-group label, .gr-checkbox label {
+  border: 3px solid #000000 !important;
+  background: #FFFFFF !important;
+  border-radius: 0 !important;
+  padding: 8px 12px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 12px !important; font-weight: 900 !important;
+  text-transform: uppercase !important;
+  color: #000000 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  cursor: pointer !important;
+  transition: all 0.1s linear !important;
+  min-height: 40px !important;
+  display: flex !important; align-items: center !important; gap: 8px !important;
+}
+.gr-radio label:hover, .gr-checkbox-group label:hover, .gr-checkbox label:hover {
+  box-shadow: 2px 2px 0px #000000 !important; transform: translate(3px,3px) !important;
+}
+.gr-radio label:has(input:checked), .gr-checkbox-group label:has(input:checked), .gr-checkbox:has(input:checked) {
+  background: #FFFF00 !important;
+}
+.gr-radio input[type="radio"], .gr-checkbox-group input[type="checkbox"], .gr-checkbox input[type="checkbox"] {
+  appearance: none !important;
+  width: 18px !important; height: 18px !important; min-width:18px !important;
+  border: 3px solid #000000 !important;
+  background: #FFFFFF !important;
+  border-radius: 0 !important;
+  display: inline-grid !important; place-items:center !important;
+  margin:0 !important;
+}
+.gr-radio input[type="radio"] { border-radius: 50% !important; }
+.gr-radio input[type="radio"]:checked::before { content:'●'; font-size:10px; line-height:1; color:#000000; }
+.gr-checkbox input[type="checkbox"]:checked::before,
+.gr-checkbox-group input[type="checkbox"]:checked::before { content:'✓'; font-size:12px; font-weight:900; color:#000000; line-height:1; }
+input[type="checkbox"], input[type="radio"] { accent-color: #FFFF00 !important; }
+
+/* ── FILE UPLOAD DROPZONE — brutal ── */
+.gr-file, .gr-file .wrap, .file-preview, [data-testid="file-upload"] {
+  border: 3px solid #000000 !important;
+  background: #FFFFFF !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+}
+.gr-file:hover, .gr-file .wrap:hover { box-shadow: 2px 2px 0px #000000 !important; transform: translate(3px,3px) !important; transition: all 0.1s linear !important; }
+
+/* ── DROPDOWN MENU / TOOLTIP / GALLERY / IMAGE FRAME ── */
+.gr-dropdown ul, .options, .tooltip, .gr-tooltip, .gr-gallery, .gr-image, .gr-audio, .gr-video {
+  border: 3px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: 5px 5px 0px #000000 !important;
+  background: #FFFFFF !important;
+  color: #000000 !important;
+}
+.gr-image img, .gr-gallery img, .gr-video video { border: 3px solid #000000 !important; border-radius:0 !important; }
+
+/* ── SCROLLBAR — brutal chunky ── */
+::-webkit-scrollbar { width:16px; height:16px; background: #FFFFFF; }
+::-webkit-scrollbar-track { background: #FFFFFF; border-left: 3px solid #000000; }
+::-webkit-scrollbar-thumb { background: #000000; border: 2px solid #FFFFFF; border-radius:0; }
+::-webkit-scrollbar-corner { background: #FFFFFF; }
+
+/* ── Canvas / PoseViewer / Batch — keep white brutal ── */
+.custom-canvas-container { background: #FFFFFF !important; border: 3px solid #000000 !important; box-shadow: 5px 5px 0px #000000 !important; }
+.canvas-toolbar { background: #FFFFFF !important; border-bottom: 3px solid #000000 !important; padding:6px !important; gap:6px !important; }
+.tool-group-label { font-size:10px !important; font-weight:900 !important; text-transform:uppercase !important; }
+.canvas-toolbar-divider { background: #000000 !important; width:3px !important; }
+.canvas-stage-wrapper { background: #FFFFFF !important; border: 3px solid #000000 !important; }
+.pose-viewer-container { background: #FFFFFF !important; border: 3px solid #000000 !important; box-shadow: 5px 5px 0px #000000 !important; }
+.pose-viewer-container .canvas-wrapper { background: #FFFFFF !important; border: 3px solid #000000 !important; }
+.pose-viewer-container .control-panel-header { background: #000000 !important; border-bottom: 3px solid #000000 !important; }
+.pose-viewer-container .control-panel-title { color: #FFFF00 !important; font-weight:900 !important; text-transform:uppercase !important; }
+.batch-hero-panel, .batch-bottom-col, .neo-retro-card, .output-panel, .json-panel, .batch-explorer-bar { background:#FFFFFF !important; border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
+.out-header { background:#000000 !important; border-bottom:3px solid #000000 !important; height:36px !important; }
+.out-header-title { color:#FFFF00 !important; font-weight:900 !important; text-transform:uppercase !important; }
+.batch-status-table { border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
+.batch-status-table thead th { background:#FFFF00 !important; color:#000000 !important; border:3px solid #000000 !important; font-weight:900 !important; text-transform:uppercase !important; }
+.batch-status-table tbody td { border:2px solid #000000 !important; font-weight:700 !important; }
+.gr-form, .gr-padded { background:#FFFFFF !important; }
+
+/* Shared window shell already covered above — keep for legacy */
+.gr-group, .gr-box, .gr-panel, .block { background:#FFFFFF !important; border:3px solid #000000 !important; box-shadow:5px 5px 0px #000000 !important; }
+
+/* ── TAB WIDTH STABILIZATION (kept) ── */
+.gradio-container, .gradio-container-4-24-0 { width: 1320px !important; max-width: calc(100vw - 28px) !important; }
+.tabs { width: 100% !important; max-width:100% !important; overflow:hidden !important; }
+.tabs > .tab-nav { width:100% !important; overflow:visible !important; flex-wrap:nowrap !important; }
+.tabs > .tab-nav button { flex:1 1 0 !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; }
+.tabitem { width:100% !important; min-height:760px !important; overflow:hidden !important; }
+.batch-main-container, .batch-hero-panel, .batch-bottom-row, .draw-tab-row, .neo-retro-card { width:100% !important; max-width:100% !important; }
+.batch-bottom-row, .draw-tab-row { align-items: stretch !important; gap: 10px !important; }
+.batch-bottom-col, .draw-tab-row > .gr-column { min-width:0 !important; flex:1 1 0 !important; }
+.gr-group, .gr-box, .gr-panel, .block, .config-card, .output-panel, .img-viewer-wrap, .batch-viewers-row { min-width:0 !important; max-width:100% !important; }
+
+/* ── Responsive: tabs wrap to 2 rows ── */
 @media (max-width: 900px) {
   .gradio-container { margin:8px !important; max-width: calc(100vw - 16px) !important; }
-  .app-header { padding:8px 10px !important; }
-  .batch-viewers-row { flex-direction:column !important; }
-  .batch-bottom-row { flex-direction:column !important; }
+  .batch-viewers-row, .batch-bottom-row, .draw-tab-row { flex-direction:column !important; }
   .tabitem { min-height: 0 !important; }
-  .tabs > .tab-nav {
-    flex-wrap: wrap !important;
-    height: auto !important;
-    gap: 0 !important;
-  }
-  .tabs > .tab-nav button,
-  .tabs > .tab-nav button.selected {
-    flex: 1 1 31% !important;
-    min-width: 110px !important;
-    height: 40px !important;
-    margin-bottom: 0 !important;
-    border-bottom: var(--border) !important;
-    border-right: var(--border) !important;
-  }
+  .tabs > .tab-nav { flex-wrap: wrap !important; height: auto !important; }
+  .tabs > .tab-nav button, .tabs > .tab-nav button.selected { flex:1 1 31% !important; min-width:110px !important; height:46px !important; border-bottom:3px solid #000000 !important; }
 }
 @media (max-width: 1100px) {
-  .draw-tab-row { flex-direction:column !important; }
-  .draw-tab-row > .gr-column:first-child,
-  .draw-tab-row > .gr-column:last-child { flex: 1 1 auto !important; width: 100% !important; }
-  .tabs > .tab-nav button { font-size:11px !important; padding:0 6px !important; gap:4px !important; }
+  .tabs > .tab-nav button { font-size:11px !important; padding:0 6px !important; }
 }

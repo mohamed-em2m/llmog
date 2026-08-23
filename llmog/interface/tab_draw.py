@@ -1158,10 +1158,9 @@ def build_draw_tab() -> Dict[str, Any]:
         with gr.Column(scale=3, min_width=520):
             gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
 
-            # Embedded Custom Canvas Frontend with js_on_load handler
+            # Embedded Custom Canvas Frontend — Gradio 4/5 compat: inject JS via <script> (js_on_load not supported in this version)
             custom_canvas_view = gr.HTML(
-                value=_CUSTOM_CANVAS_HTML,
-                js_on_load=_CUSTOM_CANVAS_JS,
+                value=_CUSTOM_CANVAS_HTML + f"<script>{_CUSTOM_CANVAS_JS}</script>",
                 elem_id="draw-canvas-html",
             )
 

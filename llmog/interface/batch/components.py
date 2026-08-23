@@ -128,16 +128,16 @@ def build_batch_tab() -> Dict[str, Any]:
                         interactive=True,
                         scale=3,
                     )
-                    round_score_display = gr.HTML(
-                        value='<span class="score-badge">Score: -/10</span>',
-                        elem_classes="score-display",
-                        scale=2,
-                    )
-                    show_grid_chk = gr.Checkbox(
-                        label="0-1000 Grid",
-                        value=True,
-                        scale=2,
-                    )
+                    with gr.Column(scale=2):
+                        round_score_display = gr.HTML(
+                            value='<span class="score-badge">Score: -/10</span>',
+                            elem_classes="score-display",
+                        )
+                    with gr.Column(scale=2):
+                        show_grid_chk = gr.Checkbox(
+                            label="0-1000 Grid",
+                            value=True,
+                        )
 
             hero_info = gr.HTML(
                 value='<div class="hero-empty">Ready — configure inputs below and click Run Batch to view live detections here.</div>',
