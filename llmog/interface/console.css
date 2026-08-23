@@ -1,215 +1,211 @@
 /* ════════════════════════════════════════════════════════════════════════
-   Retro OS Theme — Windows 95 / 98 + Classic Mac + CRT Lab
-   Pairs with console_theme.py. This file re-skins every Gradio element to
-   classic 3-D bevels, chunky pixel type and navy title-bars. Layout and
-   class names stay identical to the dark console so Batch Processing,
-   Draw & Recognize, Realtime etc. keep working — only the visuals change.
+   Neo-Brutalism Theme — Chunky, Raw, High-Contrast
+   Pairs with console_theme.py. Replaces Retro Win95 bevels with
+   brutalist hard shadows, thick 3px borders, flat acid colors.
 
-   RETRO PALETTE (Win95 greybox):
-     desktop        #008080  teal
-     window face    #c0c0c0  silver
-     bevel light    #ffffff / #dfdfdf
-     bevel dark     #808080 / #000000
-     title active   #000080  navy
-     field face     #ffffff
-     text           #000000
-     selection      #000080 / #ffffff
+   PALETTE:
+     ink          #0a0a0a   primary text / borders / shadows
+     paper        #ffffff   card face
+     cream        #FFFDF0   page bg
+     acid-yellow  #FFE600   primary accent (CTA, selected tab)
+     brutal-pink  #FF90E8   secondary accent / hover
+     brutal-cyan  #2EEBFF   info / score
+     brutal-lime  #C8FF00   success
+     brutal-orange#FF6B2D  warning
+     brutal-red   #FF3B30   danger / error
+     grey-mid     #E5E5E5   disabled
 
    FONTS:
-     UI  : 'MS Sans Serif' / 'Microsoft Sans Serif' / Tahoma / VT323
-     Mono: VT323 / JetBrains Mono / Consolas (pixel terminal)
+     Display: 'Space Grotesk' 700/600 — headings, tabs, buttons
+     Mono   : 'Space Mono' / 'JetBrains Mono' — code, badges, logs
+   PRINCIPLES:
+     3–3.5px solid #0a0a0a borders, 5–6px hard offset shadows (no blur),
+     0 radius, uppercase bold labels, flat fills (no gradients except header).
+   Layout classes unchanged so Batch/Draw/Realtime keep working —
+   only visuals change.
    ════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;500;700&family=Press+Start+2P&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;600;700&display=swap');
 
-/* ── Keyframes (retro — blink + chunky progress) ── */
-@keyframes retro-blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
-@keyframes progress-stripe-retro { 0%{background-position:0 0} 100%{background-position:16px 0} }
-@keyframes fade-in { from{opacity:0; transform:translateY(2px)} to{opacity:1; transform:translateY(0)} }
+:root {
+  --ink: #0a0a0a;
+  --paper: #ffffff;
+  --cream: #FFFDF0;
+  --yellow: #FFE600;
+  --pink: #FF90E8;
+  --cyan: #2EEBFF;
+  --lime: #C8FF00;
+  --orange: #FF6B2D;
+  --red: #FF3B30;
+  --grey: #E5E5E5;
+  --border: 3px solid var(--ink);
+  --border-thin: 2.5px solid var(--ink);
+  --shadow: 5px 5px 0 var(--ink);
+  --shadow-sm: 3px 3px 0 var(--ink);
+  --shadow-btn: 4px 4px 0 var(--ink);
+}
 
-/* ── Base reset + desktop ── */
+/* ── Keyframes ── */
+@keyframes brutal-pop { 0%{transform:scale(0.98)} 100%{transform:scale(1)} }
+@keyframes fade-in { from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:translateY(0)} }
+
+/* ── Base reset + brutal cream desktop with halftone dots ── */
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body {
-  background: #008080 !important;
-  /* subtle dithered teal — Win95 desktop */
+  background: var(--cream) !important;
   background-image:
-    radial-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
-    linear-gradient(180deg, #008080 0%, #007070 100%) !important;
-  background-size: 4px 4px, auto !important;
-  font-family: 'MS Sans Serif','Microsoft Sans Serif',Tahoma, sans-serif !important;
-  image-rendering: pixelated;
+    radial-gradient(var(--ink) 1.2px, transparent 1.2px) !important;
+  background-size: 18px 18px !important;
+  background-position: -2px -2px !important;
+  font-family: 'Space Grotesk', system-ui, sans-serif !important;
+  color: var(--ink) !important;
   scrollbar-width: auto;
-  scrollbar-color: #c0c0c0 #008080;
+  scrollbar-color: var(--ink) var(--cream);
 }
+html { scrollbar-gutter: stable !important; }
 
-/* CRT scanline overlay — very subtle on desktop only */
-body::after {
-  content: '';
-  position: fixed; inset: 0;
-  pointer-events: none;
-  z-index: 9999;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0,0,0,0.045) 0px,
-    rgba(0,0,0,0.045) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  opacity: 0.35;
-  mix-blend-mode: multiply;
-}
+/* Remove old CRT scanline — brutalism is flat */
+body::after { display: none !important; }
 
-/* Gradio root — one big classic window centred on desktop */
+/* Gradio root — brutal white card with hard shadow */
 .gradio-container, .gradio-container-4-24-0 {
-  background: #c0c0c0 !important;
-  border: 2px outset #dfdfdf !important;
-  border-top-color: #ffffff !important;
-  border-left-color: #ffffff !important;
-  border-right-color: #000000 !important;
-  border-bottom-color: #000000 !important;
-  box-shadow:
-    inset -1px -1px 0 #808080,
-    inset 1px 1px 0 #dfdfdf,
-    4px 4px 0 rgba(0,0,0,0.35) !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
+  border-width: 3.5px !important;
+  box-shadow: 8px 8px 0 var(--ink) !important;
   max-width: 1320px !important;
-  margin: 14px auto !important;
-  padding: 2px !important;
+  width: 1320px !important;
+  max-width: calc(100vw - 28px) !important;
+  margin: 18px auto !important;
+  padding: 6px !important;
   border-radius: 0 !important;
 }
-
-/* Fallback if Gradio nests Blocks inside .gradio-container */
 .gradio-container > .main, .gradio-container > div { background: transparent !important; }
 
-/* ── Window title bar / App Header (navy, white bold) ── */
+/* ── App Header — black bar with yellow pop ── */
 .app-header {
-  background: linear-gradient(90deg, #000080 0%, #0000cd 100%) !important;
-  border: 2px outset #c0c0c0 !important;
-  border-bottom: 2px outset #c0c0c0 !important;
-  padding: 3px 4px 3px 6px !important;
-  margin: -2px -2px 2px -2px !important;
+  background: var(--ink) !important;
+  border: var(--border) !important;
+  border-width: 3px !important;
+  padding: 10px 12px !important;
+  margin: -6px -6px 6px -6px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
-  gap: 8px !important;
-  min-height: 22px !important;
+  gap: 12px !important;
+  min-height: 44px !important;
   position: relative !important;
   overflow: hidden !important;
+  box-shadow: none !important;
 }
 .app-header::before, .app-header::after { display: none !important; }
 .app-header h1 {
-  font-family: 'MS Sans Serif','Microsoft Sans Serif',Tahoma, sans-serif !important;
-  font-size: 11px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 18px !important;
   font-weight: 700 !important;
-  letter-spacing: 0 !important;
-  color: #ffffff !important;
-  text-transform: none !important;
-  margin: 0 !important;
+  letter-spacing: -0.02em !important;
   line-height: 1 !important;
-  display: flex; align-items: center; gap: 6px;
+  color: var(--yellow) !important;
+  text-transform: uppercase !important;
+  margin: 0 !important;
+  display: flex; align-items: center; gap: 10px;
 }
-.app-header h1 span { color: #ffffff !important; }
+.app-header h1 span { color: var(--yellow) !important; font-size: 18px !important; }
 .app-header h1::before {
   content: '◼';
-  font-size: 10px;
-  color: #c0c0c0;
-  background: #c0c0c0;
-  border: 1px outset #ffffff;
-  width: 12px; height: 12px;
+  font-size: 16px;
+  color: var(--pink);
+  background: var(--yellow);
+  border: 2.5px solid var(--ink);
+  width: 22px; height: 22px;
   display: inline-flex; align-items:center; justify-content:center;
-  color: #000;
+  box-shadow: 2px 2px 0 var(--ink);
 }
-.app-header p {
-  display: none !important; /* hide // subtext on retro titlebar — too modern */
-}
-.app-header-meta { display:flex; align-items:center; gap:6px; }
-
-/* Fake window control buttons ( _ □ X ) — purely decorative */
+.app-header p { display: none !important; }
+.app-header-meta { display:flex; align-items:center; gap:8px; }
 .app-header-meta::before {
-  content: '_  □  ✕';
-  font-family: 'MS Sans Serif', sans-serif;
+  content: '● ● ●';
+  font-family: 'Space Grotesk', sans-serif;
   font-size: 10px; font-weight: 700;
-  letter-spacing: 2px;
-  color: #000;
-  background: #c0c0c0;
-  border: 2px outset #dfdfdf;
-  border-top-color: #ffffff;
-  border-left-color: #ffffff;
-  border-right-color: #000000;
-  border-bottom-color: #000000;
-  padding: 1px 4px;
-  box-shadow: inset -1px -1px 0 #808080;
+  letter-spacing: 6px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  padding: 4px 8px;
+  box-shadow: 2px 2px 0 var(--ink);
   line-height: 1;
 }
-.app-header-meta .status-badge { display:none !important; } /* moved elsewhere */
+.app-header-meta .status-badge { display:none !important; }
 
-/* ── Status Badges — retro chips with heavy border ── */
+/* ── Status Badges — brutal pills ── */
 .status-badge {
   display: inline-flex !important;
   align-items: center !important;
-  gap: 4px !important;
-  padding: 2px 6px !important;
-  border: 2px outset #c0c0c0 !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
-  background: #c0c0c0 !important;
-  font-family: 'MS Sans Serif', sans-serif !important;
-  font-size: 10px !important; font-weight:700 !important;
-  letter-spacing: 0 !important; text-transform: uppercase !important;
+  gap: 6px !important;
+  padding: 4px 10px !important;
+  border: var(--border-thin) !important;
+  background: var(--paper) !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 11px !important; font-weight: 700 !important;
+  letter-spacing: 0.04em !important; text-transform: uppercase !important;
   border-radius: 0 !important;
-  color: #000 !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.status-badge::before { width:7px; height:7px; border-radius:0; border:1px solid #000; }
-.badge-running { background:#c0c0c0 !important; color:#000 !important; }
-.badge-running::before { background:#00aa00; }
-.badge-stopped::before { background:#808080; }
-.badge-starting::before { background:#ffaa00; }
-.badge-error { background:#ffbbbb !important; color:#800000 !important; }
-.badge-error::before { background:#ff0000; }
+.status-badge::before { width:10px; height:10px; border-radius:0; border:2px solid var(--ink); }
+.badge-running { background: var(--lime) !important; color: var(--ink) !important; }
+.badge-running::before { background: var(--ink); }
+.badge-stopped::before { background: var(--grey); }
+.badge-starting::before { background: var(--orange); }
+.badge-error { background: var(--red) !important; color: var(--paper) !important; }
+.badge-error::before { background: var(--paper); }
 
-/* ── Score Badge — sunken field style ── */
+/* ── Score Badge ── */
 .score-badge {
   display: inline-block !important;
-  padding: 2px 8px !important;
-  background: #ffffff !important;
-  color: #000080 !important;
-  border: 2px inset #808080 !important;
-  font-family: 'VT323', monospace !important;
-  font-size: 13px !important; font-weight:400 !important;
-  letter-spacing: 0.02em !important;
+  padding: 3px 10px !important;
+  background: var(--cyan) !important;
+  color: var(--ink) !important;
+  border: var(--border-thin) !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 13px !important; font-weight: 700 !important;
+  letter-spacing: 0 !important;
   border-radius: 0 !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
-/* ── Image Status Pills — flat retro tags ── */
+/* ── Image Status Pills ── */
 .img-status-pill {
   display:inline-block !important;
-  padding:1px 6px !important;
-  border:1px solid #000 !important;
-  font-family:'MS Sans Serif', sans-serif !important;
+  padding:2px 8px !important;
+  border: 2.5px solid var(--ink) !important;
+  font-family:'Space Grotesk', sans-serif !important;
   font-size:10px !important; font-weight:700 !important;
-  letter-spacing:0 !important; text-transform:uppercase !important;
-  border-radius:0 !important; background:#c0c0c0 !important;
+  letter-spacing:0.04em !important; text-transform:uppercase !important;
+  border-radius:0 !important; 
+  box-shadow: 2px 2px 0 var(--ink) !important;
 }
-.pill-queued   { color:#000; background:#c0c0c0 !important; border-color:#808080 !important; }
-.pill-running  { color:#000; background:#ffffcc !important; border-color:#808000 !important; }
-.pill-done     { color:#ffffff; background:#000080 !important; border-color:#000040 !important; }
-.pill-error    { color:#ffffff; background:#800000 !important; border-color:#400000 !important; }
-.pill-cancelled{ color:#000; background:#c0c0c0 !important; }
+.pill-queued   { color: var(--ink); background: var(--paper) !important; }
+.pill-running  { color: var(--ink); background: var(--yellow) !important; }
+.pill-done     { color: var(--ink); background: var(--lime) !important; }
+.pill-error    { color: var(--paper); background: var(--red) !important; }
+.pill-cancelled{ color: var(--ink); background: var(--grey) !important; }
 
-/* ── Tabs — Win95 folder tabs, equal-width + stable bar ── */
-.tabs { background: #c0c0c0 !important; border: 2px inset #808080 !important; padding: 4px 4px 0 !important; }
+/* ── Tabs — brutal equal-width folder ── */
+.tabs { background: var(--paper) !important; border: var(--border) !important; padding: 0 !important; box-shadow: var(--shadow) !important; }
 .tabs > .tab-nav {
   display: flex !important;
   flex-wrap: nowrap !important;
   align-items: flex-end !important;
   justify-content: stretch !important;
-  gap: 2px !important;
+  gap: 0 !important;
   width: 100% !important;
-  height: 30px !important;
-  background: #c0c0c0 !important;
+  height: 44px !important;
+  background: var(--paper) !important;
   border: none !important;
-  border-bottom: 2px solid #000000 !important;
-  padding: 0 6px !important;
+  border-bottom: var(--border) !important;
+  padding: 0 !important;
   overflow: visible !important;
   box-sizing: border-box !important;
 }
@@ -217,546 +213,656 @@ body::after {
   flex: 1 1 0 !important;
   min-width: 0 !important;
   max-width: none !important;
-  height: 26px !important;
+  height: 44px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
-  font-family: 'MS Sans Serif', sans-serif !important;
-  font-size: 11px !important; font-weight:400 !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 12px !important; font-weight: 600 !important;
   line-height: 1 !important;
-  color: #000 !important;
-  background: #b8b8b8 !important;
-  border: 2px outset #dfdfdf !important;
-  border-bottom: none !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#808080 !important; border-bottom-color:transparent !important;
+  letter-spacing: -0.01em !important; text-transform: uppercase !important;
+  color: var(--ink) !important;
+  background: var(--paper) !important;
+  border: none !important;
+  border-right: var(--border) !important;
   border-radius: 0 !important;
   padding: 0 8px !important;
   margin: 0 !important;
-  margin-bottom: -2px !important;
-  letter-spacing:0 !important; text-transform:none !important;
   box-shadow: none !important;
   position: relative !important; top: 0 !important;
   white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
   cursor: pointer !important;
-  transition: background 70ms steps(4), height 70ms steps(4), font-weight 70ms steps(4) !important;
+  transition: background 80ms, transform 80ms !important;
 }
-.tabs > .tab-nav button:hover { background:#d4d0c8 !important; color:#000 !important; }
-.tabs > .tab-nav button:active { border: 2px inset #808080 !important; border-bottom:none !important; padding-top:1px !important; }
+.tabs > .tab-nav button:last-child { border-right: none !important; }
+.tabs > .tab-nav button:hover { background: var(--pink) !important; color: var(--ink) !important; }
+.tabs > .tab-nav button:active { background: var(--pink) !important; }
 .tabs > .tab-nav button.selected {
   flex: 1 1 0 !important;
-  height: 28px !important;
-  background: #c0c0c0 !important;
-  color:#000 !important;
-  border: 2px outset #dfdfdf !important;
-  border-bottom: 2px solid #c0c0c0 !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important;
-  z-index: 3 !important;
-  font-weight:700 !important;
-  text-shadow:none !important;
-  box-shadow: inset 1px 1px 0 #ffffff !important;
+  height: 44px !important;
+  background: var(--yellow) !important;
+  color: var(--ink) !important;
+  border-right: var(--border) !important;
+  z-index: 2 !important;
+  font-weight: 700 !important;
+  box-shadow: inset 0 -3px 0 var(--ink) !important;
 }
+.tabs > .tab-nav button.selected:last-child { border-right: none !important; }
 .tabitem {
-  background: #c0c0c0 !important;
-  border: 2px outset #dfdfdf !important;
+  background: var(--paper) !important;
+  border: none !important;
   border-top: none !important;
-  border-left-color:#ffffff !important; border-right-color:#000000 !important; border-bottom-color:#000000 !important;
-  padding: 10px 8px 8px !important;
-  animation: fade-in 120ms steps(5) !important;
+  padding: 14px 12px 12px !important;
+  animation: fade-in 140ms ease-out !important;
   min-height: 760px !important;
 }
 
-/* ── Section labels — small caps on silver bar with etched line ── */
+/* ── Section labels — brutal black bar ── */
 .section-label {
-  font-family: 'MS Sans Serif', sans-serif !important;
-  font-size: 11px !important; font-weight:700 !important;
-  letter-spacing:0 !important; text-transform:none !important;
-  color:#000 !important;
-  background: linear-gradient(90deg, #c0c0c0, #d4d0c8) !important;
-  border: 1px inset #808080 !important;
-  padding: 3px 6px !important;
-  margin: 6px 0 6px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 12px !important; font-weight: 700 !important;
+  letter-spacing: 0.04em !important; text-transform: uppercase !important;
+  color: var(--yellow) !important;
+  background: var(--ink) !important;
+  border: var(--border) !important;
+  padding: 6px 10px !important;
+  margin: 0 0 10px 0 !important;
   display:flex !important; align-items:center !important;
+  min-height: 30px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 .section-label::after { display:none !important; }
 
-/* ── Window-like panels (Groups, Blocks) — bevel frame ── */
+/* ── Window-like panels — brutal cards ── */
 .gr-group, .gr-box, .gr-panel, .block {
-  background: #c0c0c0 !important;
-  border: 2px outset #dfdfdf !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+  box-shadow: var(--shadow) !important;
 }
-.gr-group { padding: 6px !important; }
+.gr-group { padding: 10px !important; }
 
-/* — Config cards retro — */
 .config-card {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  padding:8px !important;
-  margin-bottom:6px !important;
-  border-left: 2px outset #dfdfdf !important;
+  padding:10px !important;
+  margin-bottom:10px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.config-card:hover { border-left: 2px outset #ffffff !important; }
-.config-card-title { color:#000080 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; }
+.config-card:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink) !important; }
+.config-card-title { color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; letter-spacing:0.03em !important; }
 
 .config-section-title {
-  font-family:'MS Sans Serif', sans-serif !important;
+  font-family:'Space Grotesk', sans-serif !important;
   font-size:11px !important; font-weight:700 !important;
-  letter-spacing:0 !important; text-transform:none !important;
-  color:#000080 !important;
-  border-top:2px groove #c0c0c0 !important;
-  padding:6px 0 4px !important; margin-top:6px !important;
+  letter-spacing:0.05em !important; text-transform: uppercase !important;
+  color: var(--paper) !important;
+  background: var(--ink) !important;
+  border: var(--border-thin) !important;
+  padding:4px 8px !important; margin:12px 0 8px !important;
+  display:inline-block !important;
 }
 
-/* ── Metric cards — sunken white fields with navy numbers ── */
-.metric-grid { gap:4px !important; }
+/* ── Metric cards ── */
+.metric-grid { gap:8px !important; }
 .metric-card {
-  background:#ffffff !important;
-  border:2px inset #808080 !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  padding:6px !important;
+  padding:10px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.metric-value { font-family:'VT323', monospace !important; font-size:22px !important; color:#000080 !important; }
-.metric-label { font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; color:#000 !important; }
+.metric-value { font-family:'Space Grotesk', sans-serif !important; font-size:24px !important; font-weight:700 !important; color: var(--ink) !important; }
+.metric-label { font-family:'Space Mono', monospace !important; font-size:10px !important; font-weight:700 !important; color: var(--ink) !important; text-transform:uppercase !important; letter-spacing:0.05em !important; }
 
-/* ── Progress — classic segmented blocks (Win95 file copy) ── */
-.custom-progress-wrapper { margin:6px 0 !important; }
+/* ── Progress — brutal yellow striped ── */
+.custom-progress-wrapper { margin:8px 0 !important; }
 .custom-progress-track {
-  background:#ffffff !important;
-  border:2px inset #808080 !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  height:16px !important;
-  padding:1px !important;
+  height:20px !important;
+  padding:0 !important;
   overflow:hidden !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 .custom-progress-fill {
-  background: #000080 !important;
-  background-image:
-    repeating-linear-gradient(90deg,
-      #000080 0px, #000080 8px,
-      #c0c0c0 8px, #c0c0c0 10px) !important;
-  background-size:auto !important;
+  background: var(--yellow) !important;
+  background-image: repeating-linear-gradient( -45deg, transparent 0 8px, var(--ink) 8px 10px ) !important;
   border-radius:0 !important;
   box-shadow:none !important;
   animation:none !important;
-  transition: width 0.15s steps(10) !important;
+  transition: width 0.2s steps(6) !important;
+  border-right: var(--border) !important;
 }
 .custom-progress-fill.striped { animation:none !important; }
-.custom-progress-fill[style*="100%"] { background:#000080 !important; }
+.custom-progress-fill[style*="100%"] { background: var(--lime) !important; }
 .custom-progress-text {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; color:#000 !important;
-  margin-top:3px !important; text-align:left !important;
+  font-family:'Space Mono', monospace !important;
+  font-size:11px !important; font-weight:700 !important; color: var(--ink) !important;
+  margin-top:6px !important; text-align:left !important; text-transform:uppercase !important;
 }
 
-/* ── Buttons — true Win95 bevel (outset → inset on press) ── */
-.btn-group { gap:4px !important; }
-button.primary, button.secondary, .gr-button {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:400 !important;
-  letter-spacing:0 !important; text-transform:none !important;
+/* ── Buttons — brutal hard shadow system ── */
+:root { --win-btn-h: 40px; --win-btn-pad: 0 16px; }
+.btn-group { gap:8px !important; display:flex !important; flex-wrap:wrap !important; align-items:stretch !important; margin-top:8px !important; }
+.btn-group .gr-button, .btn-group button { flex:1 1 0 !important; min-width:120px !important; max-width:280px !important; }
+
+button.primary, button.secondary, .gr-button,
+.canvas-tool-btn, .pose-viewer-container .cp-btn,
+.btn-canvas-primary, .btn-canvas-secondary {
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight:700 !important;
+  letter-spacing:0.02em !important; text-transform: uppercase !important;
+  line-height:1 !important;
+  height: var(--win-btn-h) !important;
+  min-height: var(--win-btn-h) !important;
+  max-height: var(--win-btn-h) !important;
+  padding: var(--win-btn-pad) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  border:2px outset #dfdfdf !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
-  padding:5px 12px !important;
-  min-height:23px !important;
-  transition:none !important;
+  background: var(--paper) !important; color: var(--ink) !important;
+  box-shadow: var(--shadow-btn) !important;
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  gap:8px !important;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  box-sizing:border-box !important;
+  transition: transform 80ms, box-shadow 80ms, background 80ms !important;
+  flex-shrink:0 !important;
+  min-width:100px !important;
+  cursor: pointer !important;
 }
-button.primary {
-  background:#c0c0c0 !important; color:#000000 !important;
-  font-weight:700 !important;
-  /* dotted focus rect on default button — Win95 */
-  outline:1px dotted #000 !important; outline-offset:-4px !important;
+button.primary, .gr-button.primary, .btn-canvas-primary {
+  background: var(--yellow) !important; color: var(--ink) !important;
 }
-button.primary:hover:not([disabled]) {
-  background:#c0c0c0 !important; transform:none !important; box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+button.secondary, .gr-button.secondary, .btn-canvas-secondary {
+  background: var(--paper) !important;
 }
-button.primary:active:not([disabled]), button.secondary:active:not([disabled]) {
-  border:2px inset #808080 !important;
-  border-top-color:#000000 !important; border-left-color:#000000 !important;
-  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
-  box-shadow: inset 1px 1px 0 #808080 !important;
-  padding:6px 11px 4px 13px !important;
-  transform:none !important;
+.canvas-tool-btn.danger, .gr-button.danger {
+  background: var(--red) !important; color: var(--paper) !important;
 }
-button.secondary {
-  background:#c0c0c0 !important; color:#000000 !important;
+button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
+.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 5px 5px 0 var(--ink) !important;
+  background: var(--pink) !important;
 }
-button.secondary:hover:not([disabled]) { background:#d4d0c8 !important; border-color:#000000 !important; color:#000 !important; transform:none !important; box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important; }
-button.gr-button:disabled, button.primary:disabled, button.secondary:disabled {
-  color:#808080 !important; text-shadow:1px 1px 0 #ffffff !important;
-  opacity:1 !important;
+button.primary:hover:not(:disabled) { background: var(--yellow) !important; filter: brightness(1.05) !important; }
+.canvas-tool-btn.danger:hover { background: var(--red) !important; color: var(--paper) !important; filter: brightness(1.1) !important; }
+button.primary:active:not(:disabled), button.secondary:active:not(:disabled),
+.gr-button:active:not(:disabled), .canvas-tool-btn:active:not(:disabled) {
+  transform: translate(3px, 3px) !important;
+  box-shadow: 1px 1px 0 var(--ink) !important;
+}
+button:disabled, .gr-button:disabled, .canvas-tool-btn:disabled {
+  background: var(--grey) !important; color: #777 !important;
+  box-shadow: 2px 2px 0 var(--ink) !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+.gr-button[size="sm"], button[size="sm"] {
+  height: var(--win-btn-h) !important;
+  min-height: var(--win-btn-h) !important;
+  padding: var(--win-btn-pad) !important;
+  font-size:12px !important;
+  min-width:90px !important;
+}
+.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
+.pose-viewer-container .toggle-image-btn.active {
+  background: var(--yellow) !important; color: var(--ink) !important;
+  border: var(--border) !important;
+  box-shadow: var(--shadow-btn) !important;
+  transform: translate(-1px, -1px) !important;
 }
 
-/* ── Inputs — white inset fields ── */
+/* Canvas toolbar compact */
+.canvas-toolbar .canvas-tool-btn {
+  min-width:0 !important; flex:0 0 auto !important;
+  height:30px !important; min-height:30px !important; max-height:30px !important;
+  padding:0 10px !important; font-size:11px !important;
+  box-shadow: 3px 3px 0 var(--ink) !important;
+}
+.canvas-toolbar .color-swatch { border: 2.5px solid var(--ink) !important; box-shadow: 2px 2px 0 var(--ink) !important; border-radius:0 !important; width:22px !important; height:22px !important; }
+.pose-viewer-container .cp-btn { height:30px !important; min-height:30px !important; max-height:30px !important; padding:0 10px !important; min-width:0 !important; }
+
+/* ── Inputs — brutal inset ── */
 input:not([type="checkbox"]):not([type="radio"]), textarea, select, .gr-text-input, .gr-dropdown {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important;
-  background:#ffffff !important;
-  color:#000000 !important;
-  border:2px inset #808080 !important;
-  border-top-color:#808080 !important; border-left-color:#808080 !important;
-  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:13px !important; font-weight:500 !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  box-shadow:none !important;
-  padding:3px 4px !important;
+  box-shadow: var(--shadow-sm) !important;
+  padding:6px 8px !important;
 }
 input:not([type="checkbox"]):not([type="radio"]):focus, textarea:focus, select:focus {
-  outline:1px dotted #000 !important; outline-offset:-2px !important;
-  border-color:#000080 !important; box-shadow:none !important;
+  outline: none !important;
+  background: var(--cream) !important;
+  border-color: var(--ink) !important;
+  box-shadow: 4px 4px 0 var(--ink) !important;
 }
 label span, .block-title, label > span {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:400 !important;
-  color:#000000 !important; letter-spacing:0 !important; text-transform:none !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight:600 !important;
+  color: var(--ink) !important; letter-spacing:-0.01em !important; text-transform:none !important;
 }
-
-/* Gradio wraps inputs in .gr-form etc — force inset there too */
 .gr-input, .gr-textbox, .gr-number, .gr-dropdown .wrap {
-  border:2px inset #808080 !important; background:#ffffff !important; border-radius:0 !important;
+  border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
-/* Checkbox / Radio — classic square */
+/* ── FIX: Radios look like checkboxes — make Radio groups brutal segmented buttons ── */
+/* Hide native radio circle and style the label as a chunky button */
+.gr-radio, .gr-checkbox-group {
+  gap: 8px !important;
+}
+.gr-radio label, .gr-checkbox-group label {
+  border: var(--border) !important;
+  background: var(--paper) !important;
+  border-radius: 0 !important;
+  padding: 8px 12px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 12px !important; font-weight: 600 !important;
+  color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important;
+  cursor: pointer !important;
+  transition: transform 80ms, box-shadow 80ms, background 80ms !important;
+  display: flex !important; align-items: center !important; gap: 8px !important;
+  min-height: 38px !important;
+}
+.gr-radio label:hover, .gr-checkbox-group label:hover {
+  transform: translate(-1px, -1px) !important;
+  box-shadow: 4px 4px 0 var(--ink) !important;
+  background: var(--cream) !important;
+}
+.gr-radio label:has(input:checked), .gr-checkbox-group label:has(input:checked) {
+  background: var(--yellow) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transform: translate(-1px, -1px) !important;
+  border-color: var(--ink) !important;
+}
+.gr-radio label:has(input:checked):hover, .gr-checkbox-group label:has(input:checked):hover {
+  background: var(--yellow) !important;
+}
+.gr-radio input[type="radio"], .gr-checkbox-group input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 18px !important; height: 18px !important;
+  min-width: 18px !important;
+  border: 2.5px solid var(--ink) !important;
+  background: var(--paper) !important;
+  border-radius: 0 !important;
+  display: inline-grid !important; place-items: center !important;
+  flex-shrink: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+.gr-radio input[type="radio"] { border-radius: 50% !important; }
+.gr-radio input[type="radio"]:checked::before {
+  content: '' !important;
+  width: 8px !important; height: 8px !important;
+  background: var(--ink) !important;
+  border-radius: 50% !important;
+  display: block !important;
+}
+.gr-checkbox-group input[type="checkbox"]:checked::before,
+.gr-checkbox input[type="checkbox"]:checked::before {
+  content: '✓' !important;
+  font-size: 11px !important; font-weight: 700 !important;
+  color: var(--ink) !important;
+  line-height: 1 !important;
+}
+
+/* ── Single Checkboxes (Enable Preprocessing etc.) — brutal square ── */
 input[type="checkbox"], input[type="radio"] {
-  accent-color:#000080 !important;
-  width:13px; height:13px;
-  border:2px inset #808080 !important; border-radius:0 !important;
-  background:#ffffff !important;
+  accent-color: var(--yellow) !important;
+}
+.gr-checkbox {
+  gap: 8px !important;
+}
+.gr-checkbox label {
+  font-weight: 600 !important;
+}
+input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 20px !important; height: 20px !important;
+  min-width: 20px !important;
+  border: 2.5px solid var(--ink) !important;
+  background: var(--paper) !important;
+  border-radius: 0 !important;
+  display: inline-grid !important; place-items: center !important;
+  box-shadow: 2px 2px 0 var(--ink) !important;
+  cursor: pointer !important;
+}
+input[type="checkbox"]:checked {
+  background: var(--yellow) !important;
+}
+input[type="checkbox"]:checked::before {
+  content: '✓' !important;
+  font-size: 13px !important; font-weight: 800 !important;
+  color: var(--ink) !important;
 }
 
-/* ── Output panels — window frames with title bar ── */
+/* ── Output panels ── */
 .output-panel {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
   overflow:hidden !important;
-  margin-top:8px !important;
-  box-shadow: inset -1px -1px 0 #808080 !important;
+  margin-top:10px !important;
+  box-shadow: var(--shadow) !important;
 }
 .out-header {
-  background: linear-gradient(90deg, #000080, #0000a0) !important;
-  border-bottom:2px outset #c0c0c0 !important;
-  padding:2px 4px !important;
-  height:18px !important;
+  background: var(--ink) !important;
+  border-bottom: var(--border) !important;
+  padding:6px 10px !important;
+  height:auto !important; min-height: 32px !important;
+  display:flex !important; align-items:center !important; justify-content:space-between !important;
 }
-.out-header-left { gap:4px !important; }
+.out-header-left { gap:8px !important; display:flex !important; align-items:center !important; }
 .out-header-dot {
-  width:10px; height:10px; border-radius:0 !important;
-  background:#c0c0c0 !important; border:1px outset #ffffff !important;
-  box-shadow:none !important;
+  width:12px; height:12px; border-radius:0 !important;
+  background: var(--yellow) !important; border: 2px solid var(--ink) !important;
+  box-shadow: none !important;
 }
 .out-header-title {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  color:#ffffff !important; letter-spacing:0 !important; text-transform:none !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight:700 !important;
+  color: var(--yellow) !important; letter-spacing:0.04em !important; text-transform: uppercase !important;
 }
 .out-header-right .copy-btn {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:10px !important;
-  background:#c0c0c0 !important; color:#000 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  padding:1px 6px !important;
-  box-shadow:none !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:11px !important; font-weight:700 !important;
+  background: var(--yellow) !important; color: var(--ink) !important;
+  border: var(--border-thin) !important; border-radius:0 !important;
+  padding:4px 10px !important;
+  box-shadow: var(--shadow-sm) !important;
+  text-transform: uppercase !important;
 }
-.copy-btn:hover { background:#d4d0c8 !important; border-color:#000 !important; }
-.copy-btn.copied { background:#000080 !important; color:#ffffff !important; border:2px inset #000040 !important; }
+.copy-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; box-shadow: 4px 4px 0 var(--ink) !important; }
+.copy-btn.copied { background: var(--lime) !important; color: var(--ink) !important; border: var(--border) !important; }
 
 .stats-bar {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:10px !important; color:#000 !important;
-  background:#c0c0c0 !important;
-  border-bottom:2px groove #c0c0c0 !important;
-  padding:2px 6px !important;
+  font-family:'Space Mono', monospace !important;
+  font-size:11px !important; font-weight:700 !important; color: var(--ink) !important;
+  background: var(--yellow) !important;
+  border-bottom: var(--border) !important;
+  padding:6px 10px !important;
 }
-.stat-ok { color:#000080 !important; }
+.stat-ok { color: var(--ink) !important; }
 
 .out-md-wrap {
-  background:#ffffff !important;
-  border:2px inset #808080 !important;
-  margin:4px !important;
-  max-height:280px !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
+  margin:0 !important;
+  max-height:300px !important;
+  border-radius: 0 !important;
 }
-.out-md-wrap .prose { color:#000 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; line-height:1.4 !important; }
-.out-md-wrap .prose h1,.out-md-wrap .prose h2,.out-md-wrap .prose h3 { color:#000080 !important; border-bottom:2px groove #c0c0c0 !important; font-family:'MS Sans Serif', sans-serif !important; }
-.out-md-wrap .prose code { background:#c0c0c0 !important; color:#000 !important; border:1px inset #808080 !important; border-radius:0 !important; }
-.out-md-wrap .prose pre { background:#ffffff !important; border:2px inset #808080 !important; border-left:2px inset #808080 !important; border-radius:0 !important; }
-.out-md-wrap .prose blockquote { border-left:3px solid #000080 !important; background:#d4d0c8 !important; color:#000 !important; }
-.out-md-wrap .prose th { background:#c0c0c0 !important; color:#000 !important; border:2px outset #dfdfdf !important; }
+.out-md-wrap .prose { color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:13px !important; line-height:1.5 !important; }
+.out-md-wrap .prose h1,.out-md-wrap .prose h2,.out-md-wrap .prose h3 { color: var(--ink) !important; border-bottom: var(--border) !important; font-family:'Space Grotesk', sans-serif !important; font-weight:700 !important; }
+.out-md-wrap .prose code { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border-thin) !important; border-radius:0 !important; padding:1px 4px !important; }
+.out-md-wrap .prose pre { background: var(--paper) !important; border: var(--border) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
+.out-md-wrap .prose blockquote { border-left:6px solid var(--ink) !important; background: var(--cream) !important; color: var(--ink) !important; }
+.out-md-wrap .prose th { background: var(--ink) !important; color: var(--yellow) !important; border: var(--border) !important; }
 
-/* ── Batch Status Table — classic list view (inset white) ── */
-.batch-status-table { font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; }
-.batch-status-table thead tr { background:#c0c0c0 !important; color:#000 !important; }
+/* ── Batch Status Table — brutal grid ── */
+.batch-status-table { font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; border: var(--border) !important; box-shadow: var(--shadow-sm) !important; }
+.batch-status-table thead tr { background: var(--ink) !important; color: var(--yellow) !important; }
 .batch-status-table thead th {
-  background:#c0c0c0 !important; color:#000 !important;
-  border:1px outset #ffffff !important;
-  border-right-color:#808080 !important; border-bottom-color:#808080 !important;
-  font-size:10px !important; font-weight:400 !important; letter-spacing:0 !important; text-transform:none !important;
-  padding:3px 6px !important;
+  background: var(--ink) !important; color: var(--yellow) !important;
+  border: 1.5px solid var(--ink) !important;
+  border-right-color: #333 !important; border-bottom-color: #333 !important;
+  font-size:11px !important; font-weight:700 !important; letter-spacing:0.04em !important; text-transform: uppercase !important;
+  padding:6px 8px !important;
 }
-.batch-status-table tbody tr { border:none !important; background:#ffffff !important; }
-.batch-status-table tbody tr:nth-child(even) { background:#ffffff !important; }
-.batch-status-table tbody tr:hover { background:#000080 !important; }
-.batch-status-table tbody tr:hover td { color:#ffffff !important; }
+.batch-status-table tbody tr { border:none !important; background: var(--paper) !important; border-bottom: 2px solid var(--ink) !important; }
+.batch-status-table tbody tr:nth-child(even) { background: var(--cream) !important; }
+.batch-status-table tbody tr:hover { background: var(--yellow) !important; }
+.batch-status-table tbody tr:hover td { color: var(--ink) !important; }
 .batch-status-table tbody td {
-  color:#000 !important; border-right:1px solid #dfdfdf !important;
-  border-bottom:1px solid #dfdfdf !important; padding:2px 6px !important;
+  color: var(--ink) !important; border-right:1.5px solid var(--ink) !important;
+  border-bottom:none !important; padding:6px 8px !important; font-weight:500 !important;
 }
-.batch-status-table tbody td:first-child { color:#000 !important; font-weight:400 !important; }
+.batch-status-table tbody td:first-child { font-weight:700 !important; }
 
-/* ── Image Viewer — sunken field ── */
+/* ── Image Viewer ── */
 .img-viewer-wrap {
-  border:2px inset #808080 !important; border-radius:0 !important;
-  background:#ffffff !important; padding:2px !important;
+  border: var(--border) !important; border-radius:0 !important;
+  background: var(--paper) !important; padding:4px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.gradio-image img { border:1px solid #808080 !important; border-radius:0 !important; max-height:480px !important; }
+.gradio-image img { border: 2.5px solid var(--ink) !important; border-radius:0 !important; max-height:480px !important; }
 
-/* ── Explorer header — toolbar strip ── */
 .explorer-header-card {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  padding:4px 6px !important;
-  box-shadow:none !important;
+  background: var(--paper) !important;
+  border: var(--border) !important; border-radius:0 !important;
+  padding:8px 10px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.explorer-image-name { font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; color:#000 !important; }
-.step-badge { font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; }
-.step-badge-1 .step-badge-num, .step-badge-2 .step-badge-num { border-radius:0 !important; border:1px outset #ffffff !important; }
-.step-badge-1 { color:#000080 !important; } .step-badge-2 { color:#800080 !important; }
+.explorer-image-name { font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; color: var(--ink) !important; }
+.step-badge { font-family:'Space Mono', monospace !important; font-size:11px !important; font-weight:700 !important; }
+.step-badge-1 .step-badge-num, .step-badge-2 .step-badge-num { border-radius:0 !important; border: 2.5px solid var(--ink) !important; box-shadow: 2px 2px 0 var(--ink) !important; }
+.step-badge-1 { color: var(--ink) !important; } .step-badge-2 { color: var(--ink) !important; }
+.step-badge-1 .step-badge-num { background: var(--yellow) !important; }
+.step-badge-2 .step-badge-num { background: var(--pink) !important; }
 
-/* ── JSON panel — inset white ── */
+/* ── JSON panel ── */
 .json-panel {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  margin-top:6px !important;
+  background: var(--paper) !important;
+  border: var(--border) !important; border-radius:0 !important;
+  margin-top:10px !important;
+  box-shadow: var(--shadow) !important;
 }
 .json-panel-hdr {
-  background: linear-gradient(90deg, #000080, #0000a0) !important;
-  color:#ffffff !important;
-  font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important;
-  padding:2px 6px !important; border-bottom:2px outset #c0c0c0 !important;
+  background: var(--ink) !important;
+  color: var(--yellow) !important;
+  font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important;
+  letter-spacing:0.04em !important; text-transform:uppercase !important;
+  padding:6px 10px !important; border-bottom: var(--border) !important;
 }
-.json-panel-hdr .dot-amber { background:#ffff00 !important; border:1px outset #ffffff !important; border-radius:0 !important; width:8px; height:8px; box-shadow:none !important; }
-.json-panel-body { background:#ffffff !important; border:2px inset #808080 !important; margin:4px !important; }
+.json-panel-hdr .dot-amber { background: var(--yellow) !important; border:2px solid var(--ink) !important; border-radius:0 !important; width:10px; height:10px; box-shadow: none !important; }
+.json-panel-body { background: var(--paper) !important; border: none !important; margin:0 !important; }
 .json-panel-body > div.block { background:transparent !important; border:none !important; }
 
-/* ── Accordions — classic collapsible groupbox ── */
+/* ── Accordions ── */
 .gr-accordion {
-  border:2px groove #c0c0c0 !important; background:#c0c0c0 !important; border-radius:0 !important;
-  margin:4px 0 !important;
+  border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important;
+  margin:8px 0 !important; box-shadow: var(--shadow-sm) !important;
 }
 .gr-accordion summary, details > summary {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  color:#000 !important; letter-spacing:0 !important; text-transform:none !important;
-  background:#c0c0c0 !important; padding:4px 6px !important;
-  border-bottom:1px solid #808080 !important;
-  list-style:none;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight:700 !important;
+  color: var(--ink) !important; letter-spacing:0.02em !important; text-transform: uppercase !important;
+  background: var(--yellow) !important; padding:8px 10px !important;
+  border-bottom: var(--border) !important;
+  list-style:none; cursor: pointer !important;
 }
-.gr-accordion summary:hover, details > summary:hover { background:#d4d0c8 !important; color:#000 !important; }
+.gr-accordion summary:hover, details > summary:hover { background: var(--pink) !important; }
 
-/* ── Dropdown — inset field with outset button ── */
-.gr-dropdown { border:2px inset #808080 !important; background:#ffffff !important; border-radius:0 !important; }
+/* ── Dropdown ── */
+.gr-dropdown { border: var(--border) !important; background: var(--paper) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
 .gr-dropdown .wrap { border:none !important; }
 
-/* ── Scrollbars — Win95 chunky ── */
-::-webkit-scrollbar { width:16px; height:16px; background:#c0c0c0; }
-::-webkit-scrollbar-track { background:#c0c0c0; border:1px inset #808080; }
+/* ── Scrollbars — brutal chunky ── */
+::-webkit-scrollbar { width:16px; height:16px; background: var(--paper); }
+::-webkit-scrollbar-track { background: var(--paper); border-left: var(--border); }
 ::-webkit-scrollbar-thumb {
-  background:#c0c0c0;
-  border:2px outset #dfdfdf;
-  border-top-color:#ffffff; border-left-color:#ffffff;
-  border-right-color:#000000; border-bottom-color:#000000;
-  box-shadow: inset -1px -1px 0 #808080;
+  background: var(--ink);
+  border: 2px solid var(--paper);
   border-radius:0;
 }
-::-webkit-scrollbar-thumb:hover { background:#d4d0c8; }
-::-webkit-scrollbar-corner { background:#c0c0c0; }
+::-webkit-scrollbar-thumb:hover { background: #333; }
+::-webkit-scrollbar-corner { background: var(--paper); }
 ::-webkit-scrollbar-button {
-  background:#c0c0c0; border:2px outset #dfdfdf;
+  background: var(--yellow); border: var(--border);
   height:16px; width:16px; display:block;
 }
 
 /* ── Hint / misc ── */
 .hidden-raw { display:none !important; }
-.input-hint, .input-hint .hint-var { font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; color:#000 !important; }
-textarea { scrollbar-width:auto; scrollbar-color:#c0c0c0 #ffffff; }
-input[type="checkbox"] { accent-color:#000080 !important; }
+.input-hint, .input-hint .hint-var { font-family:'Space Mono', monospace !important; font-size:11px !important; color: var(--ink) !important; font-weight:600 !important; }
+textarea { scrollbar-width:auto; scrollbar-color: var(--ink) var(--paper); }
 
-/* ── Custom HTML5 Canvas — retro window with toolbar ── */
+/* ── Custom HTML5 Canvas — brutal card ── */
 .custom-canvas-container {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  box-shadow: inset -1px -1px 0 #808080, 4px 4px 0 rgba(0,0,0,0.25) !important;
-  margin-bottom:8px !important;
+  background: var(--paper) !important;
+  border: var(--border) !important; border-width: 3.5px !important; border-radius:0 !important;
+  box-shadow: var(--shadow) !important;
+  margin-bottom:12px !important;
 }
 .canvas-toolbar {
-  background:#c0c0c0 !important;
-  border-bottom:2px outset #c0c0c0 !important;
-  padding:3px !important; gap:3px !important;
-  font-family:'MS Sans Serif', sans-serif !important;
+  background: var(--cream) !important;
+  border-bottom: var(--border) !important;
+  padding:6px !important; gap:6px !important;
+  font-family:'Space Grotesk', sans-serif !important;
 }
-.tool-group-label { font-size:10px !important; color:#000 !important; }
-.canvas-toolbar-divider { background:#808080 !important; border-right:1px solid #ffffff !important; width:2px !important; }
+.tool-group-label { font-size:10px !important; font-weight:700 !important; color: var(--ink) !important; text-transform:uppercase !important; letter-spacing:0.05em !important; }
+.canvas-toolbar-divider { background: var(--ink) !important; width:3px !important; border:none !important; }
 .canvas-tool-btn {
-  background:#c0c0c0 !important; color:#000 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important;
-  padding:2px 6px !important; box-shadow:none !important;
+  background: var(--paper) !important; color: var(--ink) !important;
+  border: var(--border-thin) !important; border-radius:0 !important;
+  font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important;
+  padding:4px 8px !important; box-shadow: var(--shadow-sm) !important;
 }
-.canvas-tool-btn:hover { background:#d4d0c8 !important; }
+.canvas-tool-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; box-shadow: 4px 4px 0 var(--ink) !important; }
 .canvas-tool-btn.active {
-  border:2px inset #808080 !important; background:#d4d0c8 !important; color:#000080 !important;
-  box-shadow:none !important;
+  border: var(--border) !important; background: var(--yellow) !important; color: var(--ink) !important;
+  box-shadow: var(--shadow-sm) !important; transform: translate(-1px,-1px) !important;
 }
-.canvas-tool-btn.danger:hover { background:#ffcccc !important; border-color:#800000 !important; }
+.canvas-tool-btn.danger:hover { background: var(--red) !important; color: var(--paper) !important; }
 .canvas-stage-wrapper {
-  background:#808080 !important;
-  /* checkerboard like Win95 paint */
+  background: var(--paper) !important;
   background-image:
-    linear-gradient(45deg, #c0c0c0 25%, transparent 25%),
-    linear-gradient(-45deg, #c0c0c0 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #c0c0c0 75%),
-    linear-gradient(-45deg, transparent 75%, #c0c0c0 75%) !important;
-  background-size:8px 8px !important; background-position:0 0,0 4px,4px -4px,-4px 0px !important;
-  border:2px inset #808080 !important;
+    linear-gradient(var(--ink) 1.5px, transparent 1.5px),
+    linear-gradient(90deg, var(--ink) 1.5px, transparent 1.5px) !important;
+  background-size: 22px 22px !important;
+  border: var(--border) !important;
+  border-width: 3px !important;
 }
-#custom-annotation-canvas { background:#ffffff !important; }
-.canvas-empty-state { background:rgba(192,192,192,0.92) !important; }
-.canvas-empty-state h3, .canvas-empty-state p { font-family:'MS Sans Serif', sans-serif !important; color:#000 !important; }
-.btn-canvas-primary { background:#c0c0c0 !important; color:#000 !important; border:2px outset #dfdfdf !important; border-radius:0 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; font-weight:700 !important; }
-.btn-canvas-primary:hover { background:#d4d0c8 !important; }
-.btn-canvas-secondary { background:#c0c0c0 !important; color:#000 !important; border:2px outset #dfdfdf !important; border-radius:0 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; }
-.canvas-status-bar { background:#c0c0c0 !important; border-top:2px outset #c0c0c0 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; }
-.regions-count-badge { background:#ffffff !important; border:2px inset #808080 !important; color:#000080 !important; border-radius:0 !important; }
+#custom-annotation-canvas { background: var(--paper) !important; }
+.canvas-empty-state { background: var(--cream) !important; border: var(--border) !important; }
+.canvas-empty-state h3, .canvas-empty-state p { font-family:'Space Grotesk', sans-serif !important; color: var(--ink) !important; font-weight:700 !important; }
+.btn-canvas-primary { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border) !important; border-radius:0 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; box-shadow: var(--shadow-btn) !important; }
+.btn-canvas-primary:hover { background: var(--yellow) !important; transform: translate(-1px,-1px) !important; box-shadow: 5px 5px 0 var(--ink) !important; }
+.btn-canvas-secondary { background: var(--paper) !important; color: var(--ink) !important; border: var(--border) !important; border-radius:0 !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; box-shadow: var(--shadow-btn) !important; }
+.canvas-status-bar { background: var(--cream) !important; border-top: var(--border) !important; font-family:'Space Mono', monospace !important; font-size:11px !important; font-weight:700 !important; }
+.regions-count-badge { background: var(--cyan) !important; border: var(--border-thin) !important; color: var(--ink) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; }
 
-/* ── DetectionViewer — retro window ── */
+/* ── DetectionViewer — brutal ── */
 .pose-viewer-container {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
-  box-shadow: inset -1px -1px 0 #808080 !important;
+  background: var(--paper) !important;
+  border: var(--border) !important; border-radius:0 !important;
+  box-shadow: var(--shadow) !important;
 }
 .pose-viewer-container .canvas-wrapper {
-  background:#808080 !important; border:2px inset #808080 !important; border-radius:0 !important;
+  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
 }
-.pose-viewer-container .canvas-wrapper canvas { border:none !important; border-radius:0 !important; background:#ffffff !important; }
-.pose-viewer-container .control-panel { background:#c0c0c0 !important; border-color:#808080 !important; }
+.pose-viewer-container .canvas-wrapper canvas { border: var(--border-thin) !important; border-radius:0 !important; background: var(--paper) !important; }
+.pose-viewer-container .control-panel { background: var(--paper) !important; border-color: var(--ink) !important; border-width: 3px !important; }
 .pose-viewer-container .control-panel-header {
-  background: linear-gradient(90deg, #000080, #0000a0) !important;
-  border-bottom:2px outset #c0c0c0 !important;
+  background: var(--ink) !important;
+  border-bottom: var(--border) !important;
 }
 .pose-viewer-container .control-panel-title,
-.pose-viewer-container .control-panel-count { color:#ffffff !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important; }
+.pose-viewer-container .control-panel-count { color: var(--yellow) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
 .pose-viewer-container .cp-btn {
-  background:#c0c0c0 !important; color:#000 !important;
-  border:2px outset #dfdfdf !important; border-radius:0 !important;
+  background: var(--paper) !important; color: var(--ink) !important;
+  border: var(--border-thin) !important; border-radius:0 !important;
+  font-weight:700 !important; box-shadow: var(--shadow-sm) !important;
 }
-.pose-viewer-container .cp-btn:hover { background:#d4d0c8 !important; }
+.pose-viewer-container .cp-btn:hover { background: var(--pink) !important; transform: translate(-1px,-1px) !important; }
 .pose-viewer-container .cp-btn.active,
 .pose-viewer-container .toggle-image-btn.active {
-  background:#000080 !important; color:#ffffff !important; border:2px inset #000040 !important;
+  background: var(--yellow) !important; color: var(--ink) !important; border: var(--border) !important;
 }
-.pose-viewer-container .annotation-row { border-bottom:1px solid #808080 !important; }
-.pose-viewer-container .annotation-row:hover { background:#000080 !important; color:#ffffff !important; }
+.pose-viewer-container .annotation-row { border-bottom: 2px solid var(--ink) !important; }
+.pose-viewer-container .annotation-row:hover { background: var(--yellow) !important; color: var(--ink) !important; }
 .pose-viewer-container .annotation-row:hover .ann-label,
-.pose-viewer-container .annotation-row:hover .ann-summary { color:#ffffff !important; }
-.pose-viewer-container .annotation-row.selected { background:#000080 !important; border-left:2px solid #ffffff !important; }
+.pose-viewer-container .annotation-row:hover .ann-summary { color: var(--ink) !important; }
+.pose-viewer-container .annotation-row.selected { background: var(--yellow) !important; border-left: 4px solid var(--ink) !important; }
 
-/* ── Batch Processing Retro — keep big screen but with bevels ── */
-.batch-main-container { gap:6px !important; }
+/* ── Batch Processing — brutal ── */
+.batch-main-container { gap:10px !important; }
 .batch-hero-panel {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important; border-top:2px outset #ffffff !important;
-  border-radius:0 !important; padding:6px !important;
-  box-shadow: inset -1px -1px 0 #808080, 4px 4px 0 rgba(0,0,0,0.2) !important;
-  margin-bottom:6px !important;
+  background: var(--paper) !important;
+  border: var(--border) !important; border-width: 3.5px !important;
+  border-radius:0 !important; padding:10px !important;
+  box-shadow: var(--shadow) !important;
+  margin-bottom:10px !important;
 }
 .batch-explorer-bar {
-  background:#c0c0c0 !important; border:2px inset #808080 !important; border-radius:0 !important;
-  padding:4px !important; margin-bottom:4px !important;
+  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
+  padding:6px !important; margin-bottom:8px !important; box-shadow: var(--shadow-sm) !important;
 }
-.batch-viewers-row { gap:4px !important; margin-bottom:6px !important; }
-.batch-viewers-row .pose-viewer-container { min-height:560px !important; border:2px inset #808080 !important; }
-.batch-viewers-row .gradio-image { border:2px inset #808080 !important; background:#ffffff !important; padding:2px !important; }
-.batch-viewers-row .gradio-image img { max-height:560px !important; border:none !important; }
-.hero-info { margin-bottom:4px !important; }
+.batch-viewers-row { gap:8px !important; margin-bottom:10px !important; }
+.batch-viewers-row .pose-viewer-container { min-height:560px !important; border: var(--border) !important; }
+.batch-viewers-row .gradio-image { border: var(--border) !important; background: var(--paper) !important; padding:4px !important; box-shadow: var(--shadow-sm) !important; }
+.batch-viewers-row .gradio-image img { max-height:560px !important; border: 2.5px solid var(--ink) !important; }
+.hero-info { margin-bottom:8px !important; }
 .hero-empty {
-  background:#ffffff !important; border:2px inset #808080 !important; border-radius:0 !important;
-  color:#000 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:11px !important;
-  padding:6px !important;
+  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
+  color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:12px !important; font-weight:600 !important;
+  padding:10px !important; box-shadow: var(--shadow-sm) !important;
 }
 .hero-meta {
-  background:#c0c0c0 !important; border:2px outset #dfdfdf !important; border-radius:0 !important;
-  font-family:'MS Sans Serif', sans-serif !important; padding:4px 6px !important; gap:6px !important;
+  background: var(--yellow) !important; border: var(--border) !important; border-radius:0 !important;
+  font-family:'Space Grotesk', sans-serif !important; padding:6px 10px !important; gap:8px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-.hero-title { color:#000 !important; font-size:11px !important; }
-.hero-count { color:#000080 !important; font-size:11px !important; }
-.hero-meta .score-badge { background:#ffffff !important; border:2px inset #808080 !important; color:#000080 !important; border-radius:0 !important; font-family:'VT323', monospace !important; font-size:12px !important; }
-.batch-explorer-tabs { margin-top:4px !important; border:2px inset #808080 !important; background:#ffffff !important; }
-.batch-bottom-row { gap:6px !important; }
+.hero-title { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
+.hero-count { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; }
+.hero-meta .score-badge { background: var(--cyan) !important; border: var(--border-thin) !important; color: var(--ink) !important; border-radius:0 !important; font-family:'Space Mono', monospace !important; font-size:12px !important; font-weight:700 !important; }
+.batch-explorer-tabs { margin-top:8px !important; border: var(--border) !important; background: var(--paper) !important; box-shadow: var(--shadow-sm) !important; }
+.batch-bottom-row { gap:10px !important; }
 .batch-bottom-col {
-  background:#c0c0c0 !important; border:2px outset #dfdfdf !important; border-radius:0 !important;
-  padding:6px !important; box-shadow: inset -1px -1px 0 #808080 !important;
+  background: var(--paper) !important; border: var(--border) !important; border-radius:0 !important;
+  padding:10px !important; box-shadow: var(--shadow) !important;
 }
 .batch-progress-card {
-  background:#c0c0c0 !important; border:2px outset #dfdfdf !important; border-left:2px outset #dfdfdf !important;
-  border-radius:0 !important; padding:6px !important; margin:4px 0 !important;
+  background: var(--paper) !important; border: var(--border) !important;
+  border-radius:0 !important; padding:8px !important; margin:8px 0 !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 .batch-status-header {
-  background:#c0c0c0 !important; border:2px inset #808080 !important; border-radius:0 !important;
-  font-family:'MS Sans Serif', sans-serif !important; padding:4px 6px !important;
+  background: var(--cream) !important; border: var(--border) !important; border-radius:0 !important;
+  font-family:'Space Grotesk', sans-serif !important; padding:6px 10px !important;
 }
-.bsh-dot { border-radius:0 !important; border:1px solid #000 !important; width:8px; height:8px; }
-.batch-status-header.st-running .bsh-dot { background:#ffff00 !important; box-shadow:none !important; animation:none !important; }
-.batch-status-header.st-done .bsh-dot { background:#00aa00 !important; }
-.batch-status-header.st-error .bsh-dot { background:#ff0000 !important; }
-.bsh-text { color:#000 !important; font-size:11px !important; }
-.bsh-metrics .mchip { background:#c0c0c0 !important; border:2px outset #dfdfdf !important; border-radius:0 !important; color:#000 !important; font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; }
-.bsh-metrics .mchip.mrun { background:#ffffcc !important; }
-.bsh-metrics .mchip.mfail { background:#ffcccc !important; }
+.bsh-dot { border-radius:0 !important; border: 2.5px solid var(--ink) !important; width:12px; height:12px; box-shadow: 1px 1px 0 var(--ink) !important; }
+.batch-status-header.st-running .bsh-dot { background: var(--yellow) !important; }
+.batch-status-header.st-done .bsh-dot { background: var(--lime) !important; }
+.batch-status-header.st-error .bsh-dot { background: var(--red) !important; }
+.bsh-text { color: var(--ink) !important; font-size:12px !important; font-weight:700 !important; text-transform:uppercase !important; }
+.bsh-metrics .mchip { background: var(--paper) !important; border: var(--border-thin) !important; border-radius:0 !important; color: var(--ink) !important; font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important; box-shadow: 2px 2px 0 var(--ink) !important; }
+.bsh-metrics .mchip.mrun { background: var(--yellow) !important; }
+.bsh-metrics .mchip.mfail { background: var(--red) !important; color: var(--paper) !important; }
 
-/* ── Neo-retro leftover — re-skin to retro (now unified window) ── */
+/* ── Neo-retro leftover now brutal ── */
 .neo-retro-card {
-  background:#c0c0c0 !important; border:2px outset #dfdfdf !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #dfdfdf, 4px 4px 0 rgba(0,0,0,0.25) !important;
-  border-radius:0 !important;
-  padding:2px !important;
+  background: var(--paper) !important; border: var(--border) !important;
+  box-shadow: var(--shadow) !important;
+  border-radius:0 !important; padding: 6px !important;
 }
-.neo-retro-card::before {
-  display:none !important; /* title is now .section-label inside the card — avoid double bar */
-}
-.neo-retro-badge { background:#c0c0c0 !important; color:#000 !important; border:2px outset #dfdfdf !important; border-radius:0 !important; box-shadow:none !important; font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; }
-.neo-retro-hud-stat { font-family:'VT323', monospace !important; color:#000080 !important; text-shadow:none !important; }
+.neo-retro-card::before { display:none !important; }
+.neo-retro-badge { background: var(--yellow) !important; color: var(--ink) !important; border: var(--border-thin) !important; border-radius:0 !important; box-shadow: var(--shadow-sm) !important; font-family:'Space Grotesk', sans-serif !important; font-size:11px !important; font-weight:700 !important; }
+.neo-retro-hud-stat { font-family:'Space Mono', monospace !important; color: var(--ink) !important; font-weight:700 !important; }
 
-/* Kill any lingering inline neon header — force retro */
 .neo-retro-card > div[style*="00ffcc"],
 .neo-retro-card > div[style*="050811"] {
-  background:#c0c0c0 !important;
-  border:none !important;
-  border-bottom:2px groove #808080 !important;
+  background: var(--paper) !important;
+  border: none !important;
+  border-bottom: var(--border) !important;
   padding:0 !important;
 }
 
-/* ── Gradio form / block title overrides ── */
-.gr-form, .gr-padded { background:#c0c0c0 !important; }
+.gr-form, .gr-padded { background: var(--paper) !important; }
 
 /* ════════════════════════════════════════════════════════════════════════
-   THEME UNIFICATION PATCH — v2
-   Makes every tab use the SAME Win95 window structure + button system.
-   Before: Batch hero / Bottom-col / Draw canvas / Neo-retro / Server logs
-   each had different borders, paddings, title bars and button sizes.
-   After:  one shared window shell, one button scale, one title style.
+   THEME UNIFICATION PATCH — brutal shared shell
    ════════════════════════════════════════════════════════════════════════ */
-
-/* ── Shared window shell — every major panel ── */
 .gr-group, .gr-box, .gr-panel, .block,
 .config-card, .output-panel,
 .batch-hero-panel, .batch-bottom-col,
@@ -764,218 +870,67 @@ input[type="checkbox"] { accent-color:#000080 !important; }
 .pose-viewer-container, .img-viewer-wrap,
 .batch-explorer-bar, .batch-explorer-tabs,
 .json-panel {
-  background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+  box-shadow: var(--shadow) !important;
   box-sizing:border-box !important;
 }
-
-/* Inner sunken fields (white) — keep inset look */
 .out-md-wrap, .json-panel-body, .hero-empty,
-.batch-explorer-tabs .tabitem, .img-viewer-wrap .gradio-image,
+.img-viewer-wrap .gradio-image,
 .pose-viewer-container .canvas-wrapper,
 .canvas-stage-wrapper {
-  background:#ffffff !important;
-  border:2px inset #808080 !important;
-  border-top-color:#808080 !important; border-left-color:#808080 !important;
-  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
+  background: var(--paper) !important;
+  border: var(--border) !important;
   border-radius:0 !important;
 }
-
-/* ── Unified section titles — single source for all tabs ── */
 .section-label {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  color:#ffffff !important;
-  background: linear-gradient(90deg, #000080 0%, #0000cd 100%) !important;
-  border:2px outset #c0c0c0 !important;
-  border-bottom:2px outset #c0c0c0 !important;
-  padding:3px 6px !important;
-  margin:0 0 6px 0 !important;
-  display:flex !important; align-items:center !important;
-  min-height:18px !important;
-  letter-spacing:0 !important; text-transform:none !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:13px !important; font-weight:700 !important;
+  color: var(--yellow) !important;
+  background: var(--ink) !important;
+  border: var(--border) !important;
+  padding:7px 10px !important;
+  margin:0 0 10px 0 !important;
+  min-height: 32px !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-/* Keep old silver section-labels (inside prep_group) as sub-headers, not main */
 .config-section-title {
-  background:#c0c0c0 !important;
-  border-top:2px groove #c0c0c0 !important;
-  color:#000080 !important;
-  padding:5px 0 3px !important;
-  margin:8px 0 4px !important;
+  background: var(--ink) !important;
+  color: var(--yellow) !important;
+  border: var(--border-thin) !important;
+  padding:5px 8px !important; margin:12px 0 8px !important;
+  font-weight:700 !important; text-transform:uppercase !important;
 }
-
-/* Config cards — uniform inset, no hover border shift that caused jump */
-.config-card { padding:6px !important; margin-bottom:6px !important; }
-.config-card:hover { border-left:2px outset #dfdfdf !important; }
+.config-card { padding:10px !important; margin-bottom:10px !important; }
 .config-card-title {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:700 !important;
-  color:#000080 !important;
-  margin-bottom:4px !important;
+  font-family:'Space Grotesk', sans-serif !important;
+  font-size:12px !important; font-weight:700 !important;
+  color: var(--ink) !important; text-transform:uppercase !important;
 }
 
-/* ── Unified button system — ONE size, ONE structure ── */
-:root { --win-btn-h:26px; --win-btn-pad:0 14px; }
-
-/* Base — all Gradio buttons + custom canvas toolbar buttons */
-button.primary, button.secondary, .gr-button,
-.canvas-tool-btn, .pose-viewer-container .cp-btn,
-.btn-canvas-primary, .btn-canvas-secondary {
-  font-family:'MS Sans Serif', sans-serif !important;
-  font-size:11px !important; font-weight:400 !important;
-  line-height:1 !important;
-  letter-spacing:0 !important; text-transform:none !important;
-  height:var(--win-btn-h) !important;
-  min-height:var(--win-btn-h) !important;
-  max-height:var(--win-btn-h) !important;
-  padding:var(--win-btn-pad) !important;
-  border:2px outset #dfdfdf !important;
-  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
-  border-radius:0 !important;
-  background:#c0c0c0 !important; color:#000 !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
-  display:inline-flex !important; align-items:center !important; justify-content:center !important;
-  gap:6px !important;
-  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
-  box-sizing:border-box !important;
-  transition:none !important;
-  flex-shrink:0 !important;
-  min-width:92px !important;
-}
-
-/* Primary = default action — bold + dotted focus rect */
-button.primary, .gr-button.primary, .btn-canvas-primary {
-  font-weight:700 !important;
-  outline:1px dotted #000 !important; outline-offset:-4px !important;
-}
-
-/* Secondary — normal weight */
-button.secondary, .gr-button.secondary, .btn-canvas-secondary {
-  font-weight:400 !important;
-}
-
-/* Danger — subtle red tint but same bevel (reset/clear) */
-.canvas-tool-btn.danger, .gr-button.danger {
-  background:#c0c0c0 !important; color:#800000 !important;
-}
-.canvas-tool-btn.danger:hover, .gr-button.danger:hover {
-  background:#ffdddd !important; border-color:#800000 !important; color:#800000 !important;
-}
-
-/* Hover — same for all, no lift/shadow change */
-button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
-.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled),
-.pose-viewer-container .cp-btn:hover {
-  background:#d4d0c8 !important;
-  transform:none !important;
-  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
-}
-
-/* Pressed — inset */
-button.primary:active:not(:disabled), button.secondary:active:not(:disabled),
-.gr-button:active:not(:disabled), .canvas-tool-btn:active:not(:disabled) {
-  border:2px inset #808080 !important;
-  border-top-color:#000000 !important; border-left-color:#000000 !important;
-  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
-  box-shadow: inset 1px 1px 0 #808080 !important;
-  padding:1px 13px 0 15px !important;
-  transform:none !important;
-}
-
-/* Disabled — Win95 greyed with emboss */
-button:disabled, .gr-button:disabled, .canvas-tool-btn:disabled {
-  color:#808080 !important; text-shadow:1px 1px 0 #ffffff !important;
-  opacity:1 !important; background:#c0c0c0 !important;
-  border:2px outset #dfdfdf !important;
-}
-
-/* Size="sm" — Gradio's small variant was 30% shorter and broke row height.
-   Force it to the same 26px so every btn-group row has identical height. */
-.gr-button[size="sm"], button[size="sm"] {
-  height:var(--win-btn-h) !important;
-  min-height:var(--win-btn-h) !important;
-  padding:var(--win-btn-pad) !important;
-  font-size:11px !important;
-  min-width:72px !important;
-}
-
-/* Active/selected toolbar buttons — inset + navy (same as viewer) */
-.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
-.pose-viewer-container .toggle-image-btn.active {
-  background:#000080 !important; color:#ffffff !important;
-  border:2px inset #000040 !important;
-  box-shadow:none !important;
-}
-
-/* Button groups — uniform row in every tab */
-.btn-group {
-  display:flex !important;
-  flex-wrap:wrap !important;
-  gap:6px !important;
-  align-items:stretch !important;
-  min-width:0 !important;
-  margin-top:6px !important;
-}
-.btn-group .gr-button, .btn-group button {
-  flex:1 1 0 !important;
-  min-width:110px !important;
-  max-width:260px !important;
-}
-
-/* Canvas toolbar — same button system but compact and non-stretching */
-.canvas-toolbar .canvas-tool-btn {
-  min-width:0 !important; flex:0 0 auto !important;
-  height:22px !important; min-height:22px !important; max-height:22px !important;
-  padding:0 8px !important; font-size:11px !important;
-}
-.canvas-toolbar .color-swatch { border:1px outset #ffffff !important; box-shadow: inset -1px -1px 0 #808080 !important; }
-
-/* DetectionViewer controls — same 22px compact */
-.pose-viewer-container .cp-btn { height:22px !important; min-height:22px !important; max-height:22px !important; padding:0 8px !important; min-width:0 !important; }
-
-/* Gradio Rows / Columns — uniform gaps */
-.gr-row { gap:6px !important; }
-.gr-column { gap:6px !important; }
-
-/* Accordion — same header height, no extra padding jump */
-.gr-accordion { margin:6px 0 !important; }
+/* ── Unified button system brutal ── */
+:root { --win-btn-h: 40px; --win-btn-pad: 0 18px; }
+.btn-group { display:flex !important; flex-wrap:wrap !important; gap:8px !important; align-items:stretch !important; margin-top:8px !important; }
+.btn-group .gr-button, .btn-group button { flex:1 1 0 !important; min-width:120px !important; max-width:280px !important; }
+.gr-row { gap:8px !important; }
+.gr-column { gap:8px !important; }
+.gr-accordion { margin:8px 0 !important; box-shadow: var(--shadow-sm) !important; }
 .gr-accordion summary, details > summary {
-  min-height:22px !important; display:flex !important; align-items:center !important;
-  padding:3px 6px !important;
+  min-height:32px !important; display:flex !important; align-items:center !important;
+  padding:8px 10px !important; font-weight:700 !important; text-transform:uppercase !important;
 }
-
-/* Inputs — uniform 22px height */
 input:not([type="checkbox"]):not([type="radio"]), textarea, select,
-.gr-text-input, .gr-dropdown {
-  min-height:22px !important;
-}
-.gr-dropdown .wrap { min-height:22px !important; }
+.gr-text-input, .gr-dropdown { min-height:36px !important; }
+.gr-dropdown .wrap { min-height:36px !important; }
 
-/* ── TAB WIDTH STABILIZATION FIX ──────────────────────────────────────────
-   Problem: each TabItem (Model / Draw / Batch / Prompts / Realtime) had a
-   different intrinsic width because columns used min_width=380/520 and
-   buttons/labels had wildly different text lengths. Switching tabs caused
-   the outer .gradio-container / .tabs to reflow and the page to "jump".
-
-   Fix: lock the outer shell to a stable width and force every tab pane
-   and every inner row/column to fill 100% without letting min-width or
-   button text inflate the pane. Labels/buttons are allowed to wrap or
-   ellipsis instead of expanding the tab.
-   ─────────────────────────────────────────────────────────────────────── */
-html { scrollbar-gutter: stable !important; }
-
+/* ── TAB WIDTH STABILIZATION — keep equal tabs brutal ── */
 .gradio-container, .gradio-container-4-24-0 {
   width: 1320px !important;
   max-width: calc(100vw - 28px) !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
 }
-
 .tabs {
   width: 100% !important;
   max-width: 100% !important;
@@ -983,8 +938,6 @@ html { scrollbar-gutter: stable !important; }
   box-sizing: border-box !important;
   overflow: hidden !important;
 }
-
-/* Keep equal-width folder tabs — do NOT revert to 0 0 auto */
 .tabs > .tab-nav {
   width: 100% !important;
   max-width: 100% !important;
@@ -992,7 +945,6 @@ html { scrollbar-gutter: stable !important; }
   overflow: visible !important;
   scrollbar-width: none !important;
   flex-wrap: nowrap !important;
-  /* height/gap already set in Tabs v3 block above */
 }
 .tabs > .tab-nav button {
   flex: 1 1 0 !important;
@@ -1009,9 +961,6 @@ html { scrollbar-gutter: stable !important; }
   box-sizing: border-box !important;
   overflow: hidden !important;
 }
-
-/* Inner layout rows — force full-width, prevent Gradio min_width from
-   expanding the tab. Columns share space equally and can shrink. */
 .batch-main-container,
 .batch-hero-panel,
 .batch-bottom-row,
@@ -1022,14 +971,8 @@ html { scrollbar-gutter: stable !important; }
   min-width: 0 !important;
   box-sizing: border-box !important;
 }
-
 .batch-bottom-row,
-.draw-tab-row {
-  align-items: stretch !important;
-  gap: 6px !important;
-}
-
-/* Gradio Columns inside those rows: override Python min_width=380/520 */
+.draw-tab-row { align-items: stretch !important; gap: 10px !important; }
 .batch-bottom-col,
 .draw-tab-row > .gr-column,
 .draw-tab-row > div[class*="column"],
@@ -1040,81 +983,51 @@ html { scrollbar-gutter: stable !important; }
   max-width: 100% !important;
   box-sizing: border-box !important;
 }
-
-/* Draw left/right explicit balance (scale 3 vs 2) → 60% / 40% on desktop */
 .draw-tab-row > .gr-column:first-child,
-.draw-tab-row > div:first-child {
-  flex: 3 1 0 !important;
-}
+.draw-tab-row > div:first-child { flex: 3 1 0 !important; }
 .draw-tab-row > .gr-column:last-child,
-.draw-tab-row > div:last-child {
-  flex: 2 1 0 !important;
-}
-
-/* Prevent buttons / labels from inflating tab width */
-.gr-button, button.primary, button.secondary, .canvas-tool-btn {
-  max-width: 100% !important;
-  min-width: 0 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  flex-shrink: 1 !important;
-  box-sizing: border-box !important;
-}
-
-.btn-group {
-  flex-wrap: wrap !important;
-  min-width: 0 !important;
-}
-
+.draw-tab-row > div:last-child { flex: 2 1 0 !important; }
 label span, .block-title, label > span, .gr-radio label span, .gr-checkbox label span {
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   min-width: 0 !important;
-  white-space: normal !important;
 }
-
 .gr-group, .gr-box, .gr-panel, .block, .config-card, .output-panel,
 .img-viewer-wrap, .batch-viewers-row, .pose-viewer-container {
   min-width: 0 !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
 }
-
-/* Batch viewers + realtime viewers keep equal height, don't expand width */
 .batch-viewers-row, .rt-webcam-wrap {
   width: 100% !important;
   max-width: 100% !important;
 }
 
-/* ── Responsive — keep bevels even on mobile + tab wrapping ── */
+/* ── Responsive — brutal keeps shadow ── */
 @media (max-width: 900px) {
-  .gradio-container { margin:4px !important; max-width: calc(100vw - 8px) !important; }
-  .app-header { padding:3px 4px !important; }
+  .gradio-container { margin:8px !important; max-width: calc(100vw - 16px) !important; }
+  .app-header { padding:8px 10px !important; }
   .batch-viewers-row { flex-direction:column !important; }
   .batch-bottom-row { flex-direction:column !important; }
   .tabitem { min-height: 0 !important; }
-  /* Tabs wrap into 2 rows of 3 on narrow screens — no horizontal scroll */
   .tabs > .tab-nav {
     flex-wrap: wrap !important;
     height: auto !important;
-    gap: 2px 2px !important;
-    padding-bottom: 2px !important;
-    align-items: stretch !important;
+    gap: 0 !important;
   }
   .tabs > .tab-nav button,
   .tabs > .tab-nav button.selected {
     flex: 1 1 31% !important;
     min-width: 110px !important;
-    height: 28px !important;
+    height: 40px !important;
     margin-bottom: 0 !important;
+    border-bottom: var(--border) !important;
+    border-right: var(--border) !important;
   }
-  .tabs > .tab-nav button.selected { height: 28px !important; border-bottom: 2px outset #dfdfdf !important; }
 }
 @media (max-width: 1100px) {
   .draw-tab-row { flex-direction:column !important; }
   .draw-tab-row > .gr-column:first-child,
   .draw-tab-row > .gr-column:last-child { flex: 1 1 auto !important; width: 100% !important; }
-  /* Keep tabs equal-width until 900px, then they wrap */
-  .tabs > .tab-nav button { font-size:10px !important; padding:0 6px !important; gap:4px !important; }
+  .tabs > .tab-nav button { font-size:11px !important; padding:0 6px !important; gap:4px !important; }
 }
