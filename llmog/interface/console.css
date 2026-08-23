@@ -710,13 +710,146 @@ input[type="checkbox"] { accent-color:#000080 !important; }
 /* ── Gradio form / block title overrides ── */
 .gr-form, .gr-padded { background:#c0c0c0 !important; }
 
+/* ── TAB WIDTH STABILIZATION FIX ──────────────────────────────────────────
+   Problem: each TabItem (Model / Draw / Batch / Prompts / Realtime) had a
+   different intrinsic width because columns used min_width=380/520 and
+   buttons/labels had wildly different text lengths. Switching tabs caused
+   the outer .gradio-container / .tabs to reflow and the page to "jump".
+
+   Fix: lock the outer shell to a stable width and force every tab pane
+   and every inner row/column to fill 100% without letting min-width or
+   button text inflate the pane. Labels/buttons are allowed to wrap or
+   ellipsis instead of expanding the tab.
+   ─────────────────────────────────────────────────────────────────────── */
+html { scrollbar-gutter: stable !important; }
+
+.gradio-container, .gradio-container-4-24-0 {
+  width: 1320px !important;
+  max-width: calc(100vw - 28px) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.tabs {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.tabs > .tab-nav {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
+  flex-wrap: nowrap !important;
+}
+
+.tabs > .tab-nav button {
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+.tabitem {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  min-height: 760px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+/* Inner layout rows — force full-width, prevent Gradio min_width from
+   expanding the tab. Columns share space equally and can shrink. */
+.batch-main-container,
+.batch-hero-panel,
+.batch-bottom-row,
+.draw-tab-row,
+.neo-retro-card {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.batch-bottom-row,
+.draw-tab-row {
+  align-items: stretch !important;
+  gap: 6px !important;
+}
+
+/* Gradio Columns inside those rows: override Python min_width=380/520 */
+.batch-bottom-col,
+.draw-tab-row > .gr-column,
+.draw-tab-row > div[class*="column"],
+.neo-retro-card > .gr-row > .gr-column,
+#tab-server-row > .gr-column {
+  min-width: 0 !important;
+  flex: 1 1 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Draw left/right explicit balance (scale 3 vs 2) → 60% / 40% on desktop */
+.draw-tab-row > .gr-column:first-child,
+.draw-tab-row > div:first-child {
+  flex: 3 1 0 !important;
+}
+.draw-tab-row > .gr-column:last-child,
+.draw-tab-row > div:last-child {
+  flex: 2 1 0 !important;
+}
+
+/* Prevent buttons / labels from inflating tab width */
+.gr-button, button.primary, button.secondary, .canvas-tool-btn {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  flex-shrink: 1 !important;
+  box-sizing: border-box !important;
+}
+
+.btn-group {
+  flex-wrap: wrap !important;
+  min-width: 0 !important;
+}
+
+label span, .block-title, label > span, .gr-radio label span, .gr-checkbox label span {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  min-width: 0 !important;
+  white-space: normal !important;
+}
+
+.gr-group, .gr-box, .gr-panel, .block, .config-card, .output-panel,
+.img-viewer-wrap, .batch-viewers-row, .pose-viewer-container {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Batch viewers + realtime viewers keep equal height, don't expand width */
+.batch-viewers-row, .rt-webcam-wrap {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
 /* ── Responsive — keep bevels even on mobile ── */
 @media (max-width: 900px) {
-  .gradio-container { margin:4px !important; }
+  .gradio-container { margin:4px !important; max-width: calc(100vw - 8px) !important; }
   .app-header { padding:3px 4px !important; }
   .batch-viewers-row { flex-direction:column !important; }
   .batch-bottom-row { flex-direction:column !important; }
+  .tabitem { min-height: 0 !important; }
 }
 @media (max-width: 1100px) {
   .draw-tab-row { flex-direction:column !important; }
+  .draw-tab-row > .gr-column:first-child,
+  .draw-tab-row > .gr-column:last-child { flex: 1 1 auto !important; width: 100% !important; }
 }
