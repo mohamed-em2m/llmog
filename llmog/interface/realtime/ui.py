@@ -72,16 +72,7 @@ def _build_realtime_tab() -> Dict[str, Any]:
     c["session_state"] = gr.State(new_session_detector)
 
     with gr.Column(elem_classes=["neo-retro-card"]):
-        gr.HTML(
-            """
-        <div style="padding: 10px; border-bottom: 2px solid #00ffcc; background: #050811;">
-            <span class="neo-retro-badge">LIVE CYBER-STREAM</span>
-            <h2 style="color: #00ffcc; font-family: 'JetBrains Mono', monospace; margin: 5px 0 0;">
-                ⚡ REAL-TIME WEBCAM & VIDEO FRAME DETECTOR (MULTI-TRACKER INTEGRATED)
-            </h2>
-        </div>
-        """
-        )
+        gr.HTML('<p class="section-label">🎥 Real-Time Detection — Webcam & Video (Multi-Tracker Integrated)</p>')
         with gr.Row():
             with gr.Column(scale=1):
                 c["stream_mode"] = gr.Radio(
@@ -304,9 +295,9 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     label="VIDEO FRAME SAMPLING INTERVAL (SECONDS)",
                 )
                 c["process_video_btn"] = gr.Button(
-                    "⚡ PROCESS VIDEO FRAMES",
+                    "▶  Process Video Frames",
                     variant="primary",
-                    elem_classes=["neo-retro-badge"],
+                    scale=1,
                 )
                 c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
 

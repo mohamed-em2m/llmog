@@ -438,18 +438,16 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                             value=False,
                         )
 
-                gr.HTML('<div class="btn-group" style="margin-top:0.75rem;">')
-                with gr.Row():
-                    start_server_btn = gr.Button("▶  Start Server", variant="primary")
+                with gr.Row(elem_classes=["btn-group"]):
+                    start_server_btn = gr.Button("▶  Start Server", variant="primary", scale=2)
                     stop_server_btn = gr.Button(
-                        "⏹  Stop Server", variant="secondary", size="sm"
+                        "⏹  Stop Server", variant="secondary", scale=1
                     )
                     refresh_logs_btn = gr.Button(
                         "🔄 Refresh Logs",
                         variant="secondary",
-                        size="sm",
+                        scale=1,
                     )
-                gr.HTML("</div>")
 
             with gr.Group(visible=False) as ext_api_group:
                 gr.HTML(

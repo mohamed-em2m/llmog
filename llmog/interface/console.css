@@ -196,46 +196,76 @@ body::after {
 .pill-error    { color:#ffffff; background:#800000 !important; border-color:#400000 !important; }
 .pill-cancelled{ color:#000; background:#c0c0c0 !important; }
 
-/* ── Tabs — classic folder tabs (outset, selected lifts) ── */
-.tabs { background: #c0c0c0 !important; border: 2px inset #808080 !important; padding: 2px !important; }
+/* ── Tabs — Win95 folder tabs, equal-width + stable bar ── */
+.tabs { background: #c0c0c0 !important; border: 2px inset #808080 !important; padding: 4px 4px 0 !important; }
 .tabs > .tab-nav {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-end !important;
+  justify-content: stretch !important;
+  gap: 2px !important;
+  width: 100% !important;
+  height: 30px !important;
   background: #c0c0c0 !important;
   border: none !important;
   border-bottom: 2px solid #000000 !important;
-  padding: 4px 6px 0 !important;
-  gap: 2px !important;
-  flex-wrap: wrap !important;
+  padding: 0 6px !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
 }
 .tabs > .tab-nav button {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 26px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
   font-family: 'MS Sans Serif', sans-serif !important;
   font-size: 11px !important; font-weight:400 !important;
+  line-height: 1 !important;
   color: #000 !important;
-  background: #c0c0c0 !important;
+  background: #b8b8b8 !important;
   border: 2px outset #dfdfdf !important;
   border-bottom: none !important;
   border-top-color:#ffffff !important; border-left-color:#ffffff !important;
-  border-right-color:#000000 !important;
+  border-right-color:#808080 !important; border-bottom-color:transparent !important;
   border-radius: 0 !important;
-  padding: 4px 10px 3px !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
   margin-bottom: -2px !important;
   letter-spacing:0 !important; text-transform:none !important;
   box-shadow: none !important;
-  top: 1px; position: relative;
+  position: relative !important; top: 0 !important;
+  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+  cursor: pointer !important;
+  transition: background 70ms steps(4), height 70ms steps(4), font-weight 70ms steps(4) !important;
 }
-.tabs > .tab-nav button:hover { background:#d4d0c8 !important; }
+.tabs > .tab-nav button:hover { background:#d4d0c8 !important; color:#000 !important; }
+.tabs > .tab-nav button:active { border: 2px inset #808080 !important; border-bottom:none !important; padding-top:1px !important; }
 .tabs > .tab-nav button.selected {
+  flex: 1 1 0 !important;
+  height: 28px !important;
   background: #c0c0c0 !important;
   color:#000 !important;
+  border: 2px outset #dfdfdf !important;
   border-bottom: 2px solid #c0c0c0 !important;
-  z-index: 2 !important;
+  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
+  border-right-color:#000000 !important;
+  z-index: 3 !important;
   font-weight:700 !important;
   text-shadow:none !important;
+  box-shadow: inset 1px 1px 0 #ffffff !important;
 }
 .tabitem {
   background: #c0c0c0 !important;
   border: 2px outset #dfdfdf !important;
   border-top: none !important;
-  padding: 8px !important;
+  border-left-color:#ffffff !important; border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  padding: 10px 8px 8px !important;
+  animation: fade-in 120ms steps(5) !important;
+  min-height: 760px !important;
 }
 
 /* ── Section labels — small caps on silver bar with etched line ── */
@@ -691,24 +721,240 @@ input[type="checkbox"] { accent-color:#000080 !important; }
 .bsh-metrics .mchip.mrun { background:#ffffcc !important; }
 .bsh-metrics .mchip.mfail { background:#ffcccc !important; }
 
-/* ── Neo-retro leftover — re-skin to retro ── */
+/* ── Neo-retro leftover — re-skin to retro (now unified window) ── */
 .neo-retro-card {
   background:#c0c0c0 !important; border:2px outset #dfdfdf !important;
-  box-shadow: inset -1px -1px 0 #808080, 4px 4px 0 rgba(0,0,0,0.25) !important;
+  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
+  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #dfdfdf, 4px 4px 0 rgba(0,0,0,0.25) !important;
   border-radius:0 !important;
+  padding:2px !important;
 }
 .neo-retro-card::before {
-  content:"RETRO OS — VISION HUD v1.0" !important;
-  background: linear-gradient(90deg, #000080, #0000a0) !important;
-  color:#ffffff !important; font-family:'MS Sans Serif', sans-serif !important;
-  font-size:10px !important; font-weight:700 !important; letter-spacing:0 !important;
-  padding:2px 6px !important; border-bottom:2px outset #c0c0c0 !important;
+  display:none !important; /* title is now .section-label inside the card — avoid double bar */
 }
 .neo-retro-badge { background:#c0c0c0 !important; color:#000 !important; border:2px outset #dfdfdf !important; border-radius:0 !important; box-shadow:none !important; font-family:'MS Sans Serif', sans-serif !important; font-size:10px !important; }
 .neo-retro-hud-stat { font-family:'VT323', monospace !important; color:#000080 !important; text-shadow:none !important; }
 
+/* Kill any lingering inline neon header — force retro */
+.neo-retro-card > div[style*="00ffcc"],
+.neo-retro-card > div[style*="050811"] {
+  background:#c0c0c0 !important;
+  border:none !important;
+  border-bottom:2px groove #808080 !important;
+  padding:0 !important;
+}
+
 /* ── Gradio form / block title overrides ── */
 .gr-form, .gr-padded { background:#c0c0c0 !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   THEME UNIFICATION PATCH — v2
+   Makes every tab use the SAME Win95 window structure + button system.
+   Before: Batch hero / Bottom-col / Draw canvas / Neo-retro / Server logs
+   each had different borders, paddings, title bars and button sizes.
+   After:  one shared window shell, one button scale, one title style.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shared window shell — every major panel ── */
+.gr-group, .gr-box, .gr-panel, .block,
+.config-card, .output-panel,
+.batch-hero-panel, .batch-bottom-col,
+.neo-retro-card, .custom-canvas-container,
+.pose-viewer-container, .img-viewer-wrap,
+.batch-explorer-bar, .batch-explorer-tabs,
+.json-panel {
+  background:#c0c0c0 !important;
+  border:2px outset #dfdfdf !important;
+  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
+  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  border-radius:0 !important;
+  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+  box-sizing:border-box !important;
+}
+
+/* Inner sunken fields (white) — keep inset look */
+.out-md-wrap, .json-panel-body, .hero-empty,
+.batch-explorer-tabs .tabitem, .img-viewer-wrap .gradio-image,
+.pose-viewer-container .canvas-wrapper,
+.canvas-stage-wrapper {
+  background:#ffffff !important;
+  border:2px inset #808080 !important;
+  border-top-color:#808080 !important; border-left-color:#808080 !important;
+  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
+  border-radius:0 !important;
+}
+
+/* ── Unified section titles — single source for all tabs ── */
+.section-label {
+  font-family:'MS Sans Serif', sans-serif !important;
+  font-size:11px !important; font-weight:700 !important;
+  color:#ffffff !important;
+  background: linear-gradient(90deg, #000080 0%, #0000cd 100%) !important;
+  border:2px outset #c0c0c0 !important;
+  border-bottom:2px outset #c0c0c0 !important;
+  padding:3px 6px !important;
+  margin:0 0 6px 0 !important;
+  display:flex !important; align-items:center !important;
+  min-height:18px !important;
+  letter-spacing:0 !important; text-transform:none !important;
+}
+/* Keep old silver section-labels (inside prep_group) as sub-headers, not main */
+.config-section-title {
+  background:#c0c0c0 !important;
+  border-top:2px groove #c0c0c0 !important;
+  color:#000080 !important;
+  padding:5px 0 3px !important;
+  margin:8px 0 4px !important;
+}
+
+/* Config cards — uniform inset, no hover border shift that caused jump */
+.config-card { padding:6px !important; margin-bottom:6px !important; }
+.config-card:hover { border-left:2px outset #dfdfdf !important; }
+.config-card-title {
+  font-family:'MS Sans Serif', sans-serif !important;
+  font-size:11px !important; font-weight:700 !important;
+  color:#000080 !important;
+  margin-bottom:4px !important;
+}
+
+/* ── Unified button system — ONE size, ONE structure ── */
+:root { --win-btn-h:26px; --win-btn-pad:0 14px; }
+
+/* Base — all Gradio buttons + custom canvas toolbar buttons */
+button.primary, button.secondary, .gr-button,
+.canvas-tool-btn, .pose-viewer-container .cp-btn,
+.btn-canvas-primary, .btn-canvas-secondary {
+  font-family:'MS Sans Serif', sans-serif !important;
+  font-size:11px !important; font-weight:400 !important;
+  line-height:1 !important;
+  letter-spacing:0 !important; text-transform:none !important;
+  height:var(--win-btn-h) !important;
+  min-height:var(--win-btn-h) !important;
+  max-height:var(--win-btn-h) !important;
+  padding:var(--win-btn-pad) !important;
+  border:2px outset #dfdfdf !important;
+  border-top-color:#ffffff !important; border-left-color:#ffffff !important;
+  border-right-color:#000000 !important; border-bottom-color:#000000 !important;
+  border-radius:0 !important;
+  background:#c0c0c0 !important; color:#000 !important;
+  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  gap:6px !important;
+  white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
+  box-sizing:border-box !important;
+  transition:none !important;
+  flex-shrink:0 !important;
+  min-width:92px !important;
+}
+
+/* Primary = default action — bold + dotted focus rect */
+button.primary, .gr-button.primary, .btn-canvas-primary {
+  font-weight:700 !important;
+  outline:1px dotted #000 !important; outline-offset:-4px !important;
+}
+
+/* Secondary — normal weight */
+button.secondary, .gr-button.secondary, .btn-canvas-secondary {
+  font-weight:400 !important;
+}
+
+/* Danger — subtle red tint but same bevel (reset/clear) */
+.canvas-tool-btn.danger, .gr-button.danger {
+  background:#c0c0c0 !important; color:#800000 !important;
+}
+.canvas-tool-btn.danger:hover, .gr-button.danger:hover {
+  background:#ffdddd !important; border-color:#800000 !important; color:#800000 !important;
+}
+
+/* Hover — same for all, no lift/shadow change */
+button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled),
+.gr-button:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled),
+.pose-viewer-container .cp-btn:hover {
+  background:#d4d0c8 !important;
+  transform:none !important;
+  box-shadow: inset -1px -1px 0 #808080, inset 1px 1px 0 #ffffff !important;
+}
+
+/* Pressed — inset */
+button.primary:active:not(:disabled), button.secondary:active:not(:disabled),
+.gr-button:active:not(:disabled), .canvas-tool-btn:active:not(:disabled) {
+  border:2px inset #808080 !important;
+  border-top-color:#000000 !important; border-left-color:#000000 !important;
+  border-right-color:#ffffff !important; border-bottom-color:#ffffff !important;
+  box-shadow: inset 1px 1px 0 #808080 !important;
+  padding:1px 13px 0 15px !important;
+  transform:none !important;
+}
+
+/* Disabled — Win95 greyed with emboss */
+button:disabled, .gr-button:disabled, .canvas-tool-btn:disabled {
+  color:#808080 !important; text-shadow:1px 1px 0 #ffffff !important;
+  opacity:1 !important; background:#c0c0c0 !important;
+  border:2px outset #dfdfdf !important;
+}
+
+/* Size="sm" — Gradio's small variant was 30% shorter and broke row height.
+   Force it to the same 26px so every btn-group row has identical height. */
+.gr-button[size="sm"], button[size="sm"] {
+  height:var(--win-btn-h) !important;
+  min-height:var(--win-btn-h) !important;
+  padding:var(--win-btn-pad) !important;
+  font-size:11px !important;
+  min-width:72px !important;
+}
+
+/* Active/selected toolbar buttons — inset + navy (same as viewer) */
+.canvas-tool-btn.active, .pose-viewer-container .cp-btn.active,
+.pose-viewer-container .toggle-image-btn.active {
+  background:#000080 !important; color:#ffffff !important;
+  border:2px inset #000040 !important;
+  box-shadow:none !important;
+}
+
+/* Button groups — uniform row in every tab */
+.btn-group {
+  display:flex !important;
+  flex-wrap:wrap !important;
+  gap:6px !important;
+  align-items:stretch !important;
+  min-width:0 !important;
+  margin-top:6px !important;
+}
+.btn-group .gr-button, .btn-group button {
+  flex:1 1 0 !important;
+  min-width:110px !important;
+  max-width:260px !important;
+}
+
+/* Canvas toolbar — same button system but compact and non-stretching */
+.canvas-toolbar .canvas-tool-btn {
+  min-width:0 !important; flex:0 0 auto !important;
+  height:22px !important; min-height:22px !important; max-height:22px !important;
+  padding:0 8px !important; font-size:11px !important;
+}
+.canvas-toolbar .color-swatch { border:1px outset #ffffff !important; box-shadow: inset -1px -1px 0 #808080 !important; }
+
+/* DetectionViewer controls — same 22px compact */
+.pose-viewer-container .cp-btn { height:22px !important; min-height:22px !important; max-height:22px !important; padding:0 8px !important; min-width:0 !important; }
+
+/* Gradio Rows / Columns — uniform gaps */
+.gr-row { gap:6px !important; }
+.gr-column { gap:6px !important; }
+
+/* Accordion — same header height, no extra padding jump */
+.gr-accordion { margin:6px 0 !important; }
+.gr-accordion summary, details > summary {
+  min-height:22px !important; display:flex !important; align-items:center !important;
+  padding:3px 6px !important;
+}
+
+/* Inputs — uniform 22px height */
+input:not([type="checkbox"]):not([type="radio"]), textarea, select,
+.gr-text-input, .gr-dropdown {
+  min-height:22px !important;
+}
+.gr-dropdown .wrap { min-height:22px !important; }
 
 /* ── TAB WIDTH STABILIZATION FIX ──────────────────────────────────────────
    Problem: each TabItem (Model / Draw / Batch / Prompts / Realtime) had a
@@ -738,22 +984,23 @@ html { scrollbar-gutter: stable !important; }
   overflow: hidden !important;
 }
 
+/* Keep equal-width folder tabs — do NOT revert to 0 0 auto */
 .tabs > .tab-nav {
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
-  scrollbar-width: thin;
+  overflow: visible !important;
+  scrollbar-width: none !important;
   flex-wrap: nowrap !important;
+  /* height/gap already set in Tabs v3 block above */
 }
-
 .tabs > .tab-nav button {
-  flex: 0 0 auto !important;
+  flex: 1 1 0 !important;
   white-space: nowrap !important;
   min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
 }
-
 .tabitem {
   width: 100% !important;
   max-width: 100% !important;
@@ -840,16 +1087,34 @@ label span, .block-title, label > span, .gr-radio label span, .gr-checkbox label
   max-width: 100% !important;
 }
 
-/* ── Responsive — keep bevels even on mobile ── */
+/* ── Responsive — keep bevels even on mobile + tab wrapping ── */
 @media (max-width: 900px) {
   .gradio-container { margin:4px !important; max-width: calc(100vw - 8px) !important; }
   .app-header { padding:3px 4px !important; }
   .batch-viewers-row { flex-direction:column !important; }
   .batch-bottom-row { flex-direction:column !important; }
   .tabitem { min-height: 0 !important; }
+  /* Tabs wrap into 2 rows of 3 on narrow screens — no horizontal scroll */
+  .tabs > .tab-nav {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    gap: 2px 2px !important;
+    padding-bottom: 2px !important;
+    align-items: stretch !important;
+  }
+  .tabs > .tab-nav button,
+  .tabs > .tab-nav button.selected {
+    flex: 1 1 31% !important;
+    min-width: 110px !important;
+    height: 28px !important;
+    margin-bottom: 0 !important;
+  }
+  .tabs > .tab-nav button.selected { height: 28px !important; border-bottom: 2px outset #dfdfdf !important; }
 }
 @media (max-width: 1100px) {
   .draw-tab-row { flex-direction:column !important; }
   .draw-tab-row > .gr-column:first-child,
   .draw-tab-row > .gr-column:last-child { flex: 1 1 auto !important; width: 100% !important; }
+  /* Keep tabs equal-width until 900px, then they wrap */
+  .tabs > .tab-nav button { font-size:10px !important; padding:0 6px !important; gap:4px !important; }
 }
