@@ -74,6 +74,15 @@
 }
 
 @keyframes fade-in { from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:translateY(0)} }
+@keyframes bauhaus-float { 0%,100% { transform: translate(0,0) scale(1) } 25% { transform: translate(10px,-14px) scale(1.02) } 50% { transform: translate(-7px,-18px) scale(0.98) } 75% { transform: translate(-12px,8px) scale(1.01) } }
+@keyframes bauhaus-float-slow { 0%,100% { transform: translate(0,0) } 50% { transform: translate(-14px,12px) } }
+@keyframes bauhaus-pulse { 0%,100% { transform: scale(1); opacity:0.09 } 50% { transform: scale(1.04); opacity:0.13 } }
+@keyframes bauhaus-enter { from{opacity:0; transform:translateY(14px) scale(0.97)} to{opacity:1; transform:translateY(0) scale(1)} }
+@keyframes shimmer { 0%{ transform: translateX(-100%) } 100%{ transform: translateX(220%) } }
+@keyframes badge-pulse { 0%,100%{ transform: scale(1) } 50%{ transform: scale(1.06) } }
+@keyframes ring-rotate { from{ transform: rotate(0deg)} to{ transform: rotate(360deg)} }
+@keyframes btn-pop { 0%{ transform: scale(1)} 40%{ transform: scale(1.04)} 100%{ transform: scale(1)} }
+@keyframes card-lift { from{ transform: translateY(0)} to{ transform: translateY(-2px)} }
 
 /* ── Base ── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -125,14 +134,44 @@ body::after { display: none !important; }
   background: var(--color-accent-pink) !important;
   opacity: 0.09 !important;
   top: -140px !important; right: -100px !important;
+  animation: bauhaus-float 7s ease-in-out infinite !important;
+  will-change: transform !important;
 }
 .gradio-container::after {
   width: 360px !important; height: 360px !important;
   background: var(--color-accent-blue) !important;
   opacity: 0.07 !important;
   bottom: -120px !important; left: -80px !important;
+  animation: bauhaus-float-slow 9s ease-in-out infinite !important;
+  animation-delay: -2s !important;
+  will-change: transform !important;
 }
 .gradio-container > .main, .gradio-container > div { background: transparent !important; position: relative !important; z-index: 1 !important; }
+/* ── Extra floating bubbles — subtle drift, respects reduced-motion ── */
+.bauhaus-bubble {
+  position: absolute !important;
+  border-radius: 50% !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+.bauhaus-bubble--yellow {
+  width: 200px !important; height: 200px !important;
+  background: var(--color-accent-yellow) !important;
+  opacity: 0.10 !important;
+  top: 180px !important; left: -60px !important;
+  animation: bauhaus-pulse 6s ease-in-out infinite !important;
+}
+.bauhaus-bubble--orange {
+  width: 140px !important; height: 140px !important;
+  background: var(--color-accent-orange) !important;
+  opacity: 0.08 !important;
+  top: 420px !important; right: 40px !important;
+  animation: bauhaus-float 8s ease-in-out infinite !important;
+  animation-delay: -4s !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gradio-container::before, .gradio-container::after, .bauhaus-bubble { animation: none !important; }
+}
 /* ── Bauhaus quarter-circles + teal triangle décor — cropped at edges ── */
 .gradio-container .tabitem::before {
   content: '' !important;
@@ -144,6 +183,8 @@ body::after { display: none !important; }
   top: -40px !important; right: -40px !important;
   pointer-events: none !important;
   z-index: 0 !important;
+  animation: bauhaus-float 10s ease-in-out infinite !important;
+  animation-delay: -3s !important;
 }
 .gradio-container .tabitem { position: relative !important; overflow: hidden !important; }
 .custom-canvas-container::after {
@@ -887,6 +928,37 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
   opacity: 0.95 !important;
   pointer-events: none !important;
   border-radius: 0 0 0 16px !important;
+}
+
+/* ── Cool animations — Bauhaus motion system ── */
+.tabitem { animation: bauhaus-enter 0.45s cubic-bezier(0.16,1,0.3,1) both !important; }
+.gr-group, .config-card, .metric-card, .batch-explorer-bar, .custom-canvas-container, .pose-viewer-container {
+  animation: bauhaus-enter 0.38s ease both !important;
+}
+.gr-group:nth-child(1) { animation-delay: 0.04s !important; }
+.gr-group:nth-child(2) { animation-delay: 0.08s !important; }
+.gr-group:nth-child(3) { animation-delay: 0.12s !important; }
+.config-card:nth-child(1) { animation-delay: 0.02s !important; }
+.config-card:nth-child(2) { animation-delay: 0.06s !important; }
+.config-card:nth-child(3) { animation-delay: 0.10s !important; }
+.custom-progress-fill { position: relative !important; overflow: hidden !important; }
+.custom-progress-fill::after {
+  content: '' !important;
+  position: absolute !important; inset: 0 !important;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.42) 50%, transparent 100%) !important;
+  transform: translateX(-100%) !important;
+  animation: shimmer 1.8s ease-in-out infinite !important;
+}
+.badge-running, .score-badge { animation: badge-pulse 1.8s ease-in-out infinite !important; }
+.tabs > .tab-nav button.selected { animation: btn-pop 0.36s ease !important; }
+.gr-image img, .gr-gallery img { transition: transform 0.35s ease, filter 0.2s ease !important; }
+.gr-image img:hover, .gr-gallery img:hover { transform: scale(1.025) !important; filter: brightness(1.04) !important; }
+.app-header h1::before { animation: bauhaus-float 5.5s ease-in-out infinite !important; }
+.gr-button:active, button:active { animation: btn-pop 0.25s ease !important; }
+.bauhaus-rings .ring-outer { animation: bauhaus-pulse 2.4s ease-in-out infinite !important; }
+.bauhaus-rings .ring-middle { animation: bauhaus-pulse 2.4s ease-in-out infinite 0.3s !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tabitem, .gr-group, .config-card, .custom-progress-fill::after, .badge-running, .tabs > .tab-nav button.selected, .gr-image img { animation: none !important; transition: none !important; }
 }
 
 /* Ensure decorative circles don't block interaction */
