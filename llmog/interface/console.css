@@ -920,6 +920,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
 /* Batch — upload + Run on one row; pill tokens */
 .upload-run-row { align-items: center !important; gap: 10px !important; flex-wrap: nowrap !important; }
 .upload-run-row .gr-button { min-width: 140px !important; border-radius: 999px !important; }
+/* Batch explorer arrow navigation */
+.explorer-nav-row { align-items: center !important; gap: 6px !important; }
+.nav-arrow { min-width: 40px !important; width: 40px !important; height: 36px !important; border-radius: 999px !important; padding: 0 !important; font-weight: 800 !important; }
+/* Batch source viewer — fixed 520px, prevent collapse before results */
+.batch-bottom-col .gr-image { height: 520px !important; min-height: 520px !important; max-height: 520px !important; display: flex !important; align-items: center !important; justify-content: center !important; border-radius: 16px !important; overflow: hidden !important; }
+.batch-bottom-col .gr-image .wrap, .batch-bottom-col .gr-image [data-testid="image"] { height: 100% !important; min-height: 520px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
 
 /* ── Bauhaus decorative corner triangle (teal) ── */
 .bauhaus-corner-triangle {
@@ -964,6 +970,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
   .tabitem, .gr-group, .config-card, .custom-progress-fill::after, .badge-running, .tabs > .tab-nav button.selected, .gr-image img { animation: none !important; transition: none !important; }
 }
 
-/* Ensure decorative circles don't block interaction */
-.gradio-container * { position: relative; }
-.gradio-container::before, .gradio-container::after { pointer-events: none !important; }
+/* Ensure decorative circles don't block interaction — scoped, not global */
+.gradio-container, .tabitem, .gr-group, .gr-column, .batch-bottom-col, .custom-canvas-container, .rt-webcam-wrap { position: relative !important; }
+.gradio-container::before, .gradio-container::after, .bauhaus-bubble { pointer-events: none !important; }

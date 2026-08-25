@@ -498,13 +498,15 @@ def build_batch_tab() -> Dict[str, Any]:
         # ── DROPDOWN 4: Explorer & Diagnostics — focused ──
         with gr.Accordion("🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False):
             with gr.Group(elem_classes=["batch-explorer-bar"]):
-                with gr.Row(equal_height=True):
+                with gr.Row(equal_height=True, elem_classes=["explorer-nav-row"]):
+                    explorer_prev_btn = gr.Button("◀", scale=1, size="sm", variant="secondary", elem_classes=["nav-arrow"], min_width=40)
                     explorer_image_select = gr.Dropdown(
                         label="Select Image",
                         choices=[],
                         interactive=True,
                         scale=4,
                     )
+                    explorer_next_btn = gr.Button("▶", scale=1, size="sm", variant="secondary", elem_classes=["nav-arrow"], min_width=40)
                     explorer_round_select = gr.Dropdown(
                         label="Select Round",
                         choices=[],
@@ -628,6 +630,8 @@ def build_batch_tab() -> Dict[str, Any]:
         hero_source_image=hero_source_image,
         hero_info=hero_info,
         explorer_image_select=explorer_image_select,
+        explorer_prev_btn=explorer_prev_btn,
+        explorer_next_btn=explorer_next_btn,
         explorer_round_select=explorer_round_select,
         round_score_display=round_score_display,
         show_grid_chk=show_grid_chk,

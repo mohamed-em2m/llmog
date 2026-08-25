@@ -37,6 +37,8 @@ from interface.tab_batch import (
     cancel_pipeline,
     on_explorer_image_change,
     on_explorer_round_change,
+    on_explorer_prev,
+    on_explorer_next,
 )
 from interface.batch.explorer import _viewer_payload_for as _hero_payload_builder
 from interface.state import _cache_get as _hero_cache_get
@@ -120,7 +122,7 @@ def _on_endpoint_mode_change(mode: str):
     )
 
 
-def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
+def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state):
 
     """Wire all event handlers across server, batch, and prompt tabs."""
 
@@ -287,6 +289,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
             c_bat["prep_custom_resize_chk"],
             c_bat["prep_custom_resize_width"],
             c_bat["prep_custom_resize_height"],
+            write_yolo_state,
             c_bat["category_strategy"],
         ],
         outputs=[
@@ -373,6 +376,18 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         outputs=_explorer_outputs,
     )
 
+    # ── Arrow navigation for batch explorer ──
+    c_bat["explorer_prev_btn"].click(
+        on_explorer_prev,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+    )
+    c_bat["explorer_next_btn"].click(
+        on_explorer_next,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+    )
+
 
 def build_app() -> gr.Blocks:
     with gr.Blocks(
@@ -400,6 +415,7 @@ def build_app() -> gr.Blocks:
         )
 
         batch_id_state = gr.State("")
+        write_yolo_state = gr.State(False)
 
         with gr.Tabs():
             with gr.TabItem("🧠 Model / Endpoint"):
@@ -421,7 +437,7 @@ def build_app() -> gr.Blocks:
                 c_rt_interactive = build_realtime_interactive_tab()
 
         # ── Wire all events ───────────────────────────────────────────────
-        _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state)
+        _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state)
         wire_draw_events(c_draw, c_srv, c_bat)
         _wire_realtime_events(c_rt, c_srv, c_bat)
         wire_realtime_interactive_events(c_rt_interactive, c_srv)

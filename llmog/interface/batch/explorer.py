@@ -27,6 +27,36 @@ def on_explorer_image_change(selected_image: str, batch_id: str):
     return gr.update(choices=choices, value="Final Best")
 
 
+def on_explorer_prev(current: str, batch_id: str):
+    """Navigate to previous image — arrow navigation for batch results."""
+    batch_results = _cache_get(batch_id)
+    if not batch_results:
+        return gr.update()
+    choices = list(batch_results.keys())
+    if not choices:
+        return gr.update()
+    if not current or current not in choices:
+        return gr.update(value=choices[0])
+    idx = choices.index(current)
+    new_idx = max(0, idx - 1)
+    return gr.update(value=choices[new_idx])
+
+
+def on_explorer_next(current: str, batch_id: str):
+    """Navigate to next image — arrow navigation for batch results."""
+    batch_results = _cache_get(batch_id)
+    if not batch_results:
+        return gr.update()
+    choices = list(batch_results.keys())
+    if not choices:
+        return gr.update()
+    if not current or current not in choices:
+        return gr.update(value=choices[0])
+    idx = choices.index(current)
+    new_idx = min(len(choices) - 1, idx + 1)
+    return gr.update(value=choices[new_idx])
+
+
 def _viewer_payload_for(
     base_img: Optional[Image.Image],
     detections: list | None,

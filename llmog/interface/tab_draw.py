@@ -1214,111 +1214,15 @@ def _load_sample_bridge():
 
 def build_draw_tab() -> Dict[str, Any]:
     """Build the dedicated Draw & Recognize tab — twin 520px (canvas + results same level), tools below canvas."""
-    with gr.Column():
-        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
-            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-                gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
-                custom_canvas_view = gr.HTML(
-                    value=_CANVAS_STAGE_HTML,
-                    js_on_load=_CUSTOM_CANVAS_JS,
-                    elem_id="draw-canvas-html",
-                )
-                # Tools below canvas — same IDs, JS finds globally (fixes same-level alignment)
-                toolbar_view = gr.HTML(value=_TOOLBAR_HTML, elem_id="draw-toolbar-html")
-
-            # Hidden payload and sample bridge components
-            custom_draw_payload = gr.Textbox(
-                value="{}",
-                visible=False,
-                elem_id="custom_draw_payload_box",
+    # ── Top twin: canvas stage (520) | recognition viewer (520) — same level ──
+    with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+            gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
+            custom_canvas_view = gr.HTML(
+                value=_CANVAS_STAGE_HTML,
+                js_on_load=_CUSTOM_CANVAS_JS,
+                elem_id="draw-canvas-html",
             )
-            recls_sample_bridge_btn = gr.Button(
-                "Sample Bridge",
-                visible=False,
-                elem_id="recls_sample_bridge_btn",
-            )
-
-            with gr.Row(elem_classes=["btn-group"]):
-                recls_run_btn = gr.Button(
-                    "🔎  Recognize Drawn Regions",
-                    variant="primary",
-                    scale=2,
-                    interactive=True,
-                )
-                recls_clear_btn = gr.Button(
-                    "🗑️ Clear Results",
-                    variant="secondary",
-                    scale=1,
-                )
-
-            # ── Target classes & detection mode (input) ───────────────────
-            with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
-                recls_class_mode = gr.Radio(
-                    label="🎯 Class Expectation Mode",
-                    choices=[
-                        ("🔒 Strict (Closed-Set)", "strict"),
-                        ("🔀 Hybrid (Extendable)", "hybrid"),
-                        ("🌐 Free (Open-World)", "free"),
-                    ],
-                    value="free",
-                    info="Free: Agent autonomously names any object/defect. Strict: locked to listed classes.",
-                )
-
-                recls_preset_dropdown = gr.Dropdown(
-                    label="📋 Category Domain Presets",
-                    choices=list(CATEGORY_PRESETS.keys()),
-                    value="Fabric & Surface Defects",
-                    visible=False,
-                    info="Quickly load target classes & expert distinguishing definitions.",
-                )
-
-                recls_classes_input = gr.Textbox(
-                    label="Domain / Focus Hint (Optional)",
-                    placeholder="e.g. Focus on industrial defects, wildlife, electronics... (or leave blank)",
-                    value="",
-                    lines=2,
-                    info="Free Mode: Agent autonomously names any object/defect. Predefined classes are not required.",
-                )
-
-                recls_defs_input = gr.Textbox(
-                    label="Domain Guidance / Prompt Context (Optional)",
-                    placeholder="Optional domain context or special inspection criteria...",
-                    lines=4,
-                    value="",
-                    info="Optional domain guidance.",
-                )
-
-            with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
-                recls_conf_threshold = gr.Slider(
-                    label="Minimum Confidence Threshold (%)",
-                    minimum=0,
-                    maximum=100,
-                    step=5,
-                    value=20,
-                    info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
-                )
-
-                recls_padding_slider = gr.Slider(
-                    label="Region Context Padding (%)",
-                    minimum=0,
-                    maximum=50,
-                    step=1,
-                    value=10,
-                    info="Extra visual context around each drawn region sent to the VLM.",
-                )
-
-                recls_request_mode = gr.Radio(
-                    label="⚡ Request Mode (optional)",
-                    choices=[
-                        ("Sequential – 1 request per region", "sequential"),
-                        ("Parallel – asyncio.gather concurrent", "parallel"),
-                        ("Batched – single request with N images", "batched"),
-                    ],
-                    value="parallel",
-                    info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
-                )
-
-        # ── Right: Recognition Results — twin 520px same level as canvas ──
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
             gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
             recls_status = gr.Markdown("**Status: Idle**")
@@ -1329,18 +1233,100 @@ def build_draw_tab() -> Dict[str, Any]:
                     list_height=520,
                     elem_id="draw-detection-viewer",
                 )
-
             recls_results = gr.HTML(value=_RECLS_EMPTY_TABLE)
-
             with gr.Accordion("YOLO Labels (<class_id> <xc> <yc> <w> <h>)", open=False):
                 recls_yolo = gr.Textbox(
                     lines=8,
                     interactive=False,
                     label="Copy these lines into the image's .txt label file",
                 )
-
+    # ── Below twin: toolbar + controls (full width, not inside twin) ──
+    toolbar_view = gr.HTML(value=_TOOLBAR_HTML, elem_id="draw-toolbar-html")
+    custom_draw_payload = gr.Textbox(
+        value="{}",
+        visible=False,
+        elem_id="custom_draw_payload_box",
+    )
+    recls_sample_bridge_btn = gr.Button(
+        "Sample Bridge",
+        visible=False,
+        elem_id="recls_sample_bridge_btn",
+    )
+    with gr.Row(elem_classes=["btn-group"]):
+        recls_run_btn = gr.Button(
+            "🔎  Recognize Drawn Regions",
+            variant="primary",
+            scale=2,
+            interactive=True,
+        )
+        recls_clear_btn = gr.Button(
+            "🗑️ Clear Results",
+            variant="secondary",
+            scale=1,
+        )
+    # ── Target classes & detection mode (input) ───────────────────
+    with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
+        recls_class_mode = gr.Radio(
+            label="🎯 Class Expectation Mode",
+            choices=[
+                ("🔒 Strict (Closed-Set)", "strict"),
+                ("🔀 Hybrid (Extendable)", "hybrid"),
+                ("🌐 Free (Open-World)", "free"),
+            ],
+            value="free",
+            info="Free: Agent autonomously names any object/defect. Strict: locked to listed classes.",
+        )
+        recls_preset_dropdown = gr.Dropdown(
+            label="📋 Category Domain Presets",
+            choices=list(CATEGORY_PRESETS.keys()),
+            value="Fabric & Surface Defects",
+            visible=False,
+            info="Quickly load target classes & expert distinguishing definitions.",
+        )
+        recls_classes_input = gr.Textbox(
+            label="Domain / Focus Hint (Optional)",
+            placeholder="e.g. Focus on industrial defects, wildlife, electronics... (or leave blank)",
+            value="",
+            lines=2,
+            info="Free Mode: Agent autonomously names any object/defect. Predefined classes are not required.",
+        )
+        recls_defs_input = gr.Textbox(
+            label="Domain Guidance / Prompt Context (Optional)",
+            placeholder="Optional domain context or special inspection criteria...",
+            lines=4,
+            value="",
+            info="Optional domain guidance.",
+        )
+    with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
+        recls_conf_threshold = gr.Slider(
+            label="Minimum Confidence Threshold (%)",
+            minimum=0,
+            maximum=100,
+            step=5,
+            value=20,
+            info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
+        )
+        recls_padding_slider = gr.Slider(
+            label="Region Context Padding (%)",
+            minimum=0,
+            maximum=50,
+            step=1,
+            value=10,
+            info="Extra visual context around each drawn region sent to the VLM.",
+        )
+        recls_request_mode = gr.Radio(
+            label="⚡ Request Mode (optional)",
+            choices=[
+                ("Sequential – 1 request per region", "sequential"),
+                ("Parallel – asyncio.gather concurrent", "parallel"),
+                ("Batched – single request with N images", "batched"),
+            ],
+            value="parallel",
+            info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
+        )
     return dict(
         custom_canvas_view=custom_canvas_view,
+        toolbar_view=toolbar_view,
         custom_draw_payload=custom_draw_payload,
         recls_sample_bridge_btn=recls_sample_bridge_btn,
         recls_class_mode=recls_class_mode,
