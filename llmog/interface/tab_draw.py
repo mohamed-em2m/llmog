@@ -531,6 +531,7 @@ _CUSTOM_CANVAS_JS = """
             const h = this.wrapper.clientHeight || 580;
             this.canvas.width = w;
             this.canvas.height = h;
+            if (this.image) this.clampOffsets();
             this.render();
         },
         
@@ -597,21 +598,39 @@ _CUSTOM_CANVAS_JS = """
             }
         },
         
+        getFitScale: function() {
+            const cw = this.canvas.width, ch = this.canvas.height;
+            const iw = this.imageWidth || 1, ih = this.imageHeight || 1;
+            return Math.min(cw / iw, ch / ih);
+        },
+        clampOffsets: function() {
+            const cw = this.canvas.width, ch = this.canvas.height;
+            const iw = this.imageWidth, ih = this.imageHeight;
+            if (!iw || !ih) return;
+            const sw = iw * this.scale, sh = ih * this.scale;
+            if (sw <= cw) {
+                this.offsetX = (cw - sw) / 2;
+            } else {
+                this.offsetX = Math.max(cw - sw, Math.min(0, this.offsetX));
+            }
+            if (sh <= ch) {
+                this.offsetY = (ch - sh) / 2;
+            } else {
+                this.offsetY = Math.max(ch - sh, Math.min(0, this.offsetY));
+            }
+        },
         fitToScreen: function() {
             if (!this.image || !this.canvas) return;
             const cw = this.canvas.width;
             const ch = this.canvas.height;
             const iw = this.imageWidth;
             const ih = this.imageHeight;
-            
-            const scaleX = (cw - 40) / iw;
-            const scaleY = (ch - 40) / ih;
-            this.scale = Math.min(scaleX, scaleY, 1.0);
-            if (this.scale <= 0) this.scale = 1.0;
-            
+            this.scale = this.getFitScale();
+            if (!isFinite(this.scale) || this.scale <= 0) this.scale = 1.0;
+            this.scale = Math.max(0.05, Math.min(this.scale, 15.0));
             this.offsetX = (cw - iw * this.scale) / 2;
             this.offsetY = (ch - ih * this.scale) / 2;
-            
+            this.clampOffsets();
             this.updateZoomIndicator();
             this.render();
         },
@@ -624,13 +643,13 @@ _CUSTOM_CANVAS_JS = """
         
         zoomAt: function(factor, mouseX, mouseY) {
             const prevScale = this.scale;
+            const fit = this.getFitScale();
             let newScale = this.scale * factor;
-            newScale = Math.max(0.1, Math.min(newScale, 15.0));
-            
+            newScale = Math.max(fit, Math.min(newScale, 15.0));
             this.offsetX = mouseX - (mouseX - this.offsetX) * (newScale / prevScale);
             this.offsetY = mouseY - (mouseY - this.offsetY) * (newScale / prevScale);
             this.scale = newScale;
-            
+            this.clampOffsets();
             this.updateZoomIndicator();
             this.render();
         },
@@ -691,6 +710,7 @@ _CUSTOM_CANVAS_JS = """
             if (this.isPanning) {
                 this.offsetX = mouseX - this.panStartX;
                 this.offsetY = mouseY - this.panStartY;
+                this.clampOffsets();
                 this.render();
                 return;
             }
@@ -1027,19 +1047,19 @@ _CUSTOM_CANVAS_JS = """
             
             const badgeY = Math.max(0, y - badgeH);
             
-            ctx.fillStyle = '#080d14';
+            ctx.fillStyle = '#1A1145';
             ctx.fillRect(x, badgeY, badgeW, badgeH);
             
-            ctx.strokeStyle = color;
+            ctx.strokeStyle = '#F5C842';
             ctx.lineWidth = 1.5 / this.scale;
             ctx.strokeRect(x, badgeY, badgeW, badgeH);
             
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = '#FFF8EC';
             ctx.fillText(text, x + pad, badgeY + badgeH - pad * 1.5);
         },
         
         drawBackgroundPattern: function(ctx, w, h) {
-            ctx.fillStyle = '#0a0e17';
+            ctx.fillStyle = '#FFF8EC';
             ctx.fillRect(0, 0, w, h);
             
             ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';

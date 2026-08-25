@@ -74,8 +74,8 @@ def _build_realtime_tab() -> Dict[str, Any]:
     with gr.Column(elem_classes=["neo-retro-card"]):
         gr.HTML('<p class="section-label">🎥 Real-Time Detection — Webcam & Video (Multi-Tracker Integrated)</p>')
 
-        # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
-        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) FIXED: equal_height=False prevents flex thrash on stream start ──
+        with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row", "rt-twin-screens"]):
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
                 gr.HTML('<p class="section-label">📥 Input — Live Webcam / Video</p>')
                 with gr.Group(elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]) as webcam_wrap:
@@ -503,8 +503,8 @@ def _wire_realtime_events(
         show_progress="hidden",
     )
 
-    # Same-window overlay – draws boxes_json_state directly on video (no WebP, max FPS)
-    # Canvas is absolutely positioned over the video element; scale from video's displayed size
+    # Same-window overlay – FIXED: canvas is locked to wrapper size (520px) to prevent shrinking/jitter on stream start
+    # Previously resized canvas to video rect every frame → layout thrash → windows jump. Now canvas fills wrapper.
     c_real["boxes_json_state"].change(
         fn=None,
         inputs=[c_real["boxes_json_state"]],
@@ -519,15 +519,17 @@ def _wire_realtime_events(
                 ctx.clearRect(0,0,canvas.width,canvas.height);
                 return;
             }
-            const rect = video.getBoundingClientRect();
+            // Lock canvas to wrapper (520px fixed) — no per-frame resize that caused shrink/jump
             const wrapRect = wrap.getBoundingClientRect();
-            // Position canvas exactly over the video (handles letterboxing)
-            canvas.width = Math.round(rect.width);
-            canvas.height = Math.round(rect.height);
-            canvas.style.width = rect.width + 'px';
-            canvas.style.height = rect.height + 'px';
-            canvas.style.left = (rect.left - wrapRect.left) + 'px';
-            canvas.style.top = (rect.top - wrapRect.top) + 'px';
+            if (canvas.width !== Math.round(wrapRect.width) || canvas.height !== Math.round(wrapRect.height)) {
+                canvas.width = Math.round(wrapRect.width);
+                canvas.height = Math.round(wrapRect.height);
+                canvas.style.width = wrapRect.width + 'px';
+                canvas.style.height = wrapRect.height + 'px';
+                canvas.style.left = '0px';
+                canvas.style.top = '0px';
+            }
+            const rect = video.getBoundingClientRect();
             ctx.clearRect(0,0,canvas.width,canvas.height);
             if (!payload || !payload.boxes || payload.boxes.length===0) return;
             const boxes = payload.boxes;
@@ -544,14 +546,14 @@ def _wire_realtime_events(
                 const label = b[4]!==undefined?String(b[4]):'';
                 const tid = b[5]!==undefined?b[5]:null;
                 const x=xmin*scaleX, y=ymin*scaleY, w=(xmax-xmin)*scaleX, h=(ymax-ymin)*scaleY;
-                ctx.strokeStyle='#00ffcc'; ctx.shadowColor='#00ffcc'; ctx.shadowBlur=6;
+                ctx.strokeStyle='#E84B8A'; ctx.shadowColor='#E84B8A'; ctx.shadowBlur=6;
                 ctx.strokeRect(x,y,w,h); ctx.shadowBlur=0;
                 const tag = tid!==null ? (label+' #'+tid) : label;
                 if(tag.trim()){
                     const tw=ctx.measureText(tag).width; const bh=18;
                     const by = (y>bh)?(y-bh):(y+h);
-                    ctx.fillStyle='rgba(0,255,204,0.85)'; ctx.fillRect(x,by,tw+8,bh);
-                    ctx.fillStyle='#050811'; ctx.fillText(tag, x+4, by+bh-4);
+                    ctx.fillStyle='rgba(232,75,138,0.90)'; ctx.fillRect(x,by,tw+8,bh);
+                    ctx.fillStyle='#FFF8EC'; ctx.fillText(tag, x+4, by+bh-4);
                 }
             }
         }""",

@@ -89,11 +89,11 @@ class DetectionViewer(gr.HTML):
                 **kwargs,
             )
         except TypeError:
-            # Fallback for Gradio 4: render a brutal placeholder — viewer JS not supported, but app must build.
+            # Fallback for Gradio 4: Bauhaus soft placeholder
             fallback_kwargs = {k: v for k, v in kwargs.items() if k in ("elem_id", "elem_classes", "visible", "render", "key")}
             placeholder = (
-                f"<div style='border:3px solid #26333F; background:#D85040; color:#F2F6F8; padding:12px; "
-                f"font-family:Space Grotesk, sans-serif; font-weight:900; text-transform:uppercase;'>"
+                f"<div style='border:1px solid #E9E0CC; background:#FFD6E0; color:#1A1145; padding:14px; "
+                f"border-radius:16px; font-family:Inter, sans-serif; font-weight:700;'>"
                 f"{panel_title} — viewer requires Gradio 5+ (current {gr.__version__})</div>"
             )
             super().__init__(
