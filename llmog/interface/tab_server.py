@@ -285,7 +285,7 @@ def get_server_status_and_logs():
 
 
 def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
-    """Build the unified Model / Endpoint tab (Local Server + External API)."""
+    """Build the unified Model / Endpoint tab (Local Server + External API) — symmetric + dropdown options."""
 
     gr.HTML('<p class="section-label">🧠 Model / Endpoint Configuration</p>')
     # ── Global endpoint mode – single source of truth for all tabs ─────
@@ -298,176 +298,172 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
     # Hidden checkbox for backward-compat with existing handlers that check use_external_api_chk
     use_external_api_chk = gr.Checkbox(value=False, visible=False)
 
-    with gr.Row(equal_height=False):
-        # ── Left: Config ──────────────────────────────────────────────────
-        with gr.Column(scale=2):
-            with gr.Group(visible=True) as local_server_group:
-                gr.HTML(
-                    '<div class="config-card"><div class="config-card-title">🦙 Local Model Selection</div>'
-                )
-                server_preset = gr.Dropdown(
-                    label="Recommended Model Presets",
-                    choices=MODEL_PRESETS,
-                    value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
-                    interactive=True,
-                )
-                server_backend = gr.Dropdown(
-                    label="Server Backend",
-                    choices=[
-                        ("llama.cpp (native binary)", "llama_cpp"),
-                        ("llama-cpp-python (bundled server)", "llama_cpp_python"),
-                        ("vLLM (CUDA)", "vllm"),
-                    ],
-                    value="llama_cpp",
-                    interactive=True,
-                    info="llama.cpp spawns the native 'llama-server' binary; "
-                    "llama-cpp-python uses the OpenAI-compatible server bundled in "
-                    "the llama-cpp-python package; vLLM serves HuggingFace models "
-                    "on CUDA.",
-                )
-                server_model_input = gr.Textbox(
-                    label="Model GGUF Path or HF Repo ID",
-                    value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
-                    placeholder="e.g. C:/models/qwen.gguf or HF ID",
-                    interactive=True,
-                )
-                gr.HTML("</div>")
-
-                gr.HTML(
-                    '<div class="config-card"><div class="config-card-title">⚙️ Runtime Options</div>'
-                )
-                server_port_input = gr.Number(
-                    label="Port Number",
-                    value=8080,
-                    precision=0,
-                    interactive=True,
-                )
-                with gr.Row():
-                    server_thinking_chk = gr.Checkbox(
-                        label="Thinking Mode", value=False, interactive=True
+    with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        # ── Left: Config (all options behind dropdown) ──────────────────
+        with gr.Column(scale=1, min_width=420):
+            with gr.Accordion("⚙️ Server Options — Model, Runtime, Advanced & External API", open=False):
+                with gr.Group(visible=True) as local_server_group:
+                    gr.HTML(
+                        '<div class="config-card"><div class="config-card-title">🦙 Local Model Selection</div>'
                     )
-                    server_mtp_chk = gr.Checkbox(
-                        label="MTP Speculative Drafting",
-                        value=True,
+                    server_preset = gr.Dropdown(
+                        label="Recommended Model Presets",
+                        choices=MODEL_PRESETS,
+                        value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
                         interactive=True,
                     )
-                gr.HTML("</div>")
-
-                with gr.Accordion("Advanced Server Parameters", open=False):
-                    gr.HTML(_section_title("🖧", "Network"))
-                    server_host_input = gr.Textbox(label="Host Binding", value="0.0.0.0")
-                    gr.HTML(_section_title("🎛️", "Compute"))
-                    server_ctx_input = gr.Number(
-                        label="Context Size per Slot",
-                        value=10000,
-                        precision=0,
-                    )
-                    server_parallel_slots_input = gr.Number(
-                        label="Parallel Slots", value=1, precision=0
-                    )
-                    server_gpu_layers = gr.Number(
-                        label="GPU Layers (-ngl)", value=-1, precision=0
-                    )
-                    server_kv_cache = gr.Dropdown(
-                        label="KV Cache Type",
+                    server_backend = gr.Dropdown(
+                        label="Server Backend",
                         choices=[
-                            "f32",
-                            "f16",
-                            "bf16",
-                            "q8_0",
-                            "q4_0",
-                            "q4_1",
-                            "iq4_nl",
-                            "q5_0",
-                            "q5_1",
+                            ("llama.cpp (native binary)", "llama_cpp"),
+                            ("llama-cpp-python (bundled server)", "llama_cpp_python"),
+                            ("vLLM (CUDA)", "vllm"),
                         ],
-                        value="q4_0",
+                        value="llama_cpp",
+                        interactive=True,
+                        info="llama.cpp spawns the native 'llama-server' binary; "
+                        "llama-cpp-python uses the OpenAI-compatible server bundled in "
+                        "the llama-cpp-python package; vLLM serves HuggingFace models "
+                        "on CUDA.",
                     )
-                    gr.HTML(_section_title("⚡", "Batch Processing Sizes"))
-                    with gr.Row():
-                        server_batch_size = gr.Number(
-                            label="Batch Size (-b / --batch-size)",
-                            value=1024,
-                            precision=0,
-                            info="Logical batch size for prompt processing.",
-                        )
-                        server_ubatch_size = gr.Number(
-                            label="Micro-Batch Size (-ub / --ubatch-size)",
-                            value=1024,
-                            precision=0,
-                            info="Physical micro-batch size submitted to GPU.",
-                        )
-                    gr.HTML(_section_title("🧠", "vLLM Options"))
-                    with gr.Row():
-                        server_vllm_tp = gr.Number(
-                            label="Tensor Parallel Size",
-                            value=1,
-                            precision=0,
-                            info="Number of GPUs to shard the model across (vLLM).",
-                        )
-                        server_vllm_gpu_util = gr.Number(
-                            label="GPU Memory Utilization",
-                            value=0.90,
-                            precision=None,
-                            info="Fraction of GPU memory to use (vLLM, e.g. 0.90).",
-                        )
-                    with gr.Row():
-                        server_vllm_max_seq = gr.Number(
-                            label="Max Model Length",
-                            value=20000,
-                            precision=0,
-                            info="Maximum sequence length (vLLM --max-model-len).",
-                        )
-                    gr.HTML(_section_title("🖼️", "Vision / Image Tokens"))
-                    with gr.Row():
-                        server_img_min_tokens = gr.Number(
-                            label="Min Image Tokens (--image-min-tokens)",
-                            value=1024,
-                            precision=0,
-                            info="Minimum tokens for image encoding. Lower = faster but lower quality.",
-                        )
-                        server_img_max_tokens = gr.Number(
-                            label="Max Image Tokens (--image-max-tokens)",
-                            value=4096,
-                            precision=0,
-                            info="Maximum tokens for image encoding. Higher = more detail but slower.",
-                        )
-                    with gr.Row():
-                        server_log_disable = gr.Checkbox(
-                            label="Disable Server Console Logs (--log-disable)",
-                            value=False,
-                        )
-
-                with gr.Row(elem_classes=["btn-group"]):
-                    start_server_btn = gr.Button("▶  Start Server", variant="primary", scale=2)
-                    stop_server_btn = gr.Button(
-                        "⏹  Stop Server", variant="secondary", scale=1
+                    server_model_input = gr.Textbox(
+                        label="Model GGUF Path or HF Repo ID",
+                        value="unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL",
+                        placeholder="e.g. C:/models/qwen.gguf or HF ID",
+                        interactive=True,
                     )
-                    refresh_logs_btn = gr.Button(
-                        "🔄 Refresh Logs",
-                        variant="secondary",
-                        scale=1,
+                    gr.HTML("</div>")
+
+                    gr.HTML(
+                        '<div class="config-card"><div class="config-card-title">⚙️ Runtime Options</div>'
                     )
+                    server_port_input = gr.Number(
+                        label="Port Number",
+                        value=8080,
+                        precision=0,
+                        interactive=True,
+                    )
+                    with gr.Row():
+                        server_thinking_chk = gr.Checkbox(
+                            label="Thinking Mode", value=False, interactive=True
+                        )
+                        server_mtp_chk = gr.Checkbox(
+                            label="MTP Speculative Drafting",
+                            value=True,
+                            interactive=True,
+                        )
+                    gr.HTML("</div>")
 
-            with gr.Group(visible=False) as ext_api_group:
-                gr.HTML(
-                    '<div class="config-card"><div class="config-card-title">🌐 External API (global)</div>'
-                    '<p style="color:#7d8590;font-size:0.85rem;margin:0;">Used by <b>Batch</b>, <b>Draw & Recognize</b> and <b>Realtime</b> tabs when Endpoint Mode is External.</p></div>'
-                )
-                ext_api_url = gr.Textbox(
-                    label="Base URL", value="https://api.openai.com/v1",
-                    placeholder="https://api.openai.com/v1",
-                )
-                ext_api_key = gr.Textbox(
-                    label="API Key",
-                    placeholder="sk-...",
-                    value="",
-                    type="password",
-                )
-                ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
+                    with gr.Accordion("Advanced Server Parameters", open=False):
+                        gr.HTML(_section_title("🖧", "Network"))
+                        server_host_input = gr.Textbox(label="Host Binding", value="0.0.0.0")
+                        gr.HTML(_section_title("🎛️", "Compute"))
+                        server_ctx_input = gr.Number(
+                            label="Context Size per Slot",
+                            value=10000,
+                            precision=0,
+                        )
+                        server_parallel_slots_input = gr.Number(
+                            label="Parallel Slots", value=1, precision=0
+                        )
+                        server_gpu_layers = gr.Number(
+                            label="GPU Layers (-ngl)", value=-1, precision=0
+                        )
+                        server_kv_cache = gr.Dropdown(
+                            label="KV Cache Type",
+                            choices=[
+                                "f32",
+                                "f16",
+                                "bf16",
+                                "q8_0",
+                                "q4_0",
+                                "q4_1",
+                                "iq4_nl",
+                                "q5_0",
+                                "q5_1",
+                            ],
+                            value="q4_0",
+                        )
+                        gr.HTML(_section_title("⚡", "Batch Processing Sizes"))
+                        with gr.Row():
+                            server_batch_size = gr.Number(
+                                label="Batch Size (-b / --batch-size)",
+                                value=1024,
+                                precision=0,
+                                info="Logical batch size for prompt processing.",
+                            )
+                            server_ubatch_size = gr.Number(
+                                label="Micro-Batch Size (-ub / --ubatch-size)",
+                                value=1024,
+                                precision=0,
+                                info="Physical micro-batch size submitted to GPU.",
+                            )
+                        gr.HTML(_section_title("🧠", "vLLM Options"))
+                        with gr.Row():
+                            server_vllm_tp = gr.Number(
+                                label="Tensor Parallel Size",
+                                value=1,
+                                precision=0,
+                                info="Number of GPUs to shard the model across (vLLM).",
+                            )
+                            server_vllm_gpu_util = gr.Number(
+                                label="GPU Memory Utilization",
+                                value=0.90,
+                                precision=None,
+                                info="Fraction of GPU memory to use (vLLM, e.g. 0.90).",
+                            )
+                        with gr.Row():
+                            server_vllm_max_seq = gr.Number(
+                                label="Max Model Length",
+                                value=20000,
+                                precision=0,
+                                info="Maximum sequence length (vLLM --max-model-len).",
+                            )
+                        gr.HTML(_section_title("🖼️", "Vision / Image Tokens"))
+                        with gr.Row():
+                            server_img_min_tokens = gr.Number(
+                                label="Min Image Tokens (--image-min-tokens)",
+                                value=1024,
+                                precision=0,
+                                info="Minimum tokens for image encoding. Lower = faster but lower quality.",
+                            )
+                            server_img_max_tokens = gr.Number(
+                                label="Max Image Tokens (--image-max-tokens)",
+                                value=4096,
+                                precision=0,
+                                info="Maximum tokens for image encoding. Higher = more detail but slower.",
+                            )
+                        with gr.Row():
+                            server_log_disable = gr.Checkbox(
+                                label="Disable Server Console Logs (--log-disable)",
+                                value=False,
+                            )
 
-        # ── Right: Logs ───────────────────────────────────────────────────
-        with gr.Column(scale=3):
+                with gr.Group(visible=False) as ext_api_group:
+                    gr.HTML(
+                        '<div class="config-card"><div class="config-card-title">🌐 External API (global)</div>'
+                        '<p style="color:#7d8590;font-size:0.85rem;margin:0;">Used by <b>Batch</b>, <b>Draw & Recognize</b> and <b>Realtime</b> tabs when Endpoint Mode is External.</p></div>'
+                    )
+                    ext_api_url = gr.Textbox(
+                        label="Base URL", value="https://api.openai.com/v1",
+                        placeholder="https://api.openai.com/v1",
+                    )
+                    ext_api_key = gr.Textbox(
+                        label="API Key",
+                        placeholder="sk-...",
+                        value="",
+                        type="password",
+                    )
+                    ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
+
+            with gr.Row(elem_classes=["btn-group"]):
+                start_server_btn = gr.Button("▶  Start Server", variant="primary", scale=2)
+                stop_server_btn = gr.Button(
+                    "⏹  Stop Server", variant="secondary", scale=1
+                )
+
+        # ── Right: Logs (symmetric) ─────────────────────────────────────
+        with gr.Column(scale=1, min_width=420):
             gr.HTML('<p class="section-label">Server Output Console</p>')
             gr.HTML(
                 '<div class="output-panel" id="server-log-panel">'
@@ -513,6 +509,5 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
         server_log_disable=server_log_disable,
         start_server_btn=start_server_btn,
         stop_server_btn=stop_server_btn,
-        refresh_logs_btn=refresh_logs_btn,
         server_logs_viewer=server_logs_viewer,
     )

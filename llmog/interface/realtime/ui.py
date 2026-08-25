@@ -73,235 +73,11 @@ def _build_realtime_tab() -> Dict[str, Any]:
 
     with gr.Column(elem_classes=["neo-retro-card"]):
         gr.HTML('<p class="section-label">🎥 Real-Time Detection — Webcam & Video (Multi-Tracker Integrated)</p>')
-        with gr.Row():
-            with gr.Column(scale=1):
-                c["stream_mode"] = gr.Radio(
-                    choices=["Webcam Stream", "Video Upload (1s Sampling)"],
-                    value="Webcam Stream",
-                    label="STREAM INPUT SOURCE",
-                )
-                c["tracker_algorithm"] = gr.Dropdown(
-                    choices=MultiAlgorithmTracker.SUPPORTED_ALGOS,
-                    value="CSRT (TrackerCSRT)",
-                    label="REAL-TIME TRACKING ALGORITHM",
-                    info=(
-                        "None = show raw VLM boxes. "
-                        "MOSSE/KCF/CSRT/VitTracker = OpenCV single-object trackers "
-                        "that propagate boxes between VLM calls. "
-                        "ByteTrack = multi-object Kalman IoU tracker."
-                    ),
-                )
-                c["same_window_chk"] = gr.Checkbox(
-                    value=False,
-                    label="⚡ Same-window overlay (fastest – no WebP re-encode)",
-                    info="ON: boxes drawn directly on video (max FPS). OFF: use interactive DetectionViewer (more features, adds WebP). Default OFF for reliability.",
-                )
-                c["category_strategy"] = gr.Radio(
-                    label="🎯 Class Expectation Mode",
-                    choices=[
-                        ("🔒 Strict (Closed-Set)", "strict"),
-                        ("🔀 Hybrid (Extendable)", "hybrid"),
-                        ("🌐 Free (Open-World)", "free"),
-                    ],
-                    value="strict",
-                    info="Strict: only detect listed categories. Hybrid: prioritize + discover new. Free: detect all salient objects freely.",
-                )
-                c["category_preset_dropdown"] = gr.Dropdown(
-                    label="📋 Category Domain Presets",
-                    choices=list(CATEGORY_PRESETS.keys()),
-                    value="General Objects (COCO)",
-                    info="Quickly load target categories & definitions.",
-                )
-                c["categories_input"] = gr.Textbox(
-                    value="person, car, dog, bottle, phone",
-                    label="Target Categories (Strict - Comma Separated)",
-                    info="Strict Mode: Agent is restricted strictly to listed categories.",
-                )
-                c["category_defs_input"] = gr.Textbox(
-                    label="Category Definitions",
-                    placeholder="Write instructions for categories...",
-                    lines=3,
-                    value=CATEGORY_PRESETS["General Objects (COCO)"]["defs"],
-                )
 
-                # ── Motion Gate + Refresh ─────────────────────────────────────
-                c["motion_gate_enabled"] = gr.Checkbox(
-                    value=True,
-                    label="⚡ MOTION GATE (Scene-Change Gating)",
-                    info="ON: only re-detect when scene changes or stale timer fires. "
-                         "OFF: re-detect as fast as GPU can respond.",
-                )
-                c["motion_sensitivity"] = gr.Slider(
-                    minimum=0.5,
-                    maximum=10.0,
-                    step=0.5,
-                    value=1.5,
-                    label="MOTION SENSITIVITY (% PIXELS CHANGED)",
-                    info="Lower = more sensitive — more VLM calls.",
-                )
-                c["stale_refresh"] = gr.Slider(
-                    minimum=1.0,
-                    maximum=20.0,
-                    step=0.5,
-                    value=3.0,
-                    label="STALE REFRESH FALLBACK (SECONDS)",
-                    info="Re-detect anyway after this long even with no motion.",
-                )
-
-                with gr.Accordion("Pipeline Parameters", open=False):
-                    c["det_temp_slider"] = gr.Slider(
-                        label="Detector Temperature",
-                        minimum=0.0,
-                        maximum=1.5,
-                        step=0.05,
-                        value=0.9,
-                    )
-
-                # ── Preprocessing Accordion (Identical to Batch Tab) ──────────
-                with gr.Accordion("Image Preprocessing & Augmentation", open=False):
-                    c["prep_enabled_chk"] = gr.Checkbox(
-                        label="Enable Preprocessing",
-                        value=False,
-                        info="Master toggle for all preprocessing steps below.",
-                    )
-
-                    with gr.Group(visible=False) as prep_options_group:
-                        c["prep_short_edge_slider"] = gr.Slider(
-                            label="Target Short Edge (px)",
-                            minimum=512,
-                            maximum=2048,
-                            step=128,
-                            value=1024,
-                        )
-                        c["prep_pad_square_chk"] = gr.Checkbox(
-                            label="Pad to Square",
-                            value=False,
-                        )
-
-                        c["prep_custom_resize_chk"] = gr.Checkbox(
-                            label="Enable Custom Resize (override short edge)",
-                            value=False,
-                        )
-                        with gr.Row(visible=False) as prep_custom_resize_row:
-                            c["prep_custom_resize_width"] = gr.Number(
-                                label="Target Width (px)", value=1024, precision=0
-                            )
-                            c["prep_custom_resize_height"] = gr.Number(
-                                label="Target Height (px)", value=1024, precision=0
-                            )
-
-                        c["prep_contrast_dropdown"] = gr.Dropdown(
-                            label="Contrast Correction Method",
-                            choices=["none", "clahe", "autocontrast"],
-                            value="clahe",
-                        )
-                        c["prep_gamma_slider"] = gr.Slider(
-                            label="Gamma Correction",
-                            minimum=0.5, maximum=2.0, step=0.05, value=1.0
-                        )
-                        c["prep_wb_chk"] = gr.Checkbox(
-                            label="Gray World White Balance Correction", value=False
-                        )
-
-                        c["prep_denoise_dropdown"] = gr.Dropdown(
-                            label="Denoising Filter",
-                            choices=["none", "bilateral", "nlm"],
-                            value="none",
-                        )
-                        c["prep_sharpen_chk"] = gr.Checkbox(
-                            label="Apply Unsharp Mask (Sharpen)", value=False
-                        )
-
-                        c["prep_grid_dropdown"] = gr.Dropdown(
-                            label="Grid Style",
-                            choices=["Standard Red", "transparent", "fine", "none"],
-                            value="Standard Red",
-                        )
-                        c["prep_grid_step_slider"] = gr.Slider(
-                            label="Grid Step Size (px)",
-                            minimum=20, maximum=500, step=10, value=250
-                        )
-                        c["prep_grid_line_width_slider"] = gr.Slider(
-                            label="Grid Line Thickness (px)",
-                            minimum=1, maximum=10, step=1, value=1
-                        )
-                        c["prep_grid_font_size_slider"] = gr.Slider(
-                            label="Grid Label Font Size (0 = Auto)",
-                            minimum=0, maximum=48, step=1, value=0
-                        )
-                        with gr.Row():
-                            c["prep_grid_line_color_dropdown"] = gr.Dropdown(
-                                label="Grid Line Color",
-                                choices=["red", "blue", "green", "white", "black", "yellow", "cyan", "magenta", "custom"],
-                                value="red",
-                            )
-                            c["prep_grid_line_color_custom"] = gr.Textbox(
-                                label="Custom Line Color", value="red", visible=False
-                            )
-                        with gr.Row():
-                            c["prep_grid_text_color_dropdown"] = gr.Dropdown(
-                                label="Grid Text Color",
-                                choices=["white", "black", "red", "blue", "green", "yellow", "cyan", "magenta", "custom"],
-                                value="white",
-                            )
-                            c["prep_grid_text_color_custom"] = gr.Textbox(
-                                label="Custom Text Color", value="white", visible=False
-                            )
-                        with gr.Row():
-                            c["prep_grid_backing_color_dropdown"] = gr.Dropdown(
-                                label="Grid Text Backing Color",
-                                choices=["black", "none", "white", "red", "blue", "green", "custom"],
-                                value="black",
-                            )
-                            c["prep_grid_backing_color_custom"] = gr.Textbox(
-                                label="Custom Backing", value="black", visible=False
-                            )
-
-                        c["prep_som_chk"] = gr.Checkbox(
-                            label="Enable Set-of-Mark (SoM) Prompting", value=False
-                        )
-                        c["prep_tiling_chk"] = gr.Checkbox(
-                            label="Enable Image Tiling", value=False
-                        )
-                        c["prep_tile_size_slider"] = gr.Slider(
-                            label="Tile Size (px)", minimum=256, maximum=1024, step=128, value=512
-                        )
-                        c["prep_tile_overlap_slider"] = gr.Slider(
-                            label="Tile Overlap (%)", minimum=0, maximum=50, step=5, value=20
-                        )
-                        c["prep_cv_chk"] = gr.Checkbox(
-                            label="Enable Crop & Verify Validation", value=False
-                        )
-                        c["prep_cv_padding_slider"] = gr.Slider(
-                            label="Crop Context Padding (%)", minimum=0, maximum=50, step=5, value=15
-                        )
-                        c["prep_send_pixel_bounds_chk"] = gr.Checkbox(
-                            label="Send Pixel Bounds in API Request", value=False
-                        )
-                        with gr.Row(visible=False) as prep_pixel_bounds_row:
-                            c["prep_min_pixels_num"] = gr.Number(label="min_pixels", value=200704, precision=0)
-                            c["prep_max_pixels_num"] = gr.Number(label="max_pixels", value=4194304, precision=0)
-
-                        c["prep_options_group"] = prep_options_group
-                        c["prep_custom_resize_row"] = prep_custom_resize_row
-                        c["prep_pixel_bounds_row"] = prep_pixel_bounds_row
-
-                # ── Video / HUD ───────────────────────────────────────────────
-                c["sample_interval"] = gr.Slider(
-                    minimum=0.5,
-                    maximum=5.0,
-                    step=0.5,
-                    value=1.0,
-                    label="VIDEO FRAME SAMPLING INTERVAL (SECONDS)",
-                )
-                c["process_video_btn"] = gr.Button(
-                    "▶  Process Video Frames",
-                    variant="primary",
-                    scale=1,
-                )
-                c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
-
-            with gr.Column(scale=2):
+        # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
+        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+                gr.HTML('<p class="section-label">📥 Input — Live Webcam / Video</p>')
                 with gr.Group(elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]) as webcam_wrap:
                     c["webcam_input"] = gr.Image(
                         sources=["webcam"],
@@ -310,8 +86,6 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         type="numpy",
                         elem_id="rt_webcam_input",
                     )
-                    # Same-window overlay canvas – positioned over video, no WebP re-encode (max FPS)
-                    # Hidden by default (same_window off) – viewer is primary for reliability
                     c["same_window_html"] = gr.HTML(
                         value="""
                         <canvas id="rt_same_window_canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
@@ -324,18 +98,21 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         elem_id="rt_same_window_html",
                     )
                 c["webcam_wrap_group"] = webcam_wrap
-                c["realtime_viewer"] = DetectionViewer(
-                    label="Live Detections (interactive viewer – enable ⚡ for same-window max FPS)",
-                    panel_title="Live Detections",
-                    list_height=380,
-                    visible=True,
-                )
-                c["boxes_json_state"] = gr.JSON(visible=False)
                 c["video_input"] = gr.Video(
                     label="INPUT VIDEO FILE",
                     visible=False,
                 )
-                # Sampled frames – Gallery for quick scan + DetectionViewer for interactive last frame
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+                gr.HTML('<p class="section-label">👁️ Output — Live Detections</p>')
+                c["realtime_viewer"] = DetectionViewer(
+                    label="Live Detections (interactive viewer – enable ⚡ for same-window max FPS)",
+                    panel_title="Live Detections",
+                    list_height=300,
+                    visible=True,
+                    elem_id="rt-live-viewer",
+                )
+                c["hud_status"] = gr.HTML(value=DEFAULT_HUD)
+                c["boxes_json_state"] = gr.JSON(visible=False)
                 c["video_gallery_output"] = gr.Gallery(
                     label="Sampled Frame Detections (Gallery)",
                     columns=3,
@@ -348,9 +125,247 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     list_height=380,
                     elem_id="rt_video_viewer",
                 )
-                # Keep legacy key for backward compat
                 c["video_gallery_legacy"] = c["video_gallery_output"]
+
+        # ── Visible primary input controls (always) ──
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=1):
+                c["stream_mode"] = gr.Radio(
+                    choices=["Webcam Stream", "Video Upload (1s Sampling)"],
+                    value="Webcam Stream",
+                    label="STREAM INPUT SOURCE",
+                )
+            with gr.Column(scale=1):
+                c["sample_interval"] = gr.Slider(
+                    minimum=0.5,
+                    maximum=5.0,
+                    step=0.5,
+                    value=1.0,
+                    label="VIDEO FRAME SAMPLING INTERVAL (SECONDS)",
+                )
+                c["process_video_btn"] = gr.Button(
+                    "▶  Process Video Frames",
+                    variant="primary",
+                )
+
+        # ── DROPDOWN 1: Categories — focused ──
+        with gr.Accordion("📥 Categories & Detection Mode — Strategy, Presets & Definitions", open=False):
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1):
+                    c["category_strategy"] = gr.Radio(
+                        label="🎯 Class Expectation Mode",
+                        choices=[
+                            ("🔒 Strict (Closed-Set)", "strict"),
+                            ("🔀 Hybrid (Extendable)", "hybrid"),
+                            ("🌐 Free (Open-World)", "free"),
+                        ],
+                        value="free",
+                        info="Free: detect all salient objects freely. Strict: only detect listed categories.",
+                    )
+                    c["category_preset_dropdown"] = gr.Dropdown(
+                        label="📋 Category Domain Presets",
+                        choices=list(CATEGORY_PRESETS.keys()),
+                        value="General Objects (COCO)",
+                        visible=False,
+                        info="Quickly load target categories & definitions.",
+                    )
+                with gr.Column(scale=1):
+                    c["categories_input"] = gr.Textbox(
+                        value="",
+                        label="Domain / Focus Hint (Optional)",
+                        placeholder="e.g. Focus on industrial defects, wildlife, vehicles... (or leave blank)",
+                        info="Free Mode: Agent autonomously detects all salient objects/anomalies.",
+                    )
+                    c["category_defs_input"] = gr.Textbox(
+                        label="Domain Guidance / Prompt Context (Optional)",
+                        placeholder="Optional domain context or special instructions...",
+                        lines=3,
+                        value="",
+                        info="Optional domain guidance.",
+                    )
+
+        # ── DROPDOWN 2: Advanced Detection — focused ──
+        with gr.Accordion("⚙️ Advanced Detection Settings — Tracker, Motion & Temperature", open=False):
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1):
+                    c["tracker_algorithm"] = gr.Dropdown(
+                        choices=MultiAlgorithmTracker.SUPPORTED_ALGOS,
+                        value="CSRT (TrackerCSRT)",
+                        label="REAL-TIME TRACKING ALGORITHM",
+                        info=(
+                            "None = show raw VLM boxes. "
+                            "MOSSE/KCF/CSRT/VitTracker = OpenCV single-object trackers "
+                            "that propagate boxes between VLM calls. "
+                            "ByteTrack = multi-object Kalman IoU tracker."
+                        ),
+                    )
+                    c["same_window_chk"] = gr.Checkbox(
+                        value=False,
+                        label="⚡ Same-window overlay (fastest – no WebP re-encode)",
+                        info="ON: boxes drawn directly on video (max FPS). OFF: use interactive DetectionViewer (more features, adds WebP). Default OFF for reliability.",
+                    )
+                with gr.Column(scale=1):
+                    c["motion_gate_enabled"] = gr.Checkbox(
+                        value=True,
+                        label="⚡ MOTION GATE (Scene-Change Gating)",
+                        info="ON: only re-detect when scene changes or stale timer fires. "
+                             "OFF: re-detect as fast as GPU can respond.",
+                    )
+                    c["motion_sensitivity"] = gr.Slider(
+                        minimum=0.5,
+                        maximum=10.0,
+                        step=0.5,
+                        value=1.5,
+                        label="MOTION SENSITIVITY (% PIXELS CHANGED)",
+                        info="Lower = more sensitive — more VLM calls.",
+                    )
+                    c["stale_refresh"] = gr.Slider(
+                        minimum=1.0,
+                        maximum=20.0,
+                        step=0.5,
+                        value=3.0,
+                        label="STALE REFRESH FALLBACK (SECONDS)",
+                        info="Re-detect anyway after this long even with no motion.",
+                    )
+                    c["det_temp_slider"] = gr.Slider(
+                        label="Detector Temperature",
+                        minimum=0.0,
+                        maximum=1.5,
+                        step=0.05,
+                        value=0.9,
+                    )
+
+        # ── DROPDOWN 3: Preprocessing — focused ──
+        with gr.Accordion("🎨 Image Preprocessing & Augmentation", open=False):
+            c["prep_enabled_chk"] = gr.Checkbox(
+                label="Enable Preprocessing",
+                value=False,
+                info="Master toggle for all preprocessing steps below.",
+            )
+
+            with gr.Group(visible=False) as prep_options_group:
+                c["prep_short_edge_slider"] = gr.Slider(
+                    label="Target Short Edge (px)",
+                    minimum=512,
+                    maximum=2048,
+                    step=128,
+                    value=1024,
+                )
+                c["prep_pad_square_chk"] = gr.Checkbox(
+                    label="Pad to Square",
+                    value=False,
+                )
+
+                c["prep_custom_resize_chk"] = gr.Checkbox(
+                    label="Enable Custom Resize (override short edge)",
+                    value=False,
+                )
+                with gr.Row(visible=False) as prep_custom_resize_row:
+                    c["prep_custom_resize_width"] = gr.Number(
+                        label="Target Width (px)", value=1024, precision=0
+                    )
+                    c["prep_custom_resize_height"] = gr.Number(
+                        label="Target Height (px)", value=1024, precision=0
+                    )
+
+                c["prep_contrast_dropdown"] = gr.Dropdown(
+                    label="Contrast Correction Method",
+                    choices=["none", "clahe", "autocontrast"],
+                    value="clahe",
+                )
+                c["prep_gamma_slider"] = gr.Slider(
+                    label="Gamma Correction",
+                    minimum=0.5, maximum=2.0, step=0.05, value=1.0
+                )
+                c["prep_wb_chk"] = gr.Checkbox(
+                    label="Gray World White Balance Correction", value=False
+                )
+
+                c["prep_denoise_dropdown"] = gr.Dropdown(
+                    label="Denoising Filter",
+                    choices=["none", "bilateral", "nlm"],
+                    value="none",
+                )
+                c["prep_sharpen_chk"] = gr.Checkbox(
+                    label="Apply Unsharp Mask (Sharpen)", value=False
+                )
+
+                c["prep_grid_dropdown"] = gr.Dropdown(
+                    label="Grid Style",
+                    choices=["Standard Red", "transparent", "fine", "none"],
+                    value="Standard Red",
+                )
+                c["prep_grid_step_slider"] = gr.Slider(
+                    label="Grid Step Size (px)",
+                    minimum=20, maximum=500, step=10, value=250
+                )
+                c["prep_grid_line_width_slider"] = gr.Slider(
+                    label="Grid Line Thickness (px)",
+                    minimum=1, maximum=10, step=1, value=1
+                )
+                c["prep_grid_font_size_slider"] = gr.Slider(
+                    label="Grid Label Font Size (0 = Auto)",
+                    minimum=0, maximum=48, step=1, value=0
+                )
+                with gr.Row():
+                    c["prep_grid_line_color_dropdown"] = gr.Dropdown(
+                        label="Grid Line Color",
+                        choices=["red", "blue", "green", "white", "black", "yellow", "cyan", "magenta", "custom"],
+                        value="red",
+                    )
+                    c["prep_grid_line_color_custom"] = gr.Textbox(
+                        label="Custom Line Color", value="red", visible=False
+                    )
+                with gr.Row():
+                    c["prep_grid_text_color_dropdown"] = gr.Dropdown(
+                        label="Grid Text Color",
+                        choices=["white", "black", "red", "blue", "green", "yellow", "cyan", "magenta", "custom"],
+                        value="white",
+                    )
+                    c["prep_grid_text_color_custom"] = gr.Textbox(
+                        label="Custom Text Color", value="white", visible=False
+                    )
+                with gr.Row():
+                    c["prep_grid_backing_color_dropdown"] = gr.Dropdown(
+                        label="Grid Text Backing Color",
+                        choices=["black", "none", "white", "red", "blue", "green", "custom"],
+                        value="black",
+                    )
+                    c["prep_grid_backing_color_custom"] = gr.Textbox(
+                        label="Custom Backing", value="black", visible=False
+                    )
+
+                c["prep_som_chk"] = gr.Checkbox(
+                    label="Enable Set-of-Mark (SoM) Prompting", value=False
+                )
+                c["prep_tiling_chk"] = gr.Checkbox(
+                    label="Enable Image Tiling", value=False
+                )
+                c["prep_tile_size_slider"] = gr.Slider(
+                    label="Tile Size (px)", minimum=256, maximum=1024, step=128, value=512
+                )
+                c["prep_tile_overlap_slider"] = gr.Slider(
+                    label="Tile Overlap (%)", minimum=0, maximum=50, step=5, value=20
+                )
+                c["prep_cv_chk"] = gr.Checkbox(
+                    label="Enable Crop & Verify Validation", value=False
+                )
+                c["prep_cv_padding_slider"] = gr.Slider(
+                    label="Crop Context Padding (%)", minimum=0, maximum=50, step=5, value=15
+                )
+                c["prep_send_pixel_bounds_chk"] = gr.Checkbox(
+                    label="Send Pixel Bounds in API Request", value=False
+                )
+                with gr.Row(visible=False) as prep_pixel_bounds_row:
+                    c["prep_min_pixels_num"] = gr.Number(label="min_pixels", value=200704, precision=0)
+                    c["prep_max_pixels_num"] = gr.Number(label="max_pixels", value=4194304, precision=0)
+
+                c["prep_options_group"] = prep_options_group
+                c["prep_custom_resize_row"] = prep_custom_resize_row
+                c["prep_pixel_bounds_row"] = prep_pixel_bounds_row
+
     return c
+
 
 
 def _wire_realtime_events(

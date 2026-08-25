@@ -1218,11 +1218,14 @@ _RT_DRAW_CANVAS_JS = """
         return window.__rt_interactive_payload__ || "{}";
     };
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => window.CustomCanvasControllerRT.init());
-    } else {
-        setTimeout(() => window.CustomCanvasControllerRT.init(), 100);
-    }
+    const boot = () => {
+        const root = document.getElementById('llmog-custom-canvas-app-rt');
+        if (!root) { setTimeout(boot, 200); return; }
+        if (window.__rt_canvas_booted_root__ === root) return;
+        window.__rt_canvas_booted_root__ = root;
+        window.CustomCanvasControllerRT.init();
+    };
+    setTimeout(boot, 50);
 })();
 """
 
@@ -1241,58 +1244,18 @@ def _load_sample_bridge_rt():
     return json.dumps(payload)
 
 
-def _check_rt_interactive_endpoint(
-    use_external_api: bool,
-    ext_api_url: str,
-    ext_api_key: str,
-    ext_model_name: str,
-    server_port: float | int | None,
-) -> str:
-    """Check endpoint connectivity for the Real-Time Draw tab."""
-    try:
-        from interface.realtime.state import resolve_endpoint
-        from openai import OpenAI
-
-        base_url, api_key, model_name = resolve_endpoint(
-            int(server_port) if server_port else 8080,
-            bool(use_external_api),
-            ext_api_url or "",
-            ext_api_key or "",
-            ext_model_name or "",
-        )
-        if use_external_api:
-            if not ext_api_key or ext_api_key.strip() in ("", "your-key"):
-                return "**Status: ⚠️ External API selected but no API key set – configure in 🧠 Model / Endpoint tab.**"
-            client = OpenAI(base_url=base_url, api_key=api_key)
-            try:
-                client.models.list()
-                return f"**Status: ✅ Connected to External API `{model_name}` at `{base_url}`**"
-            except Exception as e:
-                return f"**Status: ⚠️ External API reachable but ping failed: {e}**"
-        else:
-            from interface.state import state
-
-            with state.server_lock:
-                mgr = state.server_manager
-                if mgr is None:
-                    return "**Status: ❌ Local server not running – start it in 🧠 Model / Endpoint tab.**"
-                if not mgr.is_healthy():
-                    return "**Status: ⏳ Local server starting – check logs in 🧠 Model / Endpoint tab.**"
-                return f"**Status: ✅ Local server healthy on port {mgr.port} (model `{mgr.model}`)**"
-    except Exception as e:
-        return f"**Status: ❌ Connection check failed: {e}**"
-
-
 def build_realtime_interactive_tab() -> Dict[str, Any]:
     """Build the Real-Time Interactive Camera Draw & Recognition tab."""
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
         # ── Left / Main: Real-Time Interactive Canvas with Camera ─────────────
-        with gr.Column(scale=3, min_width=520):
+        with gr.Column(scale=1, min_width=420):
             gr.HTML('<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>')
 
-            # Embedded Custom Canvas — Gradio 4/5 compat: inject JS via <script> (js_on_load not in this Gradio)
+            # Embedded Custom Canvas — Gradio 6: <script> inside gr.HTML value is
+            # never executed (innerHTML), so JS is wired via js_on_load instead.
             custom_canvas = gr.HTML(
-                value=_RT_DRAW_CANVAS_HTML + f"<script>{_RT_DRAW_CANVAS_JS}</script>",
+                value=_RT_DRAW_CANVAS_HTML,
+                js_on_load=_RT_DRAW_CANVAS_JS,
                 elem_id="rt-interactive-canvas-html",
             )
 
@@ -1309,12 +1272,6 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
             )
 
             with gr.Row(elem_classes=["btn-group"]):
-                connect_btn = gr.Button(
-                    "🔌 Check Connection",
-                    variant="secondary",
-                    scale=1,
-                    elem_id="rt-interactive-connect-btn",
-                )
                 run_btn = gr.Button(
                     "🔎  Recognize Drawn Objects",
                     variant="primary",
@@ -1326,44 +1283,42 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                     scale=1,
                 )
 
-        # ── Right: Config & Recognition Results ───────────────────────────────
-        with gr.Column(scale=2, min_width=380, elem_classes=["draw-right-panel"]):
-            gr.HTML('<p class="section-label">⚙️ Detection Strategy &amp; Classes</p>')
+            # ── Target classes & detection mode (input) ───────────────────
+            with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
+                class_mode = gr.Radio(
+                    label="🎯 Class Expectation Mode",
+                    choices=[
+                        ("🔒 Strict (Closed-Set)", "strict"),
+                        ("🔀 Hybrid (Extendable)", "hybrid"),
+                        ("🌐 Free (Open-World)", "free"),
+                    ],
+                    value="free",
+                    info="Free: Agent autonomously identifies and names whatever objects are drawn.",
+                )
 
-            # ── 1. Class Expectation Strategy ─────────────────────────────────
-            class_mode = gr.Radio(
-                label="🎯 Class Expectation Mode",
-                choices=[
-                    ("🔒 Strict (Closed-Set)", "strict"),
-                    ("🔀 Hybrid (Extendable)", "hybrid"),
-                    ("🌐 Free (Open-World)", "free"),
-                ],
-                value="strict",
-                info="Control how the VLM assigns classes to your drawn camera regions.",
-            )
+                preset_dropdown = gr.Dropdown(
+                    label="📋 Category Domain Presets",
+                    choices=list(CATEGORY_PRESETS.keys()),
+                    value="General Objects (COCO)",
+                    visible=False,
+                    info="Quickly load target classes & expert distinguishing definitions.",
+                )
 
-            # ── 2. Preset library ──────────────────────────────────────────────
-            preset_dropdown = gr.Dropdown(
-                label="📋 Category Domain Presets",
-                choices=list(CATEGORY_PRESETS.keys()),
-                value="General Objects (COCO)",
-                info="Quickly load target classes & expert distinguishing definitions.",
-            )
+                classes_input = gr.Textbox(
+                    label="Domain / Focus Hint (Optional)",
+                    placeholder="e.g. Focus on defects, wildlife, tools, packaging... (or leave blank)",
+                    value="",
+                    lines=2,
+                    info="Free Mode: Agent autonomously identifies and names whatever objects are drawn.",
+                )
 
-            classes_input = gr.Textbox(
-                label="Target Classes (Strict - Comma Separated)",
-                placeholder="person, car, bicycle, dog, cat, chair, bottle, laptop, cell_phone, book",
-                value=CATEGORY_PRESETS["General Objects (COCO)"]["classes"],
-                lines=2,
-                info="Strict Mode: Agent is locked to these classes (or 'none').",
-            )
-
-            defs_input = gr.Textbox(
-                label="Class Definitions / Distinguishing Rules",
-                lines=4,
-                value=CATEGORY_PRESETS["General Objects (COCO)"]["defs"],
-                info="Detailed criteria for distinguishing each class.",
-            )
+                defs_input = gr.Textbox(
+                    label="Domain Guidance (Optional)",
+                    placeholder="Optional domain context or special inspection criteria...",
+                    lines=4,
+                    value="",
+                    info="Optional domain guidance.",
+                )
 
             with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
                 conf_threshold = gr.Slider(
@@ -1395,6 +1350,8 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                     info="Parallel: N concurrent requests (~N× faster). Batched: 1 request with N crops.",
                 )
 
+        # ── Right: Recognition Results (output only) ──────────────────────
+        with gr.Column(scale=1, min_width=420, elem_classes=["draw-right-panel"]):
             status = gr.Markdown("**Status: Idle – open camera, draw boxes over objects, then Recognize**")
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 viewer = DetectionViewer(
@@ -1424,7 +1381,6 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
         conf_threshold=conf_threshold,
         padding_slider=padding_slider,
         request_mode=request_mode,
-        connect_btn=connect_btn,
         run_btn=run_btn,
         clear_btn=clear_btn,
         status=status,
@@ -1462,19 +1418,6 @@ def wire_realtime_interactive_events(
         inputs=None,
         outputs=[c_rt_interactive["payload_box"]],
         js="() => { if (window.CustomCanvasControllerRT) { setTimeout(() => { const ta = document.querySelector('#rt_interactive_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasControllerRT.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
-    )
-
-    # ── Check endpoint connection ───────────────────────────────────────────
-    c_rt_interactive["connect_btn"].click(
-        fn=_check_rt_interactive_endpoint,
-        inputs=[
-            c_srv["use_external_api_chk"],
-            c_srv["ext_api_url"],
-            c_srv["ext_api_key"],
-            c_srv["ext_model_name"],
-            c_srv["server_port_input"],
-        ],
-        outputs=[c_rt_interactive["status"]],
     )
 
     # ── Run recognition on drawn camera regions ─────────────────────────────

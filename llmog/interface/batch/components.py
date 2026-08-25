@@ -96,24 +96,369 @@ def on_batch_strategy_change(strategy: str):
 
 
 def build_batch_tab() -> Dict[str, Any]:
-    """Build the Batch Sandbox tab and return all interactive Gradio components.
+    """Batch tab — twin symmetric screens, separate focused dropdowns for each concern."""
 
-    Layout Architecture:
-      - TOP (Big Results Screen & Interactive Explorer):
-          • Top Explorer Navigation Bar (Image select, Round select, Score badge, Grid toggle)
-          • Live Metadata & Detection Counter (hero_info)
-          • Large Dual View Canvas (Reference Source Image + Interactive DetectionViewer)
-          • Inspection & Diagnostics Tabs (Judge Feedback, Detections JSON, Raw Output, Logs)
-      - BOTTOM (Uploading & Settings Panels):
-          • Left Bottom: Image Upload, Strategy, Domain Presets & Category Definitions
-          • Right Bottom: Optimization, Preprocessing, Execution Controller & Batch Status Table
-    """
+    with gr.Column():
+        # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
+        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+                gr.HTML('<p class="section-label">📥 Input — Source Image</p>')
+                source_image_viewer = gr.Image(
+                    label="Source Image (Reference)",
+                    type="pil",
+                    height=520,
+                )
+                hero_source_image = source_image_viewer
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+                gr.HTML('<p class="section-label">👁️ Output — Detections (Interactive)</p>')
+                best_annotated_viewer = DetectionViewer(
+                    label="Detections (Interactive)",
+                    panel_title="Detections",
+                    list_height=520,
+                )
+                hero_viewer = best_annotated_viewer
 
-    with gr.Column(elem_classes=["batch-main-container"]):
-        # ── TOP: Big Screen Results & Live Inspection (Full Width) ────
-        with gr.Group(elem_classes=["batch-hero-panel"]):
-            gr.HTML('<p class="section-label">👁️ Live Results Explorer</p>')
+        # ── Compact upload button + Run (always visible) ──
+        with gr.Row(elem_classes=["btn-group", "upload-run-row"]):
+            input_images = gr.UploadButton(
+                "📁 Upload Images",
+                file_types=["image"],
+                file_count="multiple",
+                variant="secondary",
+                size="sm",
+                scale=1,
+                elem_id="batch-upload-btn",
+            )
+            run_btn = gr.Button(
+                "▶  Run Batch",
+                variant="primary",
+                interactive=True,
+                scale=3,
+            )
+            stop_run_btn = gr.Button(
+                "⏹  Stop",
+                variant="secondary",
+                size="sm",
+                interactive=False,
+                scale=1,
+            )
 
+        with gr.Group(elem_classes=["batch-progress-card"]):
+            pipeline_status = gr.HTML(
+                value=render_status_header(
+                    "Idle — upload images, open sections below if needed, then Run.",
+                    state="idle",
+                )
+            )
+            progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
+
+        # ── DROPDOWN 1: Input & Categories — focused ──
+        with gr.Accordion("📥 Input & Categories — Strategy, Presets & Definitions", open=False):
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1):
+                    category_strategy = gr.Radio(
+                        label="🎯 Category Detection Strategy",
+                        choices=[
+                            ("🔒 Strict (Closed-Set)", "strict"),
+                            ("🔀 Hybrid (Extendable)", "hybrid"),
+                            ("🌐 Free (Open-World)", "free"),
+                        ],
+                        value="free",
+                        info="Free: Autonomous open-world detection. Strict: Restricted to listed categories. Hybrid: Priority targets + discover novel.",
+                    )
+                    category_preset_dropdown = gr.Dropdown(
+                        label="📋 Category Domain Presets",
+                        choices=list(CATEGORY_PRESETS.keys()),
+                        value="Fabric & Surface Defects",
+                        visible=False,
+                        info="Quickly load target categories & distinguishing definitions.",
+                    )
+                with gr.Column(scale=1):
+                    categories_input = gr.Textbox(
+                        label="Domain / Focus Hint (Optional)",
+                        placeholder="e.g. Focus on industrial defects, biological specimens, vehicles... (or leave blank)",
+                        value="",
+                        info="Free Mode: Agent autonomously detects all salient objects/anomalies.",
+                    )
+                    category_defs_input = gr.Textbox(
+                        label="Domain Guidance / Prompt Context (Optional)",
+                        placeholder="Optional domain context or special instructions...",
+                        lines=4,
+                        value="",
+                        info="Optional domain guidance.",
+                    )
+
+        # ── DROPDOWN 2: Pipeline Parameters — focused ──
+        with gr.Accordion("⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False) as rounds_accordion:
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1):
+                    rounds_slider = gr.Slider(
+                        label="Optimization Max Rounds",
+                        minimum=1,
+                        maximum=5,
+                        step=1,
+                        value=1,
+                    )
+                    score_threshold_slider = gr.Slider(
+                        label="Stop Score Threshold (0-10)",
+                        minimum=0,
+                        maximum=10,
+                        step=1,
+                        value=8,
+                    )
+                with gr.Column(scale=1):
+                    with gr.Row():
+                        det_temp_slider = gr.Slider(
+                            label="Detector Temperature",
+                            minimum=0.0,
+                            maximum=1.5,
+                            step=0.05,
+                            value=0.9,
+                        )
+                        jdg_temp_slider = gr.Slider(
+                            label="Judge Temperature",
+                            minimum=0.0,
+                            maximum=1.5,
+                            step=0.05,
+                            value=0.2,
+                        )
+                    concurrency_slider = gr.Slider(
+                        label="Concurrent Images",
+                        info=(
+                            "Images processed in parallel. Set 1 for single-slot local server, "
+                            "8–32 for external APIs or multi-slot servers."
+                        ),
+                        minimum=1,
+                        maximum=64,
+                        step=1,
+                        value=DEFAULT_CONCURRENCY,
+                    )
+
+        # ── DROPDOWN 3: Preprocessing — focused ──
+        with gr.Accordion("🎨 Image Preprocessing & Augmentation", open=False) as prep_accordion:
+            prep_enabled_chk = gr.Checkbox(
+                label="Enable Preprocessing",
+                value=False,
+                info="Master toggle for all preprocessing steps below.",
+            )
+
+            with gr.Group(visible=False) as prep_options_group:
+                gr.HTML(_section_title("📐", "Resolution & Padding"))
+                prep_short_edge_slider = gr.Slider(
+                    label="Target Short Edge (px)",
+                    minimum=512,
+                    maximum=2048,
+                    step=128,
+                    value=1024,
+                    info="Upscale short edge to at least this value.",
+                )
+                prep_pad_square_chk = gr.Checkbox(
+                    label="Pad to Square",
+                    value=False,
+                    info="Pad with neutral gray to maintain aspect ratio on square inputs.",
+                )
+
+                gr.HTML(_section_title("✂️", "Custom Resize"))
+                prep_custom_resize_chk = gr.Checkbox(
+                    label="Enable Custom Resize (override short edge)",
+                    value=False,
+                    info="Resize all images to exact width × height. Overrides the short-edge target.",
+                )
+                with gr.Row(visible=False) as prep_custom_resize_row:
+                    prep_custom_resize_width = gr.Number(
+                        label="Target Width (px)",
+                        value=1024,
+                        precision=0,
+                    )
+                    prep_custom_resize_height = gr.Number(
+                        label="Target Height (px)",
+                        value=1024,
+                        precision=0,
+                    )
+
+                gr.HTML(_section_title("🎨", "Contrast & Color"))
+                prep_contrast_dropdown = gr.Dropdown(
+                    label="Contrast Correction Method",
+                    choices=["none", "clahe", "autocontrast"],
+                    value="clahe",
+                )
+                prep_gamma_slider = gr.Slider(
+                    label="Gamma Correction",
+                    minimum=0.5,
+                    maximum=2.0,
+                    step=0.05,
+                    value=1.0,
+                )
+                prep_wb_chk = gr.Checkbox(
+                    label="Gray World White Balance Correction",
+                    value=False,
+                )
+
+                gr.HTML(_section_title("🔇", "Noise & Sharpness"))
+                prep_denoise_dropdown = gr.Dropdown(
+                    label="Denoising Filter",
+                    choices=["none", "bilateral", "nlm"],
+                    value="none",
+                )
+                prep_sharpen_chk = gr.Checkbox(
+                    label="Apply Unsharp Mask (Sharpen)", value=False
+                )
+
+                gr.HTML(_section_title("🔲", "Coordinate Grid Overlay"))
+                prep_grid_dropdown = gr.Dropdown(
+                    label="Grid Style",
+                    choices=["Standard Red", "transparent", "fine", "none"],
+                    value="Standard Red",
+                    info="Select standard, semi-transparent, fine 10×10 grid, or disable.",
+                )
+                prep_grid_step_slider = gr.Slider(
+                    label="Grid Step Size (px)",
+                    minimum=20,
+                    maximum=500,
+                    step=10,
+                    value=250,
+                    info="Distance between grid lines.",
+                )
+                prep_grid_line_width_slider = gr.Slider(
+                    label="Grid Line Thickness (px)",
+                    minimum=1,
+                    maximum=10,
+                    step=1,
+                    value=1,
+                )
+                prep_grid_font_size_slider = gr.Slider(
+                    label="Grid Label Font Size (0 = Auto)",
+                    minimum=0,
+                    maximum=48,
+                    step=1,
+                    value=0,
+                )
+                with gr.Row():
+                    prep_grid_line_color_dropdown = gr.Dropdown(
+                        label="Grid Line Color",
+                        choices=[
+                            "red",
+                            "blue",
+                            "green",
+                            "white",
+                            "black",
+                            "yellow",
+                            "cyan",
+                            "magenta",
+                            "custom",
+                        ],
+                        value="red",
+                    )
+                    prep_grid_line_color_custom = gr.Textbox(
+                        label="Custom Line Color (Hex/Name)",
+                        value="red",
+                        visible=False,
+                    )
+                with gr.Row():
+                    prep_grid_text_color_dropdown = gr.Dropdown(
+                        label="Grid Text Color",
+                        choices=[
+                            "white",
+                            "black",
+                            "red",
+                            "blue",
+                            "green",
+                            "yellow",
+                            "cyan",
+                            "magenta",
+                            "custom",
+                        ],
+                        value="white",
+                    )
+                    prep_grid_text_color_custom = gr.Textbox(
+                        label="Custom Text Color (Hex/Name)",
+                        value="white",
+                        visible=False,
+                    )
+                with gr.Row():
+                    prep_grid_backing_color_dropdown = gr.Dropdown(
+                        label="Grid Text Backing Color",
+                        choices=[
+                            "black",
+                            "none",
+                            "white",
+                            "red",
+                            "blue",
+                            "green",
+                            "custom",
+                        ],
+                        value="black",
+                    )
+                    prep_grid_backing_color_custom = gr.Textbox(
+                        label="Custom Backing (Hex/Name)",
+                        value="black",
+                        visible=False,
+                    )
+
+                gr.HTML(_section_title("🎯", "Visual Prompting (SoM)"))
+                prep_som_chk = gr.Checkbox(
+                    label="Enable Set-of-Mark (SoM) Prompting",
+                    value=False,
+                    info="Detect candidate regions and overlay numbered circles as hints.",
+                )
+
+                gr.HTML(_section_title("🧩", "Tiling (Small Objects)"))
+                prep_tiling_chk = gr.Checkbox(
+                    label="Enable Image Tiling",
+                    value=False,
+                    info="Split image into overlapping tiles, detect independently, and merge via NMS.",
+                )
+                prep_tile_size_slider = gr.Slider(
+                    label="Tile Size (px)",
+                    minimum=256,
+                    maximum=1024,
+                    step=128,
+                    value=512,
+                )
+                prep_tile_overlap_slider = gr.Slider(
+                    label="Tile Overlap (%)",
+                    minimum=0,
+                    maximum=50,
+                    step=5,
+                    value=20,
+                )
+
+                gr.HTML(_section_title("🔍", "Multi-Pass Crop & Verify"))
+                prep_cv_chk = gr.Checkbox(
+                    label="Enable Crop & Verify Validation",
+                    value=False,
+                    info="Perform a second VLM validation pass on cropped detections.",
+                )
+                prep_cv_padding_slider = gr.Slider(
+                    label="Crop Context Padding (%)",
+                    minimum=0,
+                    maximum=50,
+                    step=5,
+                    value=15,
+                )
+
+                gr.HTML(_section_title("📡", "VLM Processor Pixel Bounds"))
+                prep_send_pixel_bounds_chk = gr.Checkbox(
+                    label="Send Pixel Bounds in API Request",
+                    value=False,
+                    info="Pass min_pixels/max_pixels in extra_body (Qwen-VL / vLLM backends).",
+                )
+                with gr.Row(visible=False) as prep_pixel_bounds_row:
+                    prep_min_pixels_num = gr.Number(
+                        label="min_pixels",
+                        value=200704,
+                        precision=0,
+                        info="Default: 256×28×28",
+                    )
+                    prep_max_pixels_num = gr.Number(
+                        label="max_pixels",
+                        value=4194304,
+                        precision=0,
+                        info="Default: 2048×2048",
+                    )
+
+        # ── DROPDOWN 4: Explorer & Diagnostics — focused ──
+        with gr.Accordion("🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False):
             with gr.Group(elem_classes=["batch-explorer-bar"]):
                 with gr.Row(equal_height=True):
                     explorer_image_select = gr.Dropdown(
@@ -140,28 +485,9 @@ def build_batch_tab() -> Dict[str, Any]:
                         )
 
             hero_info = gr.HTML(
-                value='<div class="hero-empty">Ready — configure inputs below and click Run Batch to view live detections here.</div>',
+                value='<div class="hero-empty">Results will appear here after Run.</div>',
                 elem_classes=["hero-info"],
             )
-
-            # Big screen viewers (dual side-by-side or large display)
-            with gr.Row(equal_height=True, elem_classes=["batch-viewers-row"]):
-                with gr.Column(scale=1):
-                    source_image_viewer = gr.Image(
-                        label="Source Image (Reference)",
-                        type="pil",
-                        height=560,
-                    )
-                with gr.Column(scale=1):
-                    best_annotated_viewer = DetectionViewer(
-                        label="Detections (Interactive)",
-                        panel_title="Detections",
-                        list_height=560,
-                    )
-
-            # Link hero aliases for real-time runner stream synchronization
-            hero_source_image = source_image_viewer
-            hero_viewer = best_annotated_viewer
 
             with gr.Tabs(elem_classes=["batch-explorer-tabs"]) as explorer_tabs:
                 with gr.TabItem("💬 Judge Feedback"):
@@ -171,20 +497,12 @@ def build_batch_tab() -> Dict[str, Any]:
                         interactive=False,
                         placeholder="Detailed critique from the VLM judge will appear here...",
                     )
-
                 with gr.TabItem("📄 Detections JSON"):
-                    with gr.Group(elem_classes=["json-panel"]):
-                        gr.HTML(
-                            '<div class="json-panel-hdr"><span class="dot-amber"></span>'
-                            "Detections (JSON List)</div>"
-                        )
-                        with gr.Group(elem_classes=["json-panel-body"]):
-                            detections_json_box = gr.Code(
-                                language="json",
-                                show_label=False,
-                                value="[]",
-                            )
-
+                    detections_json_box = gr.Code(
+                        language="json",
+                        show_label=False,
+                        value="[]",
+                    )
                 with gr.TabItem("🔍 Raw Diagnostics"):
                     round_parse_error_display = gr.Textbox(
                         label="Parsing Errors",
@@ -197,7 +515,6 @@ def build_batch_tab() -> Dict[str, Any]:
                         interactive=False,
                         placeholder="Raw model text response...",
                     )
-
                 with gr.TabItem("📜 Logs"):
                     pipeline_logs_viewer = gr.Textbox(
                         lines=8,
@@ -207,359 +524,19 @@ def build_batch_tab() -> Dict[str, Any]:
                         container=False,
                     )
 
-        # ── BOTTOM: Uploading & Settings ──────────────────────────────
-        with gr.Row(equal_height=False, elem_classes=["batch-bottom-row"]):
-            # Left Bottom Column: Upload & Categories
-            with gr.Column(scale=1, min_width=380, elem_classes=["batch-bottom-col"]):
-                gr.HTML('<p class="section-label">📥 Input — Images & Categories</p>')
-
-                input_images = gr.File(
-                    file_count="multiple",
-                    file_types=["image"],
-                    label="Upload Source Image(s)",
-                )
-
-                category_strategy = gr.Radio(
-                    label="🎯 Category Detection Strategy",
-                    choices=[
-                        ("🔒 Strict (Closed-Set)", "strict"),
-                        ("🔀 Hybrid (Extendable)", "hybrid"),
-                        ("🌐 Free (Open-World)", "free"),
-                    ],
-                    value="strict",
-                    info="Strict: Restricted to listed categories. Hybrid: Priority targets + discover novel. Free: Autonomous open-world detection.",
-                )
-
-                category_preset_dropdown = gr.Dropdown(
-                    label="📋 Category Domain Presets",
-                    choices=list(CATEGORY_PRESETS.keys()),
-                    value="Fabric & Surface Defects",
-                    info="Quickly load target categories & distinguishing definitions.",
-                )
-
-                categories_input = gr.Textbox(
-                    label="Target Categories (Strict - Comma Separated)",
-                    placeholder="hole, stain, tear, cut, knot, weaving_defect",
-                    value="hole, stain, tear, cut, knot, weaving_defect",
-                    info="Strict Mode: Agent is restricted strictly to listed categories.",
-                )
-                category_defs_input = gr.Textbox(
-                    label="Category Definitions",
-                    placeholder="Write instructions for categories...",
-                    lines=4,
-                    value=CATEGORY_PRESETS["Fabric & Surface Defects"]["defs"],
-                )
-
-            # Right Bottom Column: Pipeline Config & Execution
-            with gr.Column(scale=1, min_width=380, elem_classes=["batch-bottom-col"]):
-                gr.HTML('<p class="section-label">⚙️ Configuration — Pipeline & Preprocessing</p>')
-
-                with gr.Accordion("⚙️ Pipeline Parameters", open=False) as rounds_accordion:
-                    rounds_slider = gr.Slider(
-                        label="Optimization Max Rounds",
-                        minimum=1,
-                        maximum=5,
-                        step=1,
-                        value=1,
-                    )
-                    score_threshold_slider = gr.Slider(
-                        label="Stop Score Threshold (0-10)",
-                        minimum=0,
-                        maximum=10,
-                        step=1,
-                        value=8,
-                    )
-                    with gr.Row():
-                        det_temp_slider = gr.Slider(
-                            label="Detector Temperature",
-                            minimum=0.0,
-                            maximum=1.5,
-                            step=0.05,
-                            value=0.9,
-                        )
-                        jdg_temp_slider = gr.Slider(
-                            label="Judge Temperature",
-                            minimum=0.0,
-                            maximum=1.5,
-                            step=0.05,
-                            value=0.2,
-                        )
-
-                with gr.Accordion(
-                    "🎨 Image Preprocessing & Augmentation", open=False
-                ) as prep_accordion:
-                    prep_enabled_chk = gr.Checkbox(
-                        label="Enable Preprocessing",
-                        value=False,
-                        info="Master toggle for all preprocessing steps below.",
-                    )
-
-                    with gr.Group(visible=False) as prep_options_group:
-                        gr.HTML(_section_title("📐", "Resolution & Padding"))
-                        prep_short_edge_slider = gr.Slider(
-                            label="Target Short Edge (px)",
-                            minimum=512,
-                            maximum=2048,
-                            step=128,
-                            value=1024,
-                            info="Upscale short edge to at least this value.",
-                        )
-                        prep_pad_square_chk = gr.Checkbox(
-                            label="Pad to Square",
-                            value=False,
-                            info="Pad with neutral gray to maintain aspect ratio on square inputs.",
-                        )
-
-                        gr.HTML(_section_title("✂️", "Custom Resize"))
-                        prep_custom_resize_chk = gr.Checkbox(
-                            label="Enable Custom Resize (override short edge)",
-                            value=False,
-                            info="Resize all images to exact width × height. Overrides the short-edge target.",
-                        )
-                        with gr.Row(visible=False) as prep_custom_resize_row:
-                            prep_custom_resize_width = gr.Number(
-                                label="Target Width (px)",
-                                value=1024,
-                                precision=0,
-                            )
-                            prep_custom_resize_height = gr.Number(
-                                label="Target Height (px)",
-                                value=1024,
-                                precision=0,
-                            )
-
-                        gr.HTML(_section_title("🎨", "Contrast & Color"))
-                        prep_contrast_dropdown = gr.Dropdown(
-                            label="Contrast Correction Method",
-                            choices=["none", "clahe", "autocontrast"],
-                            value="clahe",
-                        )
-                        prep_gamma_slider = gr.Slider(
-                            label="Gamma Correction",
-                            minimum=0.5,
-                            maximum=2.0,
-                            step=0.05,
-                            value=1.0,
-                        )
-                        prep_wb_chk = gr.Checkbox(
-                            label="Gray World White Balance Correction",
-                            value=False,
-                        )
-
-                        gr.HTML(_section_title("🔇", "Noise & Sharpness"))
-                        prep_denoise_dropdown = gr.Dropdown(
-                            label="Denoising Filter",
-                            choices=["none", "bilateral", "nlm"],
-                            value="none",
-                        )
-                        prep_sharpen_chk = gr.Checkbox(
-                            label="Apply Unsharp Mask (Sharpen)", value=False
-                        )
-
-                        gr.HTML(_section_title("🔲", "Coordinate Grid Overlay"))
-                        prep_grid_dropdown = gr.Dropdown(
-                            label="Grid Style",
-                            choices=["Standard Red", "transparent", "fine", "none"],
-                            value="Standard Red",
-                            info="Select standard, semi-transparent, fine 10×10 grid, or disable.",
-                        )
-                        prep_grid_step_slider = gr.Slider(
-                            label="Grid Step Size (px)",
-                            minimum=20,
-                            maximum=500,
-                            step=10,
-                            value=250,
-                            info="Distance between grid lines.",
-                        )
-                        prep_grid_line_width_slider = gr.Slider(
-                            label="Grid Line Thickness (px)",
-                            minimum=1,
-                            maximum=10,
-                            step=1,
-                            value=1,
-                        )
-                        prep_grid_font_size_slider = gr.Slider(
-                            label="Grid Label Font Size (0 = Auto)",
-                            minimum=0,
-                            maximum=48,
-                            step=1,
-                            value=0,
-                        )
-                        with gr.Row():
-                            prep_grid_line_color_dropdown = gr.Dropdown(
-                                label="Grid Line Color",
-                                choices=[
-                                    "red",
-                                    "blue",
-                                    "green",
-                                    "white",
-                                    "black",
-                                    "yellow",
-                                    "cyan",
-                                    "magenta",
-                                    "custom",
-                                ],
-                                value="red",
-                            )
-                            prep_grid_line_color_custom = gr.Textbox(
-                                label="Custom Line Color (Hex/Name)",
-                                value="red",
-                                visible=False,
-                            )
-                        with gr.Row():
-                            prep_grid_text_color_dropdown = gr.Dropdown(
-                                label="Grid Text Color",
-                                choices=[
-                                    "white",
-                                    "black",
-                                    "red",
-                                    "blue",
-                                    "green",
-                                    "yellow",
-                                    "cyan",
-                                    "magenta",
-                                    "custom",
-                                ],
-                                value="white",
-                            )
-                            prep_grid_text_color_custom = gr.Textbox(
-                                label="Custom Text Color (Hex/Name)",
-                                value="white",
-                                visible=False,
-                            )
-                        with gr.Row():
-                            prep_grid_backing_color_dropdown = gr.Dropdown(
-                                label="Grid Text Backing Color",
-                                choices=[
-                                    "black",
-                                    "none",
-                                    "white",
-                                    "red",
-                                    "blue",
-                                    "green",
-                                    "custom",
-                                ],
-                                value="black",
-                            )
-                            prep_grid_backing_color_custom = gr.Textbox(
-                                label="Custom Backing (Hex/Name)",
-                                value="black",
-                                visible=False,
-                            )
-
-                        gr.HTML(_section_title("🎯", "Visual Prompting (SoM)"))
-                        prep_som_chk = gr.Checkbox(
-                            label="Enable Set-of-Mark (SoM) Prompting",
-                            value=False,
-                            info="Detect candidate regions and overlay numbered circles as hints.",
-                        )
-
-                        gr.HTML(_section_title("🧩", "Tiling (Small Objects)"))
-                        prep_tiling_chk = gr.Checkbox(
-                            label="Enable Image Tiling",
-                            value=False,
-                            info="Split image into overlapping tiles, detect independently, and merge via NMS.",
-                        )
-                        prep_tile_size_slider = gr.Slider(
-                            label="Tile Size (px)",
-                            minimum=256,
-                            maximum=1024,
-                            step=128,
-                            value=512,
-                        )
-                        prep_tile_overlap_slider = gr.Slider(
-                            label="Tile Overlap (%)",
-                            minimum=0,
-                            maximum=50,
-                            step=5,
-                            value=20,
-                        )
-
-                        gr.HTML(_section_title("🔍", "Multi-Pass Crop & Verify"))
-                        prep_cv_chk = gr.Checkbox(
-                            label="Enable Crop & Verify Validation",
-                            value=False,
-                            info="Perform a second VLM validation pass on cropped detections.",
-                        )
-                        prep_cv_padding_slider = gr.Slider(
-                            label="Crop Context Padding (%)",
-                            minimum=0,
-                            maximum=50,
-                            step=5,
-                            value=15,
-                        )
-
-                        gr.HTML(_section_title("📡", "VLM Processor Pixel Bounds"))
-                        prep_send_pixel_bounds_chk = gr.Checkbox(
-                            label="Send Pixel Bounds in API Request",
-                            value=False,
-                            info="Pass min_pixels/max_pixels in extra_body (Qwen-VL / vLLM backends).",
-                        )
-                        with gr.Row(visible=False) as prep_pixel_bounds_row:
-                            prep_min_pixels_num = gr.Number(
-                                label="min_pixels",
-                                value=200704,
-                                precision=0,
-                                info="Default: 256×28×28",
-                            )
-                            prep_max_pixels_num = gr.Number(
-                                label="max_pixels",
-                                value=4194304,
-                                precision=0,
-                                info="Default: 2048×2048",
-                            )
-
-                with gr.Accordion("⚡ Advanced Execution", open=False) as advanced_accordion:
-                    concurrency_slider = gr.Slider(
-                        label="Concurrent Images",
-                        info=(
-                            "Images processed in parallel. Set 1 for single-slot local server, "
-                            "8–32 for external APIs or multi-slot servers."
-                        ),
-                        minimum=1,
-                        maximum=64,
-                        step=1,
-                        value=DEFAULT_CONCURRENCY,
-                    )
-
-                gr.HTML('<p class="section-label">▶ Run & Monitor</p>')
-
-                with gr.Row(elem_classes=["btn-group"]):
-                    run_btn = gr.Button(
-                        "▶  Run Batch",
-                        variant="primary",
-                        interactive=True,
-                        scale=3,
-                    )
-                    stop_run_btn = gr.Button(
-                        "⏹  Stop",
-                        variant="secondary",
-                        size="sm",
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=1):
+                    batch_status_table = gr.HTML(value=render_status_table({}, []))
+                with gr.Column(scale=1):
+                    download_results_box = gr.File(
+                        label="📥 Download Results (.zip)",
                         interactive=False,
-                        scale=1,
                     )
-
-                with gr.Group(elem_classes=["batch-progress-card"]):
-                    pipeline_status = gr.HTML(
-                        value=render_status_header(
-                            "Idle — configure inputs below, then run the batch.",
-                            state="idle",
-                        )
-                    )
-                    progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
-
-                download_results_box = gr.File(
-                    label="📥 Download Results (.zip)",
-                    interactive=False,
-                )
-
-                batch_status_table = gr.HTML(value=render_status_table({}, []))
 
     return dict(
         explorer_tabs=explorer_tabs,
         rounds_accordion=rounds_accordion,
         prep_accordion=prep_accordion,
-        advanced_accordion=advanced_accordion,
         input_images=input_images,
         category_strategy=category_strategy,
         category_preset_dropdown=category_preset_dropdown,

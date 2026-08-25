@@ -177,10 +177,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         stop_server_wrapper,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )
-    c_srv["refresh_logs_btn"].click(
-        get_server_status_and_logs,
-        outputs=[c_srv["server_logs_viewer"], server_status_badge],
-    )
+    # Logs auto-refresh every 5s via gr.Timer below — no manual refresh button.
 
     # ── Batch tab — category strategy & presets ──────────────────────────
     c_bat["category_strategy"].change(
@@ -374,7 +371,9 @@ def build_app() -> gr.Blocks:
     with gr.Blocks(
         theme=theme, css=custom_css, title="LLM Object Detection Console"
     ) as app:
-        gr.HTML(CONSOLE_JS)
+        # Gradio 6: <script> inside gr.HTML value never executes (innerHTML);
+        # head= injects it into <head> where it actually runs.
+        gr.HTML(value="", head=CONSOLE_JS)
 
         # ── Header with inline status badge ──────────────────────────────
         gr.HTML(

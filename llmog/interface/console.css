@@ -574,3 +574,51 @@ input[type="checkbox"], input[type="radio"] { accent-color: #FFFF00 !important; 
 @media (max-width: 1100px) {
   .tabs > .tab-nav button { font-size:11px !important; padding:0 6px !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   TWIN SCREENS — input & output viewports share identical size (520px)
+   and sit aligned on the same line in every detection tab.
+   ══════════════════════════════════════════════════════════════════════ */
+.canvas-stage-wrapper { height: 520px !important; overflow: hidden !important; }
+.img-viewer-wrap .pose-viewer-container .canvas-wrapper {
+  height: 520px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.img-viewer-wrap .pose-viewer-container .canvas-wrapper canvas {
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+.batch-viewers-row .pose-viewer-container .canvas-wrapper,
+.twin-screens-row .pose-viewer-container .canvas-wrapper {
+  height: 520px !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.batch-viewers-row .pose-viewer-container .canvas-wrapper canvas,
+.twin-screens-row .pose-viewer-container .canvas-wrapper canvas {
+  max-height: 100% !important;
+  object-fit: contain !important;
+}
+
+/* Real-Time Detection — webcam (input) & live viewer (output) twins */
+.rt-twin-screens { align-items: stretch !important; gap: 10px !important; }
+.rt-twin-screens > .gr-column { min-width: 0 !important; flex: 1 1 0 !important; }
+.rt-webcam-wrap { height: 520px !important; overflow: hidden !important; }
+.rt-webcam-wrap img, .rt-webcam-wrap video {
+  height: 100% !important; width: 100% !important;
+  object-fit: contain !important;
+}
+#rt-live-viewer .pose-viewer-container .canvas-wrapper {
+  height: 520px !important;
+  align-items: center !important;
+}
+#rt-live-viewer .pose-viewer-container .canvas-wrapper canvas { max-height: 100% !important; }
+
+@media (max-width: 900px) {
+  .rt-twin-screens { flex-direction: column !important; }
+}
+
+/* Batch — upload + Run on one row; UploadButton inherits standard button tokens */
+.upload-run-row { align-items: stretch !important; gap: 8px !important; flex-wrap: nowrap !important; }
+.upload-run-row .gr-button { min-width: 140px !important; }

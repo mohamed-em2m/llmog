@@ -1,16 +1,9 @@
 <!-- ════════════════════════════════════════════════════════════════════════
      Gradio API Console — client-side JS helpers
-     Inject this with gr.HTML(CONSOLE_JS) once, near the top of your
-     gr.Blocks() layout (right after the title header is fine). It must be
-     wrapped in <script> tags as shown — Gradio's gr.HTML renders raw HTML,
-     so the <script> tag is what gets it executed in the browser.
-
-     Why JS instead of a Python event handler for copy/download?
-     Gradio's Python callbacks round-trip through the server, which is
-     wasteful (and sometimes flaky) for something as simple as "copy this
-     text the browser already has." Reading straight from the hidden
-     textarea's DOM node and using the Clipboard / Blob APIs keeps copy and
-     download instant and fully client-side.
+     Inject this with gr.HTML(value="", head=CONSOLE_JS) once, near the top of
+     your gr.Blocks() layout. Gradio 6 renders gr.HTML values via innerHTML,
+     which never executes <script> tags — but head= content is injected into
+     the document <head>, where scripts do run.
      ════════════════════════════════════════════════════════════════════════ -->
 <script>
 // ── Copy panel text to clipboard ──────────────────────────────────────────

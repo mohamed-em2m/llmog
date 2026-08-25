@@ -115,50 +115,6 @@ def _clear_draw_results():
     )
 
 
-def _check_draw_endpoint(
-    use_external_api: bool,
-    ext_api_url: str,
-    ext_api_key: str,
-    ext_model_name: str,
-    server_port: float | int | None,
-) -> str:
-    """Lightweight endpoint check for Draw tab – mirrors Batch/Realtime logic."""
-    try:
-        from interface.realtime.state import resolve_endpoint
-        from openai import OpenAI
-
-        base_url, api_key, model_name = resolve_endpoint(
-            int(server_port) if server_port else 8080,
-            bool(use_external_api),
-            ext_api_url or "",
-            ext_api_key or "",
-            ext_model_name or "",
-        )
-        # External requires key, local requires healthy manager
-        if use_external_api:
-            if not ext_api_key or ext_api_key.strip() in ("", "your-key"):
-                return "**Status: ⚠️ External API selected but no API key set – configure in 🧠 Model / Endpoint tab.**"
-            # Light ping – list models or fail fast
-            client = OpenAI(base_url=base_url, api_key=api_key)
-            try:
-                client.models.list()
-                return f"**Status: ✅ Connected to External API `{model_name}` at `{base_url}`**"
-            except Exception as e:
-                return f"**Status: ⚠️ External API reachable but ping failed: {e} – check URL/key.**"
-        else:
-            from interface.state import state
-
-            with state.server_lock:
-                mgr = state.server_manager
-                if mgr is None:
-                    return "**Status: ❌ Local server not running – start it in 🧠 Model / Endpoint tab.**"
-                if not mgr.is_healthy():
-                    return "**Status: ⏳ Local server starting – check logs in 🧠 Model / Endpoint tab.**"
-                return f"**Status: ✅ Local server healthy on port {mgr.port} (model `{mgr.model}`)**"
-    except Exception as e:
-        return f"**Status: ❌ Connection check failed: {e}**"
-
-
 def _on_preset_change(preset_name: str) -> Tuple[gr.update, gr.update]:
     """Populate classes and definitions when a domain preset is chosen."""
     preset = CATEGORY_PRESETS.get(preset_name, CATEGORY_PRESETS["Custom / Blank"])
@@ -1128,11 +1084,14 @@ _CUSTOM_CANVAS_JS = """
         return window.__llmog_custom_canvas_payload__ || "{}";
     };
     
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => window.CustomCanvasController.init());
-    } else {
-        setTimeout(() => window.CustomCanvasController.init(), 100);
-    }
+    const boot = () => {
+        const root = document.getElementById('llmog-custom-canvas-app');
+        if (!root) { setTimeout(boot, 200); return; }
+        if (window.__draw_canvas_booted_root__ === root) return;
+        window.__draw_canvas_booted_root__ = root;
+        window.CustomCanvasController.init();
+    };
+    setTimeout(boot, 50);
 })();
 """
 
@@ -1155,12 +1114,14 @@ def build_draw_tab() -> Dict[str, Any]:
     """Build the dedicated Draw & Recognize tab with Custom Frontend Canvas + DetectionViewer."""
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
         # ── Left / Main: Custom Interactive HTML5 Canvas Frontend ────────────
-        with gr.Column(scale=3, min_width=520):
+        with gr.Column(scale=1, min_width=420):
             gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
 
-            # Embedded Custom Canvas Frontend — Gradio 4/5 compat: inject JS via <script> (js_on_load not supported in this version)
+            # Embedded Custom Canvas Frontend — Gradio 6: <script> inside gr.HTML value is
+            # never executed (innerHTML), so JS is wired via js_on_load instead.
             custom_canvas_view = gr.HTML(
-                value=_CUSTOM_CANVAS_HTML + f"<script>{_CUSTOM_CANVAS_JS}</script>",
+                value=_CUSTOM_CANVAS_HTML,
+                js_on_load=_CUSTOM_CANVAS_JS,
                 elem_id="draw-canvas-html",
             )
 
@@ -1177,12 +1138,6 @@ def build_draw_tab() -> Dict[str, Any]:
             )
 
             with gr.Row(elem_classes=["btn-group"]):
-                recls_connect_btn = gr.Button(
-                    "🔌 Check Connection",
-                    variant="secondary",
-                    scale=1,
-                    elem_id="draw-connect-btn",
-                )
                 recls_run_btn = gr.Button(
                     "🔎  Recognize Drawn Regions",
                     variant="primary",
@@ -1195,44 +1150,42 @@ def build_draw_tab() -> Dict[str, Any]:
                     scale=1,
                 )
 
-        # ── Right: Config & Recognition Results ───────────────────────────
-        with gr.Column(scale=2, min_width=380, elem_classes=["draw-right-panel"]):
-            gr.HTML('<p class="section-label">⚙️ Detection Strategy &amp; Classes</p>')
+            # ── Target classes & detection mode (input) ───────────────────
+            with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
+                recls_class_mode = gr.Radio(
+                    label="🎯 Class Expectation Mode",
+                    choices=[
+                        ("🔒 Strict (Closed-Set)", "strict"),
+                        ("🔀 Hybrid (Extendable)", "hybrid"),
+                        ("🌐 Free (Open-World)", "free"),
+                    ],
+                    value="free",
+                    info="Free: Agent autonomously names any object/defect. Strict: locked to listed classes.",
+                )
 
-            # ── 1. Class Expectation Strategy ─────────────────────────────
-            recls_class_mode = gr.Radio(
-                label="🎯 Class Expectation Mode",
-                choices=[
-                    ("🔒 Strict (Closed-Set)", "strict"),
-                    ("🔀 Hybrid (Extendable)", "hybrid"),
-                    ("🌐 Free (Open-World)", "free"),
-                ],
-                value="strict",
-                info="Control how the VLM assigns classes to your drawn regions.",
-            )
+                recls_preset_dropdown = gr.Dropdown(
+                    label="📋 Category Domain Presets",
+                    choices=list(CATEGORY_PRESETS.keys()),
+                    value="Fabric & Surface Defects",
+                    visible=False,
+                    info="Quickly load target classes & expert distinguishing definitions.",
+                )
 
-            # ── 2. Preset library ──────────────────────────────────────────
-            recls_preset_dropdown = gr.Dropdown(
-                label="📋 Category Domain Presets",
-                choices=list(CATEGORY_PRESETS.keys()),
-                value="Fabric & Surface Defects",
-                info="Quickly load target classes & expert distinguishing definitions.",
-            )
+                recls_classes_input = gr.Textbox(
+                    label="Domain / Focus Hint (Optional)",
+                    placeholder="e.g. Focus on industrial defects, wildlife, electronics... (or leave blank)",
+                    value="",
+                    lines=2,
+                    info="Free Mode: Agent autonomously names any object/defect. Predefined classes are not required.",
+                )
 
-            recls_classes_input = gr.Textbox(
-                label="Target Classes (Strict - Comma Separated)",
-                placeholder="hole, stain, tear, cut, knot, weaving_defect",
-                value="hole, stain, tear, cut, knot, weaving_defect",
-                lines=2,
-                info="Strict Mode: Agent is locked to these classes (or 'none').",
-            )
-
-            recls_defs_input = gr.Textbox(
-                label="Class Definitions / Distinguishing Rules",
-                lines=4,
-                value=CATEGORY_PRESETS["Fabric & Surface Defects"]["defs"],
-                info="Detailed criteria for distinguishing each class.",
-            )
+                recls_defs_input = gr.Textbox(
+                    label="Domain Guidance / Prompt Context (Optional)",
+                    placeholder="Optional domain context or special inspection criteria...",
+                    lines=4,
+                    value="",
+                    info="Optional domain guidance.",
+                )
 
             with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
                 recls_conf_threshold = gr.Slider(
@@ -1264,6 +1217,8 @@ def build_draw_tab() -> Dict[str, Any]:
                     info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
                 )
 
+        # ── Right: Recognition Results (output only) ──────────────────────
+        with gr.Column(scale=1, min_width=420, elem_classes=["draw-right-panel"]):
             recls_status = gr.Markdown("**Status: Idle**")
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 recls_annotated = DetectionViewer(
@@ -1293,7 +1248,6 @@ def build_draw_tab() -> Dict[str, Any]:
         recls_conf_threshold=recls_conf_threshold,
         recls_padding_slider=recls_padding_slider,
         recls_request_mode=recls_request_mode,
-        recls_connect_btn=recls_connect_btn,
         recls_run_btn=recls_run_btn,
         recls_clear_btn=recls_clear_btn,
         recls_status=recls_status,
@@ -1334,39 +1288,6 @@ def wire_draw_events(
             inputs=None,
             outputs=[c_draw["custom_draw_payload"]],
             js="() => { if (window.CustomCanvasController) { setTimeout(() => { const ta = document.querySelector('#custom_draw_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasController.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
-        )
-
-    # ── Connect check – lets user verify global endpoint before running ─
-    # Also auto-switches to 🧠 Model / Endpoint tab if check fails
-    if "recls_connect_btn" in c_draw:
-        c_draw["recls_connect_btn"].click(
-            fn=_check_draw_endpoint,
-            inputs=[
-                c_srv["use_external_api_chk"],
-                c_srv["ext_api_url"],
-                c_srv["ext_api_key"],
-                c_srv["ext_model_name"],
-                c_srv["server_port_input"],
-            ],
-            outputs=[c_draw["recls_status"]],
-        ).then(
-            fn=None,
-            inputs=[c_draw["recls_status"]],
-            outputs=None,
-            js="""(status) => {
-                const s = document.querySelector('#draw-detection-viewer');
-                if(s) s.scrollIntoView({behavior:'smooth', block:'center'});
-                const msg = String(status||'');
-                if (msg.includes('❌') || msg.includes('⚠️') || msg.includes('not running') || msg.includes('no API key')) {
-                    const btns=[...document.querySelectorAll('.tab-nav button')];
-                    const t=btns.find(b=>b.textContent.includes('Model / Endpoint'));
-                    if(t){ 
-                        t.click();
-                        t.style.outline='2px solid #38bdf8'; 
-                        setTimeout(()=>t.style.outline='', 2500); 
-                    }
-                }
-            }""",
         )
 
     # ── Recognition execution with Gradio Backend ───────────────────────────
