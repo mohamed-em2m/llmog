@@ -121,7 +121,7 @@ class DetectionViewer(gr.HTML):
             # Fallback for Gradio 4: render a brutal placeholder — viewer JS not supported, but app must build.
             fallback_kwargs = {k: v for k, v in kwargs.items() if k in ("elem_id", "elem_classes", "visible", "render", "key")}
             placeholder = (
-                f"<div style='border:3px solid #000; background:#FFFF00; padding:12px; "
+                f"<div style='border:3px solid #26333F; background:#D85040; color:#F2F6F8; padding:12px; "
                 f"font-family:Space Grotesk, sans-serif; font-weight:900; text-transform:uppercase;'>"
                 f"{panel_title} — viewer requires Gradio 5+ (current {gr.__version__})</div>"
             )

@@ -1,20 +1,28 @@
 """
-Neo-Brutalist Theme — Gradio theme tokens (STRICT one-accent)
-Pairs with console.css. One neon accent only: #FFFF00 (yellow).
-Never vary accent per component; secondary stays white/black.
-Background #FFFFFF, text #000000, 3px borders, 0 radius, hard shadows.
+Red & Blue Retro Theme — Gradio theme tokens (5-color palette)
+Pairs with console.css. One accent only: #D85040 (Red Glow).
+Background #394A5B (Cold Steel), panels #3E5D7C (Ming Blue), muted #667E8B, hover #EA7555.
+
+Palette:
+  Rough Denim  #667E8B → muted/alt surfaces, disabled
+  Ming Blue    #3E5D7C → cards / inputs / secondary
+  Cold Steel   #394A5B → page background
+  Red Glow     #D85040 → primary accent (buttons, active tab, slider)
+  Burnt Sienna #EA7555 → hover accent
+Derived:
+  --ink  #26333F deep Cold Steel → borders + hard shadows
+  --text #F2F6F8 cool near-white → text
 """
 
 import gradio as gr
 
-# Subclassing Base via instance — Gradio's theme API is token-based, not class-based.
-# We extend Base with strict brutalist tokens; CSS string in console.css
-# overrides hard shadows / radius / hover transforms that the token API can't reach.
+# Gradio's theme API is token-based; CSS in console.css overrides hard shadows / radius / hover.
+# Primary hue = red (closest to #D85040), neutrals = slate (bluish grey close to #667E8B/#3E5D7C).
 
 theme = gr.themes.Base(
-    primary_hue=gr.themes.colors.yellow,
-    secondary_hue=gr.themes.colors.stone,
-    neutral_hue=gr.themes.colors.stone,
+    primary_hue=gr.themes.colors.red,
+    secondary_hue=gr.themes.colors.slate,
+    neutral_hue=gr.themes.colors.slate,
     font=[
         gr.themes.GoogleFont("Space Grotesk"),
         gr.themes.GoogleFont("JetBrains Mono"),
@@ -32,67 +40,66 @@ theme = gr.themes.Base(
         "monospace",
     ],
 ).set(
-    # — page / surfaces: pure white, never cream/gradient —
-    body_background_fill="#FFFFFF",
-    body_background_fill_dark="#FFFFFF",
-    body_text_color="#000000",
-    body_text_color_dark="#000000",
-    background_fill_primary="#FFFFFF",
-    background_fill_primary_dark="#FFFFFF",
-    background_fill_secondary="#FFFFFF",
-    background_fill_secondary_dark="#FFFFFF",
-    block_background_fill="#FFFFFF",
-    block_background_fill_dark="#FFFFFF",
-    # — borders: 3px solid black everywhere (CSS enforces !important) —
-    border_color_primary="#000000",
-    border_color_primary_dark="#000000",
-    border_color_accent="#000000",
-    # — ONE accent only: #FFFF00 for primary, active tab, slider fill —
-    # Secondary remains white/black, never pink/cyan/lime.
-    button_primary_background_fill="#FFFF00",
-    button_primary_background_fill_dark="#FFFF00",
-    button_primary_background_fill_hover="#FFFF00",
-    button_primary_background_fill_hover_dark="#FFFF00",
-    button_primary_text_color="#000000",
-    button_primary_text_color_dark="#000000",
-    button_primary_border_color="#000000",
-    button_primary_border_color_dark="#000000",
-    button_secondary_background_fill="#FFFFFF",
-    button_secondary_background_fill_dark="#FFFFFF",
-    button_secondary_background_fill_hover="#FFFFFF",
-    button_secondary_background_fill_hover_dark="#FFFFFF",
-    button_secondary_text_color="#000000",
-    button_secondary_text_color_dark="#000000",
-    button_secondary_border_color="#000000",
-    button_secondary_border_color_dark="#000000",
-    button_cancel_background_fill="#FFFFFF",
-    button_cancel_background_fill_dark="#FFFFFF",
-    button_cancel_background_fill_hover="#FFFFFF",
-    button_cancel_background_fill_hover_dark="#FFFFFF",
-    button_cancel_text_color="#000000",
-    button_cancel_text_color_dark="#000000",
-    button_cancel_border_color="#000000",
-    button_cancel_border_color_dark="#000000",
-    # — inputs: white, thick black border —
-    input_background_fill="#FFFFFF",
-    input_background_fill_dark="#FFFFFF",
-    input_border_color="#000000",
-    input_border_color_dark="#000000",
-    input_border_color_focus="#000000",
-    input_border_color_focus_dark="#000000",
-    # — slider: ONE accent yellow fill —
-    slider_color="#FFFF00",
-    slider_color_dark="#FFFF00",
-    # — labels: black on white/yellow, never white on dark —
-    block_label_text_color="#000000",
-    block_label_text_color_dark="#000000",
-    block_title_text_color="#000000",
-    block_title_text_color_dark="#000000",
-    block_label_background_fill="#FFFFFF",
-    block_label_background_fill_dark="#FFFFFF",
-    block_label_border_color="#000000",
-    block_label_border_color_dark="#000000",
-    # — radii: 0 everywhere (only tokens that exist in this Gradio version) —
+    # — page / surfaces —
+    body_background_fill="#394A5B",
+    body_background_fill_dark="#394A5B",
+    body_text_color="#F2F6F8",
+    body_text_color_dark="#F2F6F8",
+    background_fill_primary="#3E5D7C",
+    background_fill_primary_dark="#3E5D7C",
+    background_fill_secondary="#394A5B",
+    background_fill_secondary_dark="#394A5B",
+    block_background_fill="#3E5D7C",
+    block_background_fill_dark="#3E5D7C",
+    # — borders: 3px solid ink everywhere (CSS enforces !important) —
+    border_color_primary="#26333F",
+    border_color_primary_dark="#26333F",
+    border_color_accent="#26333F",
+    # — Red Glow primary accent; Burnt Sienna hover —
+    button_primary_background_fill="#D85040",
+    button_primary_background_fill_dark="#D85040",
+    button_primary_background_fill_hover="#EA7555",
+    button_primary_background_fill_hover_dark="#EA7555",
+    button_primary_text_color="#F2F6F8",
+    button_primary_text_color_dark="#F2F6F8",
+    button_primary_border_color="#26333F",
+    button_primary_border_color_dark="#26333F",
+    button_secondary_background_fill="#3E5D7C",
+    button_secondary_background_fill_dark="#3E5D7C",
+    button_secondary_background_fill_hover="#EA7555",
+    button_secondary_background_fill_hover_dark="#EA7555",
+    button_secondary_text_color="#F2F6F8",
+    button_secondary_text_color_dark="#F2F6F8",
+    button_secondary_border_color="#26333F",
+    button_secondary_border_color_dark="#26333F",
+    button_cancel_background_fill="#667E8B",
+    button_cancel_background_fill_dark="#667E8B",
+    button_cancel_background_fill_hover="#EA7555",
+    button_cancel_background_fill_hover_dark="#EA7555",
+    button_cancel_text_color="#F2F6F8",
+    button_cancel_text_color_dark="#F2F6F8",
+    button_cancel_border_color="#26333F",
+    button_cancel_border_color_dark="#26333F",
+    # — inputs: Ming Blue panel, ink border —
+    input_background_fill="#3E5D7C",
+    input_background_fill_dark="#3E5D7C",
+    input_border_color="#26333F",
+    input_border_color_dark="#26333F",
+    input_border_color_focus="#26333F",
+    input_border_color_focus_dark="#26333F",
+    # — slider: Red Glow fill —
+    slider_color="#D85040",
+    slider_color_dark="#D85040",
+    # — labels —
+    block_label_text_color="#F2F6F8",
+    block_label_text_color_dark="#F2F6F8",
+    block_title_text_color="#F2F6F8",
+    block_title_text_color_dark="#F2F6F8",
+    block_label_background_fill="#3E5D7C",
+    block_label_background_fill_dark="#3E5D7C",
+    block_label_border_color="#26333F",
+    block_label_border_color_dark="#26333F",
+    # — radii: 0 everywhere —
     block_radius="0px",
     button_large_radius="0px",
     button_small_radius="0px",
@@ -102,27 +109,27 @@ theme = gr.themes.Base(
     block_label_radius="0px",
     container_radius="0px",
     table_radius="0px",
-    # — shadows: hard 5px/4px, never soft rgba blur —
-    block_shadow="5px 5px 0px #000000",
-    block_shadow_dark="5px 5px 0px #000000",
-    button_primary_shadow="5px 5px 0px #000000",
-    button_primary_shadow_dark="5px 5px 0px #000000",
-    button_secondary_shadow="5px 5px 0px #000000",
-    button_secondary_shadow_dark="5px 5px 0px #000000",
-    button_cancel_shadow="5px 5px 0px #000000",
-    button_cancel_shadow_dark="5px 5px 0px #000000",
-    input_shadow="5px 5px 0px #000000",
-    input_shadow_dark="5px 5px 0px #000000",
-    input_shadow_focus="5px 5px 0px #000000",
-    input_shadow_focus_dark="5px 5px 0px #000000",
-    stat_background_fill="#FFFFFF",
-    stat_background_fill_dark="#FFFFFF",
-    table_border_color="#000000",
-    table_border_color_dark="#000000",
-    table_even_background_fill="#FFFFFF",
-    table_even_background_fill_dark="#FFFFFF",
-    table_odd_background_fill="#FFFFFF",
-    table_odd_background_fill_dark="#FFFFFF",
-    code_background_fill="#FFFFFF",
-    code_background_fill_dark="#FFFFFF",
+    # — shadows: hard 5px, ink —
+    block_shadow="5px 5px 0px #26333F",
+    block_shadow_dark="5px 5px 0px #26333F",
+    button_primary_shadow="5px 5px 0px #26333F",
+    button_primary_shadow_dark="5px 5px 0px #26333F",
+    button_secondary_shadow="5px 5px 0px #26333F",
+    button_secondary_shadow_dark="5px 5px 0px #26333F",
+    button_cancel_shadow="5px 5px 0px #26333F",
+    button_cancel_shadow_dark="5px 5px 0px #26333F",
+    input_shadow="5px 5px 0px #26333F",
+    input_shadow_dark="5px 5px 0px #26333F",
+    input_shadow_focus="5px 5px 0px #26333F",
+    input_shadow_focus_dark="5px 5px 0px #26333F",
+    stat_background_fill="#3E5D7C",
+    stat_background_fill_dark="#3E5D7C",
+    table_border_color="#26333F",
+    table_border_color_dark="#26333F",
+    table_even_background_fill="#3E5D7C",
+    table_even_background_fill_dark="#3E5D7C",
+    table_odd_background_fill="#394A5B",
+    table_odd_background_fill_dark="#394A5B",
+    code_background_fill="#3E5D7C",
+    code_background_fill_dark="#3E5D7C",
 )
