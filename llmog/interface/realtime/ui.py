@@ -76,7 +76,7 @@ def _build_realtime_tab() -> Dict[str, Any]:
 
         # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) FIXED: equal_height=False prevents flex thrash on stream start ──
         with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row", "rt-twin-screens"]):
-            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col", "rt-input-col"]):
                 gr.HTML('<p class="section-label">📥 Input — Live Webcam / Video</p>')
                 with gr.Group(elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]) as webcam_wrap:
                     c["webcam_input"] = gr.Image(
@@ -98,10 +98,14 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         elem_id="rt_same_window_html",
                     )
                 c["webcam_wrap_group"] = webcam_wrap
-                c["video_input"] = gr.Video(
-                    label="INPUT VIDEO FILE",
-                    visible=False,
-                )
+                with gr.Group(elem_id="rt_video_wrap", elem_classes=["rt-video-wrap"], visible=False) as video_wrap:
+                    c["video_input"] = gr.Video(
+                        label="INPUT VIDEO FILE",
+                        sources=["upload"],
+                        visible=True,
+                        elem_id="rt_video_input",
+                    )
+                c["video_wrap_group"] = video_wrap
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
                 gr.HTML('<p class="section-label">👁️ Output — Live Detections</p>')
                 c["realtime_viewer"] = DetectionViewer(
@@ -425,6 +429,7 @@ def _wire_realtime_events(
         return (
             gr.update(visible=is_cam),
             gr.update(visible=is_cam),  # realtime_viewer
+            gr.update(visible=not is_cam),  # video_wrap_group
             gr.update(visible=not is_cam),
             gr.update(visible=not is_cam),  # gallery
             gr.update(visible=not is_cam),  # viewer (last frame)
@@ -437,6 +442,7 @@ def _wire_realtime_events(
         outputs=[
             c_real["webcam_wrap_group"],
             c_real["realtime_viewer"],
+            c_real["video_wrap_group"],
             c_real["video_input"],
             c_real["video_gallery_output"],
             c_real["video_viewer"],

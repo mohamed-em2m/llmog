@@ -87,107 +87,12 @@ def _on_realtime_interactive_mode_change(mode: str) -> Tuple[gr.update, gr.updat
 
 # ── Interactive HTML5 Canvas with Native Live Camera Feed ──────────────────────
 _RT_DRAW_CANVAS_HTML = """
-<div id="llmog-custom-canvas-app-rt" class="custom-canvas-container">
-    <!-- Top Interactive Toolbar -->
-    <div class="canvas-toolbar">
-        <!-- Live Camera Controls -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Camera</span>
-            <button type="button" class="canvas-tool-btn camera-btn" id="rt-btn-start-camera" title="Start Live Webcam Feed">
-                <span class="tool-icon">📹</span> Start Camera
-            </button>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-freeze-camera" style="display:none;" title="Freeze / Resume Live Video [Space]">
-                <span class="tool-icon">⏸️</span> Freeze
-            </button>
-            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-flip-camera" style="display:none;" title="Flip Front / Back Camera">
-                🔄
-            </button>
-            <button type="button" class="canvas-tool-btn danger" id="rt-btn-stop-camera" style="display:none;" title="Stop Camera">
-                ⏹️ Stop
-            </button>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- Annotation Tools -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Tools</span>
-            <button type="button" class="canvas-tool-btn active" id="rt-tool-bbox" title="Bounding Box (Drag rectangle) [B]">
-                <span class="tool-icon">🔲</span> Box
-            </button>
-            <button type="button" class="canvas-tool-btn" id="rt-tool-brush" title="Freehand Brush [P]">
-                <span class="tool-icon">🖌️</span> Brush
-            </button>
-            <button type="button" class="canvas-tool-btn" id="rt-tool-circle" title="Circle / Ellipse [C]">
-                <span class="tool-icon">⭕</span> Circle
-            </button>
-            <button type="button" class="canvas-tool-btn" id="rt-tool-eraser" title="Eraser / Delete Region [E]">
-                <span class="tool-icon">🧽</span> Eraser
-            </button>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- Color Palette -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Color</span>
-            <div class="color-palette-bar" id="rt-palette-swatches">
-                <button type="button" class="color-swatch active" style="background:#00ffcc" data-color="#00ffcc"></button>
-                <button type="button" class="color-swatch" style="background:#ff3c3c" data-color="#ff3c3c"></button>
-                <button type="button" class="color-swatch" style="background:#0096ff" data-color="#0096ff"></button>
-                <button type="button" class="color-swatch" style="background:#ffd214" data-color="#ffd214"></button>
-                <button type="button" class="color-swatch" style="background:#963cff" data-color="#963cff"></button>
-                <button type="button" class="color-swatch" style="background:#ffffff" data-color="#ffffff"></button>
-            </div>
-            <input type="color" id="rt-custom-color-picker" value="#00ffcc" title="Custom color" class="color-picker-input">
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- Size Slider -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Size: <b id="rt-brush-size-val">3</b>px</span>
-            <input type="range" id="rt-brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- Actions -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Actions</span>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
-            <button type="button" class="canvas-tool-btn danger" id="rt-btn-clear-all" title="Clear camera & drawings completely">🧹 Reset All</button>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- Zoom Controls -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Zoom</span>
-            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-in" title="Zoom in">➕</button>
-            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-out" title="Zoom out">➖</button>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
-            <span id="rt-zoom-level-text" class="zoom-indicator">100%</span>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <!-- File Fallback Upload -->
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">File</span>
-            <button type="button" class="canvas-tool-btn upload-btn" id="rt-btn-toolbar-upload" title="Upload an image from your computer">
-                📁 Upload
-            </button>
-        </div>
-    </div>
-
-    <!-- Canvas Stage Viewport with Live Camera -->
+<div id="llmog-custom-canvas-app-rt" class="custom-canvas-container canvas-stage-card">
+    <!-- Canvas Stage Viewport with Live Camera — video kept visible to compositing (opacity 0, NOT display:none so drawImage works) -->
     <div class="canvas-stage-wrapper" id="rt-canvas-stage-wrapper">
-        <video id="rt-camera-video" playsinline muted autoplay style="display:none;"></video>
+        <video id="rt-camera-video" playsinline muted autoplay style="position:absolute; width:2px; height:2px; opacity:0.01; pointer-events:none; top:0; left:0;"></video>
         <canvas id="rt-custom-annotation-canvas"></canvas>
-        
+
         <div id="rt-canvas-empty-overlay" class="canvas-empty-state">
             <div class="empty-icon">📹</div>
             <h3>Real-Time Interactive Camera &amp; Draw</h3>
@@ -207,10 +112,70 @@ _RT_DRAW_CANVAS_HTML = """
     <div class="canvas-status-bar">
         <div class="status-left">
             <span class="regions-count-badge" id="rt-regions-count-badge">0 Region(s)</span>
-            <span class="canvas-hint-text">💡 Tip: Start camera, select <b>Box</b> to mark objects directly on the camera feed, then click <b>🔎 Recognize Drawn Objects</b>.</span>
+            <span class="canvas-hint-text">💡 Tip: Start camera, select <b>Box</b> to mark objects directly on the camera feed.</span>
         </div>
-        <div class="regions-list-chips" id="rt-regions-chips-container">
-            <!-- Dynamically populated region chips -->
+        <div class="regions-list-chips" id="rt-regions-chips-container"></div>
+    </div>
+</div>
+"""
+
+# ── RT camera/annotation toolbar extracted below canvas (same IDs — JS binds globally) ──
+_RT_TOOLBAR_HTML = """
+<div id="llmog-custom-canvas-toolbar-rt" class="custom-canvas-container draw-toolbar-below">
+    <div class="canvas-toolbar">
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Camera</span>
+            <button type="button" class="canvas-tool-btn camera-btn" id="rt-btn-start-camera" title="Start Live Webcam Feed"><span class="tool-icon">📹</span> Start Camera</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-freeze-camera" style="display:none;" title="Freeze / Resume Live Video [Space]"><span class="tool-icon">⏸️</span> Freeze</button>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-flip-camera" style="display:none;" title="Flip Front / Back Camera">🔄</button>
+            <button type="button" class="canvas-tool-btn danger" id="rt-btn-stop-camera" style="display:none;" title="Stop Camera">⏹️ Stop</button>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Tools</span>
+            <button type="button" class="canvas-tool-btn active" id="rt-tool-bbox" title="Bounding Box [B]"><span class="tool-icon">🔲</span> Box</button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-brush" title="Freehand Brush [P]"><span class="tool-icon">🖌️</span> Brush</button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-circle" title="Circle / Ellipse [C]"><span class="tool-icon">⭕</span> Circle</button>
+            <button type="button" class="canvas-tool-btn" id="rt-tool-eraser" title="Eraser / Delete Region [E]"><span class="tool-icon">🧽</span> Eraser</button>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Color</span>
+            <div class="color-palette-bar" id="rt-palette-swatches">
+                <button type="button" class="color-swatch active" style="background:#00ffcc" data-color="#00ffcc"></button>
+                <button type="button" class="color-swatch" style="background:#ff3c3c" data-color="#ff3c3c"></button>
+                <button type="button" class="color-swatch" style="background:#0096ff" data-color="#0096ff"></button>
+                <button type="button" class="color-swatch" style="background:#ffd214" data-color="#ffd214"></button>
+                <button type="button" class="color-swatch" style="background:#963cff" data-color="#963cff"></button>
+                <button type="button" class="color-swatch" style="background:#ffffff" data-color="#ffffff"></button>
+            </div>
+            <input type="color" id="rt-custom-color-picker" value="#00ffcc" title="Custom color" class="color-picker-input">
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Size: <b id="rt-brush-size-val">3</b>px</span>
+            <input type="range" id="rt-brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Actions</span>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
+            <button type="button" class="canvas-tool-btn danger" id="rt-btn-clear-all" title="Clear camera & drawings completely">🧹 Reset All</button>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Zoom</span>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-in" title="Zoom in">➕</button>
+            <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-out" title="Zoom out">➖</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
+            <span id="rt-zoom-level-text" class="zoom-indicator">100%</span>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">File</span>
+            <button type="button" class="canvas-tool-btn upload-btn" id="rt-btn-toolbar-upload" title="Upload an image from your computer">📁 Upload</button>
         </div>
     </div>
 </div>
@@ -1260,133 +1225,97 @@ def _load_sample_bridge_rt():
 
 
 def build_realtime_interactive_tab() -> Dict[str, Any]:
-    """Build the Real-Time Interactive Camera Draw & Recognition tab."""
-    with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
-        # ── Left / Main: Real-Time Interactive Canvas with Camera ─────────────
-        with gr.Column(scale=1, min_width=420):
+    """Real-Time Interactive — twin 520px (camera canvas | recognition viewer), camera toolbar below canvas."""
+    # ── Top twin: RT canvas stage (520) | recognition viewer — same level ──
+    with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
             gr.HTML('<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>')
-
-            # Embedded Custom Canvas — Gradio 6: <script> inside gr.HTML value is
-            # never executed (innerHTML), so JS is wired via js_on_load instead.
             custom_canvas = gr.HTML(
                 value=_RT_DRAW_CANVAS_HTML,
                 js_on_load=_RT_DRAW_CANVAS_JS,
                 elem_id="rt-interactive-canvas-html",
             )
-
-            # Hidden payload and sample bridge components
-            payload_box = gr.Textbox(
-                value="{}",
-                visible=False,
-                elem_id="rt_interactive_payload_box",
-            )
-            sample_bridge_btn = gr.Button(
-                "Sample Bridge",
-                visible=False,
-                elem_id="rt_sample_bridge_btn",
-            )
-
-            with gr.Row(elem_classes=["btn-group"]):
-                run_btn = gr.Button(
-                    "🔎  Recognize Drawn Objects",
-                    variant="primary",
-                    scale=2,
-                )
-                clear_btn = gr.Button(
-                    "🗑️ Clear Results",
-                    variant="secondary",
-                    scale=1,
-                )
-
-            # ── Target classes & detection mode (input) ───────────────────
-            with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
-                class_mode = gr.Radio(
-                    label="🎯 Class Expectation Mode",
-                    choices=[
-                        ("🔒 Strict (Closed-Set)", "strict"),
-                        ("🔀 Hybrid (Extendable)", "hybrid"),
-                        ("🌐 Free (Open-World)", "free"),
-                    ],
-                    value="free",
-                    info="Free: Agent autonomously identifies and names whatever objects are drawn.",
-                )
-
-                preset_dropdown = gr.Dropdown(
-                    label="📋 Category Domain Presets",
-                    choices=list(CATEGORY_PRESETS.keys()),
-                    value="General Objects (COCO)",
-                    visible=False,
-                    info="Quickly load target classes & expert distinguishing definitions.",
-                )
-
-                classes_input = gr.Textbox(
-                    label="Domain / Focus Hint (Optional)",
-                    placeholder="e.g. Focus on defects, wildlife, tools, packaging... (or leave blank)",
-                    value="",
-                    lines=2,
-                    info="Free Mode: Agent autonomously identifies and names whatever objects are drawn.",
-                )
-
-                defs_input = gr.Textbox(
-                    label="Domain Guidance (Optional)",
-                    placeholder="Optional domain context or special inspection criteria...",
-                    lines=4,
-                    value="",
-                    info="Optional domain guidance.",
-                )
-
-            with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
-                conf_threshold = gr.Slider(
-                    label="Minimum Confidence Threshold (%)",
-                    minimum=0,
-                    maximum=100,
-                    step=5,
-                    value=20,
-                    info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
-                )
-
-                padding_slider = gr.Slider(
-                    label="Region Context Padding (%)",
-                    minimum=0,
-                    maximum=50,
-                    step=1,
-                    value=10,
-                    info="Extra visual context around each drawn region sent to the VLM.",
-                )
-
-                request_mode = gr.Radio(
-                    label="⚡ Request Mode (optional)",
-                    choices=[
-                        ("Sequential – 1 request per region", "sequential"),
-                        ("Parallel – asyncio.gather concurrent", "parallel"),
-                        ("Batched – single request with N images", "batched"),
-                    ],
-                    value="parallel",
-                    info="Parallel: N concurrent requests (~N× faster). Batched: 1 request with N crops.",
-                )
-
-        # ── Right: Recognition Results (output only) ──────────────────────
-        with gr.Column(scale=1, min_width=420, elem_classes=["draw-right-panel"]):
+        with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+            gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
             status = gr.Markdown("**Status: Idle – open camera, draw boxes over objects, then Recognize**")
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 viewer = DetectionViewer(
                     label="Annotated Recognition Result",
                     panel_title="Recognized Camera Objects",
-                    list_height=340,
+                    list_height=520,
                     elem_id="rt-interactive-viewer",
                 )
-
             results = gr.HTML(value=_RECLS_EMPTY_TABLE)
-
             with gr.Accordion("YOLO Labels (<class_id> <xc> <yc> <w> <h>)", open=False):
                 yolo = gr.Textbox(
                     lines=8,
                     interactive=False,
                     label="Copy these lines into the image's .txt label file",
                 )
+    # ── Below twin: camera toolbar card (same IDs — JS binds globally) ──
+    toolbar_view = gr.HTML(value=_RT_TOOLBAR_HTML, elem_id="rt-interactive-toolbar-html")
+    payload_box = gr.Textbox(value="{}", visible=False, elem_id="rt_interactive_payload_box")
+    sample_bridge_btn = gr.Button("Sample Bridge", visible=False, elem_id="rt_sample_bridge_btn")
+    with gr.Row(elem_classes=["btn-group"]):
+        run_btn = gr.Button("🔎  Recognize Drawn Objects", variant="primary", scale=2)
+        clear_btn = gr.Button("🗑️ Clear Results", variant="secondary", scale=1)
+    with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
+        class_mode = gr.Radio(
+            label="🎯 Class Expectation Mode",
+            choices=[
+                ("🔒 Strict (Closed-Set)", "strict"),
+                ("🔀 Hybrid (Extendable)", "hybrid"),
+                ("🌐 Free (Open-World)", "free"),
+            ],
+            value="free",
+            info="Free: Agent autonomously identifies and names whatever objects are drawn.",
+        )
+        preset_dropdown = gr.Dropdown(
+            label="📋 Category Domain Presets",
+            choices=list(CATEGORY_PRESETS.keys()),
+            value="General Objects (COCO)",
+            visible=False,
+            info="Quickly load target classes & expert distinguishing definitions.",
+        )
+        classes_input = gr.Textbox(
+            label="Domain / Focus Hint (Optional)",
+            placeholder="e.g. Focus on defects, wildlife, tools, packaging... (or leave blank)",
+            value="",
+            lines=2,
+            info="Free Mode: Agent autonomously identifies and names whatever objects are drawn.",
+        )
+        defs_input = gr.Textbox(
+            label="Domain Guidance (Optional)",
+            placeholder="Optional domain context or special inspection criteria...",
+            lines=4,
+            value="",
+            info="Optional domain guidance.",
+        )
+    with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
+        conf_threshold = gr.Slider(
+            label="Minimum Confidence Threshold (%)",
+            minimum=0, maximum=100, step=5, value=20,
+            info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
+        )
+        padding_slider = gr.Slider(
+            label="Region Context Padding (%)",
+            minimum=0, maximum=50, step=1, value=10,
+            info="Extra visual context around each drawn region sent to the VLM.",
+        )
+        request_mode = gr.Radio(
+            label="⚡ Request Mode (optional)",
+            choices=[
+                ("Sequential – 1 request per region", "sequential"),
+                ("Parallel – asyncio.gather concurrent", "parallel"),
+                ("Batched – single request with N images", "batched"),
+            ],
+            value="parallel",
+            info="Parallel: N concurrent requests (~N× faster). Batched: 1 request with N crops.",
+        )
 
     return dict(
         custom_canvas=custom_canvas,
+        toolbar_view=toolbar_view,
         payload_box=payload_box,
         sample_bridge_btn=sample_bridge_btn,
         class_mode=class_mode,

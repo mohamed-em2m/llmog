@@ -883,23 +883,25 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
   border-radius: 12px !important;
 }
 
-/* Real-Time Detection — 520px twins locked */
+/* Real-Time Detection — 520px twins locked (webcam + video input both usable) */
 .rt-twin-screens { align-items: stretch !important; gap: 14px !important; min-height: 520px !important; }
-.rt-twin-screens > .gr-column { min-width: 0 !important; flex: 1 1 0 !important; min-height: 520px !important; height: 520px !important; }
-.rt-twin-screens .batch-bottom-col { min-height: 520px !important; height: 520px !important; display:flex !important; flex-direction:column !important; border-radius: 16px !important; }
-.rt-webcam-wrap {
+.rt-twin-screens > .gr-column { min-width: 0 !important; flex: 1 1 0 !important; min-height: 520px !important; height: auto !important; }
+.rt-twin-screens .batch-bottom-col { min-height: 520px !important; display:flex !important; flex-direction:column !important; border-radius: 16px !important; }
+.rt-webcam-wrap, .rt-video-wrap {
   height: 520px !important; min-height: 520px !important; max-height: 520px !important;
   overflow: hidden !important; position: relative !important; border-radius: 16px !important;
   flex: 1 1 auto !important; display:flex !important; flex-direction:column !important;
 }
 .rt-webcam-wrap .gr-image, .rt-webcam-wrap .gr-box, .rt-webcam-wrap .wrap,
-.rt-webcam-wrap [data-testid="image"], .rt-webcam-wrap .image-container {
-  height: 100% !important; min-height: 520px !important; max-height: 520px !important;
+.rt-webcam-wrap [data-testid="image"], .rt-webcam-wrap .image-container,
+.rt-video-wrap .gr-video, .rt-video-wrap [data-testid="video"], .rt-video-wrap .video-container {
+  height: 100% !important; min-height: 460px !important; max-height: 520px !important;
   display:flex !important; flex-direction:column !important; justify-content:center !important;
   border-radius: 16px !important; overflow: hidden !important;
 }
-.rt-webcam-wrap img, .rt-webcam-wrap video {
-  height: 520px !important; min-height: 520px !important; max-height: 520px !important;
+.rt-webcam-wrap img, .rt-webcam-wrap video,
+.rt-video-wrap img, .rt-video-wrap video {
+  height: 460px !important; min-height: 380px !important; max-height: 520px !important;
   width: 100% !important; object-fit: contain !important;
   flex: 1 1 auto !important; border-radius: 12px !important;
 }
