@@ -815,6 +815,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
 .canvas-stage-wrapper { background: #FFF8EC !important; border: 1px solid #E9E0CC !important; border-radius: 12px !important; overflow: hidden !important; }
 .pose-viewer-container { background: var(--color-surface) !important; border: 1px solid #E9E0CC !important; border-radius: 16px !important; box-shadow: 0 4px 16px rgba(26,17,69,0.06) !important; overflow: hidden !important; }
 .pose-viewer-container .canvas-wrapper { background: #FFF8EC !important; border: none !important; }
+.canvas-stage-card { background: var(--color-surface) !important; border: 1px solid #E9E0CC !important; border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 4px 16px rgba(26,17,69,0.06) !important; }
+.draw-toolbar-below { background: var(--color-surface) !important; border: 1px solid #E9E0CC !important; border-radius: 16px !important; padding: 8px 10px !important; margin-top: 10px !important; box-shadow: 0 1px 4px rgba(26,17,69,0.06) !important; }
+.draw-toolbar-below .canvas-toolbar { border-bottom: none !important; padding: 0 !important; background: transparent !important; box-shadow: none !important; border: none !important; }
 .pose-viewer-container .control-panel-header { background: #FFF8EC !important; border-bottom: 1px solid #E9E0CC !important; }
 .pose-viewer-container .control-panel-title { color: var(--color-text-primary) !important; font-weight:700 !important; font-family:'Inter',sans-serif !important; }
 .batch-hero-panel, .batch-bottom-col, .neo-retro-card, .output-panel, .json-panel, .batch-explorer-bar { background: var(--color-surface) !important; border:1px solid #E9E0CC !important; border-radius: 16px !important; box-shadow:0 1px 4px rgba(26,17,69,0.04) !important; }

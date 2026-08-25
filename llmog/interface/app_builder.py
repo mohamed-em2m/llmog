@@ -42,7 +42,7 @@ from interface.batch.explorer import _viewer_payload_for as _hero_payload_builde
 from interface.state import _cache_get as _hero_cache_get
 from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
 from PIL import Image as _PILImage
-from interface.batch.components import on_batch_preset_change, on_batch_strategy_change
+from interface.batch.components import on_batch_preset_change, on_batch_strategy_change, handle_batch_upload
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 from interface.tab_draw import build_draw_tab, wire_draw_events
@@ -225,6 +225,13 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
         outputs=[c_bat["prep_pixel_bounds_row"]],
     )
 
+    # ── Batch tab — Upload persistence (fixes UploadButton transient bug) ──
+    c_bat["input_images"].upload(
+        fn=handle_batch_upload,
+        inputs=[c_bat["input_images"], c_bat["upload_state"]],
+        outputs=[c_bat["upload_state"], c_bat["pipeline_status"]],
+    )
+
     # ── Run / Cancel ──────────────────────────────────────────────────────
     c_bat["run_btn"].click(
         fn=lambda: toggle_run_btn(is_running=True),
@@ -234,7 +241,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state):
     ).then(
         fn=run_batch_dispatcher,
         inputs=[
-            c_bat["input_images"],
+            c_bat["upload_state"],
             c_bat["categories_input"],
             c_bat["category_defs_input"],
             c_srv["server_port_input"],

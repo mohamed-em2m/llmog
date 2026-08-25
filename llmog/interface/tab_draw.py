@@ -276,6 +276,88 @@ _CUSTOM_CANVAS_HTML = """
 </div>
 """
 
+# ── Split fragments for twin-level layout — stage + toolbar separate (tools below canvas) ──
+_CANVAS_STAGE_HTML = """
+<div id="llmog-custom-canvas-app" class="custom-canvas-container canvas-stage-card">
+    <div class="canvas-stage-wrapper" id="canvas-stage-wrapper">
+        <canvas id="custom-annotation-canvas"></canvas>
+        <div id="canvas-empty-overlay" class="canvas-empty-state">
+            <div class="empty-icon">🎨</div>
+            <h3>Interactive Detection Canvas</h3>
+            <p>Upload an image or load the sample, then draw bounding boxes or strokes over objects.</p>
+            <div class="empty-actions">
+                <button type="button" class="btn-canvas-primary" id="btn-empty-upload">📁 Choose Image</button>
+                <button type="button" class="btn-canvas-secondary" id="btn-empty-sample">🖼️ Load Sample</button>
+            </div>
+            <span class="drag-hint">or drag &amp; drop an image here / paste from clipboard (Ctrl+V)</span>
+        </div>
+        <input type="file" id="canvas-file-input" accept="image/*" style="display:none">
+    </div>
+    <div class="canvas-status-bar">
+        <div class="status-left">
+            <span class="regions-count-badge" id="regions-count-badge">0 Region(s)</span>
+            <span class="canvas-hint-text">💡 Tip: Select <b>Box</b> to drag bounding boxes, or <b>Brush</b> for arbitrary strokes. Mouse wheel zooms.</span>
+        </div>
+        <div class="regions-list-chips" id="regions-chips-container"></div>
+    </div>
+</div>
+"""
+
+_TOOLBAR_HTML = """
+<div id="llmog-custom-canvas-toolbar" class="custom-canvas-container draw-toolbar-below">
+    <div class="canvas-toolbar">
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Tools</span>
+            <button type="button" class="canvas-tool-btn active" id="tool-bbox" title="Bounding Box (Drag rectangle) [B]"><span class="tool-icon">🔲</span> Box</button>
+            <button type="button" class="canvas-tool-btn" id="tool-brush" title="Freehand Brush [P]"><span class="tool-icon">🖌️</span> Brush</button>
+            <button type="button" class="canvas-tool-btn" id="tool-circle" title="Circle / Ellipse [C]"><span class="tool-icon">⭕</span> Circle</button>
+            <button type="button" class="canvas-tool-btn" id="tool-eraser" title="Eraser / Delete [E]"><span class="tool-icon">🧽</span> Eraser</button>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Color</span>
+            <div class="color-palette-bar" id="palette-swatches">
+                <button type="button" class="color-swatch active" style="background:#ff3c3c" data-color="#ff3c3c"></button>
+                <button type="button" class="color-swatch" style="background:#0096ff" data-color="#0096ff"></button>
+                <button type="button" class="color-swatch" style="background:#00d250" data-color="#00d250"></button>
+                <button type="button" class="color-swatch" style="background:#ffd214" data-color="#ffd214"></button>
+                <button type="button" class="color-swatch" style="background:#ffa014" data-color="#ffa014"></button>
+                <button type="button" class="color-swatch" style="background:#963cff" data-color="#963cff"></button>
+                <button type="button" class="color-swatch" style="background:#00d7d7" data-color="#00d7d7"></button>
+                <button type="button" class="color-swatch" style="background:#ffffff" data-color="#ffffff"></button>
+            </div>
+            <input type="color" id="custom-color-picker" value="#ff3c3c" title="Custom color" class="color-picker-input">
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Size: <b id="brush-size-val">3</b>px</span>
+            <input type="range" id="brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Actions</span>
+            <button type="button" class="canvas-tool-btn" id="btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
+            <button type="button" class="canvas-tool-btn" id="btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
+            <button type="button" class="canvas-tool-btn" id="btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
+            <button type="button" class="canvas-tool-btn danger" id="btn-clear-all" title="Clear image & drawings completely">🧹 Reset All</button>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Zoom</span>
+            <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-in" title="Zoom in">➕</button>
+            <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-out" title="Zoom out">➖</button>
+            <button type="button" class="canvas-tool-btn" id="btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
+            <span id="zoom-level-text" class="zoom-indicator">100%</span>
+        </div>
+        <div class="canvas-toolbar-divider"></div>
+        <div class="canvas-tool-group">
+            <span class="tool-group-label">Image</span>
+            <button type="button" class="canvas-tool-btn upload-btn" id="btn-toolbar-upload" title="Upload an image from your computer">📁 Upload Image</button>
+        </div>
+    </div>
+</div>
+"""
+
 # ── Custom Canvas Frontend JavaScript Controller ──────────────────────────────
 _CUSTOM_CANVAS_JS = """
 (function() {
@@ -1131,19 +1213,18 @@ def _load_sample_bridge():
 
 
 def build_draw_tab() -> Dict[str, Any]:
-    """Build the dedicated Draw & Recognize tab with Custom Frontend Canvas + DetectionViewer."""
-    with gr.Row(equal_height=False, elem_classes=["draw-tab-row"]):
-        # ── Left / Main: Custom Interactive HTML5 Canvas Frontend ────────────
-        with gr.Column(scale=1, min_width=420):
-            gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
-
-            # Embedded Custom Canvas Frontend — Gradio 6: <script> inside gr.HTML value is
-            # never executed (innerHTML), so JS is wired via js_on_load instead.
-            custom_canvas_view = gr.HTML(
-                value=_CUSTOM_CANVAS_HTML,
-                js_on_load=_CUSTOM_CANVAS_JS,
-                elem_id="draw-canvas-html",
-            )
+    """Build the dedicated Draw & Recognize tab — twin 520px (canvas + results same level), tools below canvas."""
+    with gr.Column():
+        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+                gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
+                custom_canvas_view = gr.HTML(
+                    value=_CANVAS_STAGE_HTML,
+                    js_on_load=_CUSTOM_CANVAS_JS,
+                    elem_id="draw-canvas-html",
+                )
+                # Tools below canvas — same IDs, JS finds globally (fixes same-level alignment)
+                toolbar_view = gr.HTML(value=_TOOLBAR_HTML, elem_id="draw-toolbar-html")
 
             # Hidden payload and sample bridge components
             custom_draw_payload = gr.Textbox(
@@ -1237,14 +1318,15 @@ def build_draw_tab() -> Dict[str, Any]:
                     info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
                 )
 
-        # ── Right: Recognition Results (output only) ──────────────────────
-        with gr.Column(scale=1, min_width=420, elem_classes=["draw-right-panel"]):
+        # ── Right: Recognition Results — twin 520px same level as canvas ──
+        with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
+            gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
             recls_status = gr.Markdown("**Status: Idle**")
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 recls_annotated = DetectionViewer(
                     label="Annotated Recognition Result",
                     panel_title="Recognized Regions",
-                    list_height=340,
+                    list_height=520,
                     elem_id="draw-detection-viewer",
                 )
 

@@ -195,7 +195,7 @@ def run_batch_detection_gui(
         elif hasattr(f, "name") and f.name:
             p = Path(f.name)
         elif isinstance(f, dict):
-            p_val = f.get("path") or f.get("name")
+            p_val = f.get("path") or f.get("name") or f.get("orig_name") or f.get("origName")
             if p_val:
                 p = Path(p_val)
 

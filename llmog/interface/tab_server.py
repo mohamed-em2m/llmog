@@ -298,10 +298,16 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
     # Hidden checkbox for backward-compat with existing handlers that check use_external_api_chk
     use_external_api_chk = gr.Checkbox(value=False, visible=False)
 
+    # ── Status hero — always visible, Bauhaus card ──
+    with gr.Group(elem_classes=["config-card"]):
+        gr.HTML('<div class="config-card-title">📡 Server Status — live</div>')
+        gr.HTML('<p style="color:#6B6B6B;font-size:12px;margin:4px 0 0 0;">Start a local VLM or connect to an external API. All tabs respect this Endpoint Mode.</p>')
+
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
-        # ── Left: Config (all options behind dropdown) ──────────────────
+        # ── Left: Quick Start + Advanced (progressive disclosure) ──
         with gr.Column(scale=1, min_width=420):
-            with gr.Accordion("⚙️ Server Options — Model, Runtime, Advanced & External API", open=False):
+            gr.HTML('<p class="section-label">🖥️ Local Server — Quick Start</p>')
+            with gr.Accordion("⚙️ Server Options — Model, Runtime & Advanced", open=True):
                 with gr.Group(visible=True) as local_server_group:
                     gr.HTML(
                         '<div class="config-card"><div class="config-card-title">🦙 Local Model Selection</div>'

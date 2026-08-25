@@ -95,6 +95,43 @@ def on_batch_strategy_change(strategy: str):
         )
 
 
+def handle_batch_upload(new_files, cur_state):
+    """Accumulate UploadButton files into persistent State — fixes transient UploadButton bug (Gradio 6.19)."""
+    if new_files is None:
+        count = len(cur_state) if isinstance(cur_state, list) else 0
+        if count == 0:
+            return cur_state if isinstance(cur_state, list) else [], render_status_header(
+                "Idle — upload images, open sections below if needed, then Run.", state="idle"
+            )
+        return cur_state, render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle")
+    if isinstance(new_files, (list, tuple)):
+        to_add = [f for f in new_files if f is not None]
+    else:
+        to_add = [new_files] if new_files is not None else []
+    base = list(cur_state) if isinstance(cur_state, list) else []
+    seen = set()
+    for f in base:
+        try:
+            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+            seen.add(key)
+        except Exception:
+            seen.add(str(f))
+    updated = list(base)
+    for f in to_add:
+        try:
+            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+        except Exception:
+            key = str(f)
+        if key not in seen:
+            updated.append(f)
+            seen.add(key)
+    count = len(updated)
+    header = render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle") if count else render_status_header(
+        "Idle — upload images, open sections below if needed, then Run.", state="idle"
+    )
+    return updated, header
+
+
 def build_batch_tab() -> Dict[str, Any]:
     """Batch tab — twin symmetric screens, separate focused dropdowns for each concern."""
 
@@ -118,7 +155,8 @@ def build_batch_tab() -> Dict[str, Any]:
                 )
                 hero_viewer = best_annotated_viewer
 
-        # ── Compact upload button + Run (always visible) ──
+        # ── Compact upload button + Run (always visible) — State-backed to survive Gradio transient UploadButton ──
+        upload_state = gr.State([])
         with gr.Row(elem_classes=["btn-group", "upload-run-row"]):
             input_images = gr.UploadButton(
                 "📁 Upload Images",
@@ -600,4 +638,5 @@ def build_batch_tab() -> Dict[str, Any]:
         round_raw_response_display=round_raw_response_display,
         detections_json_box=detections_json_box,
         pipeline_logs_viewer=pipeline_logs_viewer,
+        upload_state=upload_state,
     )
