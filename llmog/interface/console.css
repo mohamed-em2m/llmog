@@ -133,6 +133,47 @@ body::after { display: none !important; }
   bottom: -120px !important; left: -80px !important;
 }
 .gradio-container > .main, .gradio-container > div { background: transparent !important; position: relative !important; z-index: 1 !important; }
+/* ── Bauhaus quarter-circles + teal triangle décor — cropped at edges ── */
+.gradio-container .tabitem::before {
+  content: '' !important;
+  position: absolute !important;
+  width: 180px !important; height: 180px !important;
+  background: var(--color-accent-yellow) !important;
+  border-radius: 50% !important;
+  opacity: 0.06 !important;
+  top: -40px !important; right: -40px !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+.gradio-container .tabitem { position: relative !important; overflow: hidden !important; }
+.custom-canvas-container::after {
+  content: '' !important;
+  position: absolute !important;
+  width: 0 !important; height: 0 !important;
+  border-left: 42px solid var(--color-accent-teal) !important;
+  border-bottom: 42px solid transparent !important;
+  border-top: 42px solid transparent !important;
+  bottom: 12px !important; left: 0 !important;
+  opacity: 0.18 !important;
+  transform: rotate(180deg) !important;
+  pointer-events: none !important;
+  clip-path: polygon(0 0, 100% 100%, 0 100%) !important;
+  background: var(--color-accent-teal) !important;
+  width: 44px !important; height: 44px !important;
+  border: none !important;
+  clip-path: polygon(0 100%, 100% 100%, 0 0) !important;
+}
+.batch-hero-panel { position: relative !important; overflow: hidden !important; }
+.batch-hero-panel::after {
+  content: '' !important;
+  position: absolute !important;
+  width: 140px !important; height: 140px !important;
+  background: var(--color-accent-orange) !important;
+  border-radius: 50% !important;
+  opacity: 0.08 !important;
+  bottom: -40px !important; right: -30px !important;
+  pointer-events: none !important;
+}
 
 /* ── App Header — Bauhaus cream + geometric accent ── */
 .app-header {
@@ -329,9 +370,18 @@ body::after { display: none !important; }
   border-radius: 16px !important;
   box-shadow: 0 4px 16px rgba(26,17,69,0.06) !important;
 }
-.gr-group { padding: 14px !important; border-radius: 16px !important; }
-.config-card { padding:14px !important; margin-bottom:12px !important; border-radius: 16px !important; }
-.config-card:hover { box-shadow: 0 8px 24px rgba(26,17,69,0.08) !important; transform: translateY(-1px) !important; transition: all 0.15s ease !important; }
+.gr-group { padding: 16px !important; border-radius: 16px !important; }
+.config-card { padding:16px !important; margin-bottom:14px !important; border-radius: 16px !important; }
+.config-card:hover { box-shadow: 0 8px 24px rgba(26,17,69,0.10) !important; transform: translateY(-1px) !important; transition: all 0.18s ease !important; }
+/* ── Phone mockup frame — thin dark border large radius for canvas/device bezels ── */
+.canvas-stage-wrapper.phone-mockup, .img-viewer-wrap.phone-mockup .pose-viewer-container .canvas-wrapper {
+  border: 2px solid var(--color-text-primary) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 12px 40px rgba(26,17,69,0.12) !important;
+  padding: 8px !important;
+  background: var(--color-surface) !important;
+}
+.phone-mockup canvas { border-radius: 12px !important; }
 .config-card-title { color: var(--color-text-primary) !important; font-family:'Inter', sans-serif !important; font-size:13px !important; font-weight:700 !important; }
 .config-section-title {
   font-family:'Inter', sans-serif !important;
@@ -347,14 +397,55 @@ body::after { display: none !important; }
   box-shadow: none !important;
 }
 
-/* ── Lesson cards — dark navy Bauhaus (for Continue where you left off vibe) ── */
-.batch-hero-panel, .batch-bottom-col.dark, .neo-retro-card.dark {
+/* ── Lesson cards — dark navy Bauhaus (Continue where you left off) ── */
+.batch-hero-panel, .batch-bottom-col.dark, .neo-retro-card.dark,
+.gr-group.dark-card, .config-card.dark {
   background: var(--color-accent-navy) !important;
   border-color: var(--color-accent-navy) !important;
   color: #FFFFFF !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+.batch-hero-panel::before, .neo-retro-card.dark::before {
+  content: '' !important;
+  position: absolute !important;
+  width: 90px !important; height: 90px !important;
+  background: var(--color-accent-yellow) !important;
+  border-radius: 50% !important;
+  opacity: 0.12 !important;
+  top: -30px !important; right: -20px !important;
+  pointer-events: none !important;
 }
 .batch-hero-panel .section-label, .neo-retro-card.dark .section-label { color: #FFFFFF !important; border-left-color: var(--color-accent-yellow) !important; }
-.batch-hero-panel .section-label::before { background: var(--color-accent-yellow) !important; }
+.batch-hero-panel .section-label::before, .neo-retro-card.dark .section-label::before { background: var(--color-accent-yellow) !important; }
+.lesson-card-title { font-family:'Poppins', 'Inter', sans-serif !important; font-weight:800 !important; color:#FFFFFF !important; }
+.lesson-card-progress {
+  width: 44px !important; height: 44px !important;
+  background: var(--color-accent-yellow) !important;
+  color: var(--color-text-primary) !important;
+  border-radius: 50% !important;
+  display: inline-flex !important; align-items:center !important; justify-content:center !important;
+  font-family:'Poppins', sans-serif !important; font-weight:800 !important; font-size:14px !important;
+}
+/* ── Activity rings — Bauhaus concentric ── */
+.bauhaus-rings {
+  position: relative !important;
+  width: 140px !important; height: 140px !important;
+  margin: 0 auto !important;
+}
+.bauhaus-rings .ring {
+  position: absolute !important;
+  border-radius: 50% !important;
+  top: 50% !important; left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  border-style: solid !important;
+}
+.bauhaus-rings .ring-outer { width: 140px !important; height: 140px !important; border-width: 10px !important; border-color: var(--color-ring-outer) !important; opacity: 0.95 !important; }
+.bauhaus-rings .ring-middle { width: 104px !important; height: 104px !important; border-width: 10px !important; border-color: var(--color-ring-middle) !important; }
+.bauhaus-rings .ring-inner { width: 68px !important; height: 68px !important; border-width: 10px !important; border-color: var(--color-ring-inner) !important; }
+.stat-badge-yellow { background: var(--color-accent-yellow) !important; color: var(--color-text-primary) !important; border-radius: 999px !important; padding: 6px 14px !important; font-weight:700 !important; }
+.stat-badge-navy { background: var(--color-accent-navy) !important; color: #FFFFFF !important; border-radius: 999px !important; padding: 6px 14px !important; }
+.stat-badge-orange { background: var(--color-accent-orange) !important; color: #FFFFFF !important; border-radius: 999px !important; padding: 6px 14px !important; }
 
 /* ── Metric cards — pill badges ── */
 .metric-grid { gap:10px !important; }
@@ -365,8 +456,12 @@ body::after { display: none !important; }
   padding:14px !important;
   box-shadow: 0 1px 4px rgba(26,17,69,0.06) !important;
 }
-.metric-value { font-family:'Poppins', 'Inter', sans-serif !important; font-size:26px !important; font-weight: 800 !important; color: var(--color-text-primary) !important; }
-.metric-label { font-family:'Inter', sans-serif !important; font-size:11px !important; font-weight:600 !important; color: var(--color-text-secondary) !important; text-transform:uppercase !important; letter-spacing:0.06em !important; }
+.metric-value { font-family:'Poppins', 'Inter', sans-serif !important; font-size:28px !important; font-weight: 800 !important; color: var(--color-text-primary) !important; letter-spacing:-0.03em !important; line-height:1 !important; }
+.metric-label { font-family:'Inter', sans-serif !important; font-size:11px !important; font-weight:600 !important; color: var(--color-text-secondary) !important; text-transform:uppercase !important; letter-spacing:0.08em !important; }
+/* ── Typography polish — geometric sans, high contrast headings ── */
+h1, h2, h3, .section-label, .config-card-title { font-family:'Poppins','Inter', sans-serif !important; letter-spacing:-0.02em !important; }
+.gr-markdown h1, .gr-markdown h2 { font-weight:800 !important; color: var(--color-text-primary) !important; }
+.gr-markdown p { line-height:1.6 !important; color: var(--color-text-primary) !important; }
 
 /* ── Progress — slim 8px pill orange ── */
 .custom-progress-wrapper { margin:8px 0 !important; }
@@ -423,13 +518,15 @@ button.secondary, .gr-button.secondary, .btn-canvas-secondary {
 }
 button.primary:hover:not(:disabled), .gr-button.primary:hover:not(:disabled), .btn-canvas-primary:hover:not(:disabled) {
   background: #2A2A2A !important; color: var(--color-accent-yellow) !important;
-  box-shadow: 0 4px 12px rgba(26,17,69,0.12) !important;
-  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(26,17,69,0.14) !important;
+  transform: translateY(-1px) scale(1.01) !important;
 }
 button.secondary:hover:not(:disabled), .gr-button.secondary:hover:not(:disabled), .canvas-tool-btn:hover:not(:disabled) {
   background: var(--color-bg) !important; color: var(--color-text-primary) !important;
   box-shadow: 0 4px 12px rgba(26,17,69,0.08) !important;
+  border-color: var(--color-accent-yellow) !important;
 }
+.gr-button:active:not(:disabled) { transform: scale(0.98) !important; }
 button.primary:active:not(:disabled), .gr-button:active:not(:disabled) {
   transform: translateY(0) !important; box-shadow: 0 1px 4px rgba(26,17,69,0.08) !important;
 }
@@ -448,8 +545,20 @@ button:disabled, .gr-button:disabled { background: #F2F0F3 !important; color: #9
   padding:0 12px !important; font-size:12px !important; border-radius: 999px !important;
 }
 
-/* Orange icon inside dark pill (Bauhaus DNA) */
-.gr-button.primary .tool-icon, button.primary .tool-icon { color: var(--color-accent-orange) !important; }
+/* Orange icon inside dark pill (Bauhaus DNA) — circular orange badge on right */
+.gr-button.primary .tool-icon, button.primary .tool-icon {
+  color: var(--color-accent-orange) !important;
+  background: var(--color-accent-orange) !important;
+  color: #FFFFFF !important;
+  width: 22px !important; height: 22px !important;
+  border-radius: 50% !important;
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  font-size: 11px !important; flex-shrink: 0 !important;
+  margin-left: 2px !important;
+}
+.gr-button.primary:hover .tool-icon, button.primary:hover .tool-icon { transform: scale(1.08) !important; transition: transform 0.15s ease !important; }
+button.primary, .gr-button.primary { gap: 10px !important; padding-right: 14px !important; }
+button.primary:active .tool-icon { transform: scale(0.95) !important; }
 
 /* ── INPUTS — white rounded 12px soft ── */
 input:not([type="checkbox"]):not([type="radio"]), textarea, select,
