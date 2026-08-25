@@ -23,11 +23,18 @@ from typing import Optional
 from openai import OpenAI
 
 from free_detection.detection_pipeline import ObjectDetectionPipeline
+from free_detection.graph import build_detection_graph, DetectionState
 from schemes import PipelineConfig
 
 logger = logging.getLogger("free_detection")
 
-__all__ = ["main", "build_parser", "ObjectDetectionPipeline"]
+__all__ = [
+    "main",
+    "build_parser",
+    "ObjectDetectionPipeline",
+    "build_detection_graph",
+    "DetectionState",
+]
 
 
 # ---------------------------------------------------------------------------

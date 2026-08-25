@@ -24,27 +24,26 @@ def _build_prompts_tab():
         "</div>"
     )
 
-    customize_prompts_chk = gr.Checkbox(
-        label="Enable Custom Prompt Templates", value=False
-    )
+    with gr.Accordion("Prompt Templates — Detector & Judge (dropdown)", open=False):
+        with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
+            with gr.Column(scale=1, min_width=420):
+                gr.HTML('<p class="section-label">Detector Prompt</p>')
+                custom_det_prompt = gr.Textbox(
+                    label="Detector Prompt Template",
+                    lines=14,
+                    value=DEFAULT_DETECTOR_TEMPLATE,
+                )
+            with gr.Column(scale=1, min_width=420):
+                gr.HTML('<p class="section-label">Judge Prompt</p>')
+                custom_jdg_prompt = gr.Textbox(
+                    label="Judge Prompt Template",
+                    lines=14,
+                    value=DEFAULT_JUDGE_TEMPLATE,
+                )
 
-    with gr.Group(visible=False) as prompts_group:
-        custom_det_prompt = gr.Textbox(
-            label="Detector Prompt Template",
-            lines=14,
-            value=DEFAULT_DETECTOR_TEMPLATE,
-        )
-        custom_jdg_prompt = gr.Textbox(
-            label="Judge Prompt Template",
-            lines=14,
-            value=DEFAULT_JUDGE_TEMPLATE,
-        )
-
-    customize_prompts_chk.change(
-        lambda v: gr.update(visible=v),
-        customize_prompts_chk,
-        prompts_group,
-    )
+    # Back-compat: keep checkbox & group aliases for existing wiring (hidden, always visible via accordion)
+    customize_prompts_chk = gr.Checkbox(label="Enable Custom Prompt Templates", value=True, visible=False)
+    prompts_group = gr.Group(visible=True)
 
     return dict(
         customize_prompts_chk=customize_prompts_chk,

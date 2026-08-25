@@ -8,6 +8,7 @@ import cv2
 import json_repair
 
 from auto_annotation.logging_utils import logger
+from free_detection.agent.prompts import render_auto_label_prompt
 
 
 def encode_crop_to_data_uri(crop_rgb):
@@ -20,31 +21,32 @@ def encode_crop_to_data_uri(crop_rgb):
     return f"data:image/jpeg;base64,{b64}"
 
 
-def detect_defect(crop_image, client, model_name, known_class_names):
+def detect_defect(
+    crop_image,
+    client,
+    model_name,
+    known_class_names,
+    class_mode: str = "hybrid",
+    class_definitions: str = "",
+):
     """
     Ask the model to classify a cropped defect region.
 
     known_class_names: list[str] of classes already known, so the model reuses
     an existing name instead of inventing near-duplicates.
 
+    class_mode: "strict" | "hybrid" | "free" — controls how the prompt
+    is written w.r.t. the known class list.
+
+    class_definitions: Optional per-class description block injected into prompt.
+
     Returns dict like {"class": "spot", "confidence": 4}
     """
     data_uri = encode_crop_to_data_uri(crop_image)
-    prompt = (
-        "You are an expert textile quality inspector. "
-        "Analyze the cropped fabric image and identify the primary visible defect. "
-        f"Existing defect classes discovered so far in this dataset: {known_class_names}. "
-        "First determine whether the defect matches one of the existing classes. "
-        "If it does, use the exact existing class name. "
-        "Only create a new class if the defect is clearly and meaningfully different "
-        "from every existing class above. "
-        "A new class name must be lowercase, a single word, concise, and descriptive. "
-        "Do not create synonyms or variations of existing classes. "
-        "Rate the defect severity based on its visible size and extent: "
-        "1 = very small, 2 = small, 3 = medium, 4 = large, 5 = very large. "
-        "Respond with ONLY valid JSON in exactly this format: "
-        '{"reasoning":"<reasoning>","class":"<class_name>","confidence":<1-5>}. '
-        "Do not include explanations, markdown, extra text, comments, or additional fields."
+    prompt = render_auto_label_prompt(
+        known_class_names,
+        class_mode=class_mode,
+        class_definitions=class_definitions,
     )
     response = client.chat.completions.create(
         model=model_name,
@@ -68,6 +70,7 @@ def detect_defect(crop_image, client, model_name, known_class_names):
     output = json_repair.loads(raw)
     logger.info(f"Model response: {output}")
     return output
+
 
 
 def load_or_init_class_map(names_from_yaml):

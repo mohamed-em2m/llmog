@@ -1,6 +1,6 @@
 [project]
 name = "llmog"
-version = "0.1.0"
+version = "0.2.0"
 description = "A pipeline for object detection using LLMs."
 readme = "README.md"
 requires-python = ">=3.12, <3.14"
@@ -19,6 +19,8 @@ dependencies = [
     "rich>=15.0.0",
     "onnxruntime>=1.27.0",
     "dynaprompt>=0.5.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -61,7 +63,10 @@ detection-gui = "interface.gui:main"
 
 [tool.setuptools]
 package-dir = { "" = "llmog" }
-py-modules = ["main", "auto_annotiontion"]
+py-modules = [
+    "main",
+    "auto_annotiontion",
+] # NOTE: "auto_annotiontion" is an intentional typo-preservation — the shim keeps backward compat for code that still imports the old misspelled name. Do NOT rename it.
 
 [tool.setuptools.packages.find]
 where = ["llmog"]
@@ -71,6 +76,7 @@ include = [
     "schemes*",
     "servers*",
     "interface*",
+    "detection_viewer*",
 ]
 exclude = ["*.egg-info"]
 

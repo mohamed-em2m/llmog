@@ -71,7 +71,7 @@ class PipelineConfig(BaseModel):
     # llama.cpp-specific
     enable_thinking: bool = False
     use_mtp: bool = True
-    ctx_size: int = 10000
+    ctx_size: int = 20000
     port: int = 8080
     parallel_slots: int = 1
     server_batch_size: int = 1024
@@ -147,6 +147,15 @@ class PipelineConfig(BaseModel):
     extra_args: Optional[List[str]] = None
 
     # ------------------------------------------------------------------ validators
+    @field_validator("images", mode="before")
+    @classmethod
+    def _coerce_images(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, (list, tuple, set)):
+            return [str(x) for x in v]
+        return v
+
     @field_validator("prep_tile_overlap")
     @classmethod
     def _check_overlap(cls, v: float) -> float:
@@ -201,7 +210,7 @@ class PipelineConfig(BaseModel):
         leak preview-specific overrides back into the config object).
         """
         args: Dict[str, Any] = dict(self.serving_extra or {})
-        args["--tensor_split"] = self.tensor_parallel_size
+        args["--tensor-parallel-size"] = self.tensor_parallel_size
         args["--pipeline_parallel_size"] = self.pipeline_parallel_size
         args["--dtype"] = self.dtype
         args["--kv_cache_dtype"] = self.kv_cache_dtype

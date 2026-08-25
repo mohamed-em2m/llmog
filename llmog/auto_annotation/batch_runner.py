@@ -44,6 +44,8 @@ def read_images_with_labels(
     completed_images=None,
     batches_done=None,
     auto_save=None,
+    class_mode: str = "hybrid",
+    class_definitions: str = "",
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -169,6 +171,8 @@ def read_images_with_labels(
                         completed_images=completed_images,
                         completed_lock=completed_lock,
                         batches_done=batches_done,
+                        class_mode=class_mode,
+                        class_definitions=class_definitions,
                     )
                     if img is not None:
                         last_img = img
@@ -201,6 +205,8 @@ def read_images_with_labels(
                         completed_images,
                         completed_lock,
                         batches_done,
+                        class_mode,
+                        class_definitions,
                     ): img_file
                     for img_file in batch_images
                 }

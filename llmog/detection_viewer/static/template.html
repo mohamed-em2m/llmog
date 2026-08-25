@@ -1,0 +1,45 @@
+<div class="pose-viewer-container">
+  <div class="canvas-wrapper">
+    <canvas></canvas>
+  </div>
+  <div class="tooltip"></div>
+  <div class="control-panel">
+    <div class="control-panel-header">
+      <div class="control-panel-header-info">
+        <span class="control-panel-title">${panel_title}</span>
+        <span class="control-panel-count"></span>
+      </div>
+      <div class="control-panel-actions">
+        <button class="cp-btn toggle-image-btn active" title="Toggle base image (I)">Image</button>
+        <button class="cp-btn reset-btn" title="Reset to defaults (R)">&#x21BA;</button>
+        <button class="cp-btn help-btn" title="Keyboard shortcuts (?)">?</button>
+        <button class="cp-btn maximize-btn" title="Maximize (F)">&#x26F6;</button>
+      </div>
+    </div>
+    <div class="control-panel-body">
+      <div class="annotation-list"></div>
+    </div>
+  </div>
+  <div class="help-overlay">
+    <div class="help-dialog">
+      <div class="help-header">
+        <span>Keyboard Shortcuts</span>
+        <button class="help-close-btn">&times;</button>
+      </div>
+      <table class="help-table">
+        <tr><td><kbd>?</kbd></td><td>Show keyboard shortcuts</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Toggle maximize</td></tr>
+        <tr><td><kbd>I</kbd></td><td>Toggle base image</td></tr>
+        <tr><td><kbd>A</kbd></td><td>Toggle all annotations</td></tr>
+        <tr><td><kbd>H</kbd></td><td>Hide selected annotation</td></tr>
+        <tr><td><kbd>Shift+Click</kbd></td><td>Hide clicked annotation</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Deselect / exit maximize</td></tr>
+        <tr><td><kbd>+</kbd> / <kbd>-</kbd></td><td>Zoom in / out</td></tr>
+        <tr><td><kbd>0</kbd></td><td>Reset zoom</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Reset all to defaults</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="loading-indicator"><div class="loading-spinner"></div></div>
+  <div class="placeholder">No data</div>
+</div>

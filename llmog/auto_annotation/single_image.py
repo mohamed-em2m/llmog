@@ -33,6 +33,8 @@ def process_one_image(
     completed_images=None,
     completed_lock=None,
     batches_done=None,
+    class_mode: str = "hybrid",
+    class_definitions: str = "",
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats."""
     img_path = os.path.join(train_image, img_file)
@@ -156,7 +158,14 @@ def process_one_image(
             known_names = list(class_map.keys())
 
         try:
-            result = detect_defect(crop_image, client, model_name, known_names)
+            result = detect_defect(
+                crop_image,
+                client,
+                model_name,
+                known_names,
+                class_mode=class_mode,
+                class_definitions=class_definitions,
+            )
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")
             stats.incr("boxes_model_call_failed")
@@ -195,6 +204,15 @@ def process_one_image(
 
         with class_map_lock:
             if class_name not in class_map:
+                mode_norm = (class_mode or "hybrid").lower().strip()
+                if mode_norm == "strict":
+                    # In strict mode: skip any class not already in the map
+                    logger.warning(
+                        f"[strict mode] Model returned unknown class {class_name!r} for {img_file}; "
+                        "discarding box (strict mode disallows new classes)."
+                    )
+                    stats.incr("boxes_bad_response")
+                    continue
                 class_map[class_name] = len(class_map)
                 stats.note_new_class(class_name)
             new_cls_id = class_map[class_name]

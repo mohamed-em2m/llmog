@@ -70,6 +70,30 @@ def wait_for_server_health(port, timeout=1200, poll_interval=2.0):
     return False
 
 
+def _build_tensor_split(n: int) -> str:
+    """Return a uniform tensor-split string for *n* GPUs (e.g. '1,1' for 2)."""
+    return ",".join(["1"] * n) if n > 0 else "1"
+
+
+def _count_nvidia_gpus() -> int:
+    """Return the number of NVIDIA GPUs visible to nvidia-smi.
+
+    Falls back to 1 on Windows, non-NVIDIA hardware, or when nvidia-smi is
+    not installed — so callers always get a safe default rather than a crash.
+    """
+    import subprocess
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        count = len([l for l in output.strip().splitlines() if l.strip()])
+        return max(count, 1)
+    except Exception:
+        return 1
+
+
 def init_server(args):
     """Start a local llama.cpp or vLLM server and return its manager.
 
@@ -79,16 +103,15 @@ def init_server(args):
     extra_args = list(getattr(args, "extra_args", None) or [])
     serving_extra = getattr(args, "serving_extra", {}) or {}
 
-    import subprocess
+    # Derive tensor_split from tensor_parallel_size so multi-GPU config
+    # actually flows through. Count GPUs only when TP > 1 to avoid a
+    # slow nvidia-smi call for the common single-GPU case.
+    tp_size = getattr(args, "tensor_parallel_size", 1) or 1
+    if tp_size > 1:
+        tensor_split = _build_tensor_split(_count_nvidia_gpus())
+    else:
+        tensor_split = "1"
 
-    num_gpus = int(
-        subprocess.check_output(
-            "nvidia-smi -L | wc -l",
-            shell=True,
-            text=True,
-        ).strip()
-    )
-    tensor_split = "1," * num_gpus
     if args.server_type == "llama_cpp":
         # Build kwargs from any user overrides first, then the structured
         # PipelineConfig fields (so explicit fields win over --serving_extra).
@@ -100,7 +123,7 @@ def init_server(args):
             "parallel_slots": args.parallel_slots,
             "n_threads": -1,
             "gpu_layers": -1,
-            "tensor_split": "1,1",
+            "tensor_split": tensor_split,
             "main_gpu": 0,
             "temp": 0.1,
             "top_p": 0.85,
@@ -129,7 +152,7 @@ def init_server(args):
             "parallel_slots": args.parallel_slots,
             "n_threads": -1,
             "gpu_layers": -1,
-            "tensor_split": "1,1",
+            "tensor_split": tensor_split,
             "main_gpu": 0,
             "temp": 0.1,
             "top_p": 0.85,

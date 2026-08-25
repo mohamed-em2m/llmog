@@ -1,16 +1,9 @@
 <!-- ════════════════════════════════════════════════════════════════════════
      Gradio API Console — client-side JS helpers
-     Inject this with gr.HTML(CONSOLE_JS) once, near the top of your
-     gr.Blocks() layout (right after the title header is fine). It must be
-     wrapped in <script> tags as shown — Gradio's gr.HTML renders raw HTML,
-     so the <script> tag is what gets it executed in the browser.
-
-     Why JS instead of a Python event handler for copy/download?
-     Gradio's Python callbacks round-trip through the server, which is
-     wasteful (and sometimes flaky) for something as simple as "copy this
-     text the browser already has." Reading straight from the hidden
-     textarea's DOM node and using the Clipboard / Blob APIs keeps copy and
-     download instant and fully client-side.
+     Inject this with gr.HTML(value="", head=CONSOLE_JS) once, near the top of
+     your gr.Blocks() layout. Gradio 6 renders gr.HTML values via innerHTML,
+     which never executes <script> tags — but head= content is injected into
+     the document <head>, where scripts do run.
      ════════════════════════════════════════════════════════════════════════ -->
 <script>
 // ── Copy panel text to clipboard ──────────────────────────────────────────
@@ -95,16 +88,67 @@ function observeProgressBar() {
     tryAttach();
 }
 
+// ── Bauhaus cool motion — floating bubbles + ripple + staggered reveal ──
+function initBauhausMotion() {
+    // Inject extra floating bubbles if not present (yellow/orange) — CSS handles float/pulse
+    const container = document.querySelector('.gradio-container');
+    if (container && !container.querySelector('.bauhaus-bubble--yellow')) {
+        const y = document.createElement('div');
+        y.className = 'bauhaus-bubble bauhaus-bubble--yellow';
+        y.setAttribute('aria-hidden','true');
+        container.appendChild(y);
+        const o = document.createElement('div');
+        o.className = 'bauhaus-bubble bauhaus-bubble--orange';
+        o.setAttribute('aria-hidden','true');
+        container.appendChild(o);
+    }
+    // Ripple on dark pill buttons
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('button.primary, .gr-button.primary, .btn-canvas-primary');
+        if (!btn) return;
+        const rect = btn.getBoundingClientRect();
+        const ripple = document.createElement('span');
+        ripple.style.position = 'absolute';
+        ripple.style.left = (e.clientX - rect.left) + 'px';
+        ripple.style.top = (e.clientY - rect.top) + 'px';
+        ripple.style.width = ripple.style.height = '10px';
+        ripple.style.background = 'rgba(245,200,66,0.45)';
+        ripple.style.borderRadius = '50%';
+        ripple.style.transform = 'translate(-50%,-50%) scale(0)';
+        ripple.style.pointerEvents = 'none';
+        ripple.style.animation = 'btn-pop 0.55s ease-out forwards';
+        btn.style.position = 'relative';
+        btn.style.overflow = 'hidden';
+        btn.appendChild(ripple);
+        setTimeout(() => ripple.remove(), 600);
+    });
+    // Staggered reveal via IntersectionObserver for cards
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(ent => {
+            if (ent.isIntersecting) {
+                ent.target.style.animationPlayState = 'running';
+                observer.unobserve(ent.target);
+            }
+        });
+    }, { threshold: 0.12 });
+    document.querySelectorAll('.gr-group, .config-card, .metric-card').forEach(el => {
+        el.style.animationPlayState = 'paused';
+        observer.observe(el);
+    });
+}
+
 // Initialise on load
 document.addEventListener('DOMContentLoaded', () => {
     attachLogAutoScroll('server-log-ta');
     attachLogAutoScroll('pipeline-log-ta');
     observeProgressBar();
+    initBauhausMotion();
 });
 // Gradio re-renders after navigation, so also run after a short delay
 setTimeout(() => {
     attachLogAutoScroll('server-log-ta');
     attachLogAutoScroll('pipeline-log-ta');
     observeProgressBar();
+    initBauhausMotion();
 }, 2000);
 </script>

@@ -1,0 +1,210 @@
+[
+  {
+    "round": 1,
+    "score": 0,
+    "detections": [
+      {
+        "label": "players",
+        "bbox_2d": [
+          56,
+          541,
+          76,
+          632
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          167,
+          207,
+          180,
+          266
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          270,
+          363,
+          287,
+          432
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          419,
+          91,
+          461,
+          123
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          385,
+          411,
+          423,
+          439
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          418,
+          502,
+          458,
+          529
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          364,
+          615,
+          397,
+          638
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          341,
+          541,
+          372,
+          563
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          322,
+          631,
+          362,
+          666
+        ]
+      },
+      {
+        "label": "referee",
+        "bbox_2d": [
+          523,
+          315,
+          538,
+          382
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          363,
+          745,
+          395,
+          773
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          343,
+          784,
+          375,
+          812
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          372,
+          816,
+          400,
+          844
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          339,
+          855,
+          370,
+          879
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          324,
+          905,
+          355,
+          927
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          361,
+          919,
+          389,
+          945
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          476,
+          855,
+          520,
+          901
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          411,
+          1000,
+          452,
+          1000
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          367,
+          1000,
+          400,
+          1000
+        ]
+      },
+      {
+        "label": "players",
+        "bbox_2d": [
+          367,
+          1000,
+          394,
+          1000
+        ]
+      },
+      {
+        "label": "ball",
+        "bbox_2d": [
+          833,
+          315,
+          840,
+          329
+        ]
+      },
+      {
+        "label": "referee",
+        "bbox_2d": [
+          818,
+          846,
+          850,
+          977
+        ]
+      }
+    ],
+    "feedback": "Based on the image, the following bounding boxes are incorrect (false detections on empty grass, advertising boards, or black bars):\n\n- **#4: players**",
+    "actions": "",
+    "parse_error": null,
+    "raw_detector_output": "```json\n<analysis>\nScanning categories: players, referee, ball.\n\nPlayers & Referees:\n- Player (left foreground): [56, 523, 76, 574]\n- Player (GK): [167, 335, 180, 368]\n- Player: [270, 423, 287, 461]\n- Player: [385, 450, 423, 465]\n- Player: [419, 270, 461, 287]\n- Player: [418, 501, 458, 516]\n- Player: [364, 565, 397, 577]\n- Player: [341, 523, 372, 535]\n- Player: [322, 574, 362, 593]\n- Referee (cyan shirt): [523, 396, 538, 433]\n- Player: [363, 638, 395, 653]\n- Player: [343, 660, 375, 675]\n- Player: [372, 678, 400, 693]\n- Player: [339, 700, 370, 713]\n- Player: [324, 728, 355, 740]\n- Player: [361, 736, 389, 750]\n- Player: [476, 700, 520, 725]\n- Player: [411, 898, 452, 922]\n- Player: [367, 898, 400, 912]\n- Player: [367, 850, 394, 869]\n- Referee (assistant, cyan shirt): [818, 695, 850, 768]\n- Ball: [833, 396, 840, 403]\n</analysis>\n<answer>\n[\n  {\"label\": \"players\", \"bbox_2d\": [56, 523, 76, 574]},\n  {\"label\": \"players\", \"bbox_2d\": [167, 335, 180, 368]},\n  {\"label\": \"players\", \"bbox_2d\": [270, 423, 287, 461]},\n  {\"label\": \"players\", \"bbox_2d\": [419, 270, 461, 287]},\n  {\"label\": \"players\", \"bbox_2d\": [385, 450, 423, 465]},\n  {\"label\": \"players\", \"bbox_2d\": [418, 501, 458, 516]},\n  {\"label\": \"players\", \"bbox_2d\": [364, 565, 397, 577]},\n  {\"label\": \"players\", \"bbox_2d\": [341, 523, 372, 535]},\n  {\"label\": \"players\", \"bbox_2d\": [322, 574, 362, 593]},\n  {\"label\": \"referee\", \"bbox_2d\": [523, 396, 538, 433]},\n  {\"label\": \"players\", \"bbox_2d\": [363, 638, 395, 653]},\n  {\"label\": \"players\", \"bbox_2d\": [343, 660, 375, 675]},\n  {\"label\": \"players\", \"bbox_2d\": [372, 678, 400, 693]},\n  {\"label\": \"players\", \"bbox_2d\": [339, 700, 370, 713]},\n  {\"label\": \"players\", \"bbox_2d\": [324, 728, 355, 740]},\n  {\"label\": \"players\", \"bbox_2d\": [361, 736, 389, 750]},\n  {\"label\": \"players\", \"bbox_2d\": [476, 700, 520, 725]},\n  {\"label\": \"players\", \"bbox_2d\": [411, 898, 452, 922]},\n  {\"label\": \"players\", \"bbox_2d\": [367, 898, 400, 912]},\n  {\"label\": \"players\", \"bbox_2d\": [367, 850, 394, 869]},\n  {\"label\": \"ball\", \"bbox_2d\": [833, 396, 840, 403]},\n  {\"label\": \"referee\", \"bbox_2d\": [818, 695, 850, 768]}\n]\n</answer>\n```"
+  }
+]

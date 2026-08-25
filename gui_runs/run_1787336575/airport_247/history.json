@@ -1,0 +1,93 @@
+[
+  {
+    "round": 1,
+    "score": 0,
+    "detections": [
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          156,
+          70,
+          252,
+          149
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          349,
+          105,
+          437,
+          237
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          546,
+          158,
+          638,
+          663
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          404,
+          318,
+          599,
+          699
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          248,
+          503,
+          329,
+          581
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          549,
+          456,
+          608,
+          725
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          469,
+          551,
+          700,
+          600
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          284,
+          391,
+          793,
+          705
+        ]
+      },
+      {
+        "label": "airplane",
+        "bbox_2d": [
+          309,
+          417,
+          901,
+          803
+        ]
+      }
+    ],
+    "feedback": "```json\n[\n  {\"box_2d\": [73, 161, 149, 252], \"label\": \"airplane\"},\n  {\"box_2d\": [107, 347, 230, 439], \"label\": \"airplane\"},\n  {\"box_2d\": [98, 545, 237, 663], \"label\": \"airplane\"},\n  {\"box_2d\": [319, 597, 401, 703], \"label\": \"airplane\"},\n  {\"box_2d\": [501, 248, 580, 329], \"label\": \"airplane\"},\n  {\"box_2d\": [461, 608, 546, 726], \"label\": \"airplane\"},\n  {\"box_2d\": [601, 467, 696, 552], \"label\": \"airplane\"},\n  {\"box_2d\": [705, 283, 792, 388], \"label\": \"airplane\"},\n  {\"box_2d\": [807, 310, 898, 417], \"label\": \"airplane\"}\n]\n```",
+    "actions": "",
+    "parse_error": null,
+    "raw_detector_output": "<analysis>\nScanning the image for airplanes:\n1. Top-left area (around x=150, y=70): airplane at roughly [156, 70, 252, 149].\n2. Top-center area (around x=350, y=105): airplane at roughly [349, 105, 437, 237].\n3. Upper-middle area (around x=540, y=158): airplane at roughly [546, 158, 638, 663].\n4. Center-right area (around x=600, y=318): airplane at roughly [599, 318, 404, 699].\n5. Center-left area (around x=248, y=503): airplane at roughly [248, 503, 329, 581].\n6. Center-right area (around x=608, y=456): airplane at roughly [608, 456, 549, 725].\n7. Lower-center area (around x=469, y=600): airplane at roughly [469, 600, 700, 551].\n8. Lower-left area (around x=284, y=705): airplane at roughly [284, 705, 793, 391].\n9. Bottom-center area (around x=309, y=803): airplane at roughly [309, 803, 901, 417].\n</analysis>\n\n<answer>\n[\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [156, 70, 252, 149]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [349, 105, 437, 237]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [546, 158, 638, 663]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [599, 318, 404, 699]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [248, 503, 329, 581]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [608, 456, 549, 725]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [469, 600, 700, 551]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [284, 705, 793, 391]\n  },\n  {\n    \"label\": \"airplane\",\n    \"bbox_2d\": [309, 803, 901, 417]\n  }\n]\n</answer>"
+  }
+]
