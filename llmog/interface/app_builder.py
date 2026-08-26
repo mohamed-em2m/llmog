@@ -43,6 +43,7 @@ from interface.tab_batch import (
     toggle_run_btn,
     run_batch_dispatcher,
     cancel_pipeline,
+    navigate_batch_explorer,
     on_explorer_image_change,
     on_explorer_round_change,
     on_explorer_prev,
@@ -222,11 +223,9 @@ def _wire_events(
     )
 
     # ── Batch tab — preprocessing toggles ────────────────────────────────
-    c_bat["prep_enabled_chk"].change(
-        lambda v: gr.update(visible=v),
-        inputs=[c_bat["prep_enabled_chk"]],
-        outputs=[c_bat["prep_options_group"]],
-    )
+    # NOTE: prep_options_group is always mounted (visible=True) so Dropdowns
+    # inside it never suffer the Svelte "mounted while display:none" bug.
+    # The runner gates on prep_enabled_chk at execution time.
 
     c_bat["prep_custom_resize_chk"].change(
         lambda v: gr.update(visible=v),
@@ -341,8 +340,19 @@ def _wire_events(
         queue=False,
     )
 
-    # ── Explorer interactions ─────────────────────────────────────────────
-    _explorer_outputs = [
+    # ── Ultra-Smooth Atomic Explorer Navigator ─────────────────────────────
+    # Every action (⏮, ◀, ▶, ⏭, Image select, Round select, Grid toggle) executes
+    # in ONE atomic server round-trip — zero .then() lag or desynchronization.
+    _nav_inputs = [
+        c_bat["explorer_image_select"],
+        c_bat["explorer_round_select"],
+        batch_id_state,
+        c_bat["show_grid_chk"],
+    ]
+    _explorer_all_outputs = [
+        c_bat["explorer_image_select"],
+        c_bat["explorer_pos_display"],
+        c_bat["explorer_round_select"],
         c_bat["source_image_viewer"],
         c_bat["best_annotated_viewer"],
         c_bat["round_score_display"],
@@ -351,86 +361,51 @@ def _wire_events(
         c_bat["round_parse_error_display"],
         c_bat["detections_json_box"],
     ]
-    _explorer_inputs = [
-        c_bat["explorer_image_select"],
-        c_bat["explorer_round_select"],
-        batch_id_state,
-        c_bat["show_grid_chk"],
-    ]
 
-    _hero_outputs = [
-        c_bat["hero_source_image"],
-        c_bat["hero_viewer"],
-        c_bat["hero_info"],
-    ]
-    _hero_inputs = [
-        c_bat["explorer_image_select"],
-        c_bat["explorer_round_select"],
-        batch_id_state,
-    ]
-
-    c_bat["explorer_image_select"].change(
-        on_explorer_image_change,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_round_select"]],
-    ).then(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
-    ).then(
-        _hero_view_for_selection,
-        inputs=_hero_inputs,
-        outputs=_hero_outputs,
-    ).then(
-        on_explorer_pos,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_pos_display"]],
-        queue=False,
-    )
-
-    # ── Arrow / jump navigation for batch explorer ──
-    # Each button just moves the image dropdown; the dropdown's .change chain
-    # above refreshes rounds, viewer, hero and the position badge.
     c_bat["explorer_first_btn"].click(
-        on_explorer_first,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("first", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_prev_btn"].click(
-        on_explorer_prev,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("prev", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_next_btn"].click(
-        on_explorer_next,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("next", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_last_btn"].click(
-        on_explorer_last,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("last", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
         queue=False,
     )
 
-    # Round dropdown changed: refresh all explorer outputs
+    c_bat["explorer_image_select"].change(
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("image_select", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
+    )
+
     c_bat["explorer_round_select"].change(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
-    ).then(
-        _hero_view_for_selection,
-        inputs=_hero_inputs,
-        outputs=_hero_outputs,
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("round_select", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
     )
 
     c_bat["show_grid_chk"].change(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("grid_toggle", img, rnd, bid, grid),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
     )
 
 

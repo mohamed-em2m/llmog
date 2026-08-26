@@ -208,7 +208,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     elem_classes=["xp-score-wrap"],
                 )
                 show_grid_chk = gr.Checkbox(
-                    label="Grid",
+                    label="🔲 Grid",
                     value=True,
                     elem_classes=["xp-grid-chk"],
                 )
@@ -266,6 +266,7 @@ def build_batch_tab() -> Dict[str, Any]:
                         label="📋 Category Domain Presets",
                         choices=list(CATEGORY_PRESETS.keys()),
                         value="Fabric & Surface Defects",
+                        interactive=True,
                         visible=False,
                         info="Quickly load target categories & distinguishing definitions.",
                     )
@@ -338,7 +339,7 @@ def build_batch_tab() -> Dict[str, Any]:
                 info="Master toggle for all preprocessing steps below.",
             )
 
-            with gr.Group(visible=False) as prep_options_group:
+            with gr.Group(visible=True, elem_classes=["prep-options-group"]) as prep_options_group:
                 gr.HTML(_section_title("📐", "Resolution & Padding"))
                 prep_short_edge_slider = gr.Slider(
                     label="Target Short Edge (px)",
@@ -377,6 +378,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Contrast Correction Method",
                     choices=["none", "clahe", "autocontrast"],
                     value="clahe",
+                    interactive=True,
                 )
                 prep_gamma_slider = gr.Slider(
                     label="Gamma Correction",
@@ -395,6 +397,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Denoising Filter",
                     choices=["none", "bilateral", "nlm"],
                     value="none",
+                    interactive=True,
                 )
                 prep_sharpen_chk = gr.Checkbox(
                     label="Apply Unsharp Mask (Sharpen)", value=False
@@ -405,6 +408,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Grid Style",
                     choices=["Standard Red", "transparent", "fine", "none"],
                     value="Standard Red",
+                    interactive=True,
                     info="Select standard, semi-transparent, fine 10×10 grid, or disable.",
                 )
                 prep_grid_step_slider = gr.Slider(
@@ -444,6 +448,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="red",
+                        interactive=True,
                     )
                     prep_grid_line_color_custom = gr.Textbox(
                         label="Custom Line Color (Hex/Name)",
@@ -465,6 +470,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="white",
+                        interactive=True,
                     )
                     prep_grid_text_color_custom = gr.Textbox(
                         label="Custom Text Color (Hex/Name)",
@@ -484,6 +490,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="black",
+                        interactive=True,
                     )
                     prep_grid_backing_color_custom = gr.Textbox(
                         label="Custom Backing (Hex/Name)",
