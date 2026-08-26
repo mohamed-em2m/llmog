@@ -16,6 +16,7 @@ from interface.viewer_utils import (
     build_viewer_payload,
     pipeline_detections_to_annotations,
 )
+from free_detection.agent.visuals import draw_grid as _draw_grid_lazy
 
 logger = logging.getLogger("detection_pipeline.explorer")
 
@@ -87,8 +88,6 @@ def _lazy_grid(img_data: dict, show_grid: bool) -> Optional[Image.Image]:
     if raw is None:
         return None
     try:
-        from free_detection.agent.visuals import draw_grid as _draw_grid_lazy
-
         cfg = img_data.get("_grid_config") or {}
         grid_img = _draw_grid_lazy(
             raw,

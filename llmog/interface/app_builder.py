@@ -1,24 +1,4 @@
-"""
-Aggregator application builder assembling interface tabs, CSS styling, and event handlers.
-"""
-
-import warnings
-
-# Suppress noisy Starlette/Gradio deprecation (HTTP_422_UNPROCESSABLE_ENTITY → CONTENT)
-# Gradio 6 routes.py:1379 still uses the old name; fixed upstream in 5.8+ but we pin 6.19
-warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
-warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_CONTENT.*")
-try:
-    warnings.filterwarnings("ignore", category=DeprecationWarning, module="gradio.*")
-    warnings.filterwarnings("ignore", category=UserWarning, module="gradio.*")
-except Exception:
-    pass
-try:
-    from starlette.warnings import StarletteDeprecationWarning  # type: ignore
-
-    warnings.filterwarnings("ignore", category=StarletteDeprecationWarning)
-except Exception:
-    pass
+"""Aggregator application builder assembling interface tabs, CSS styling, and event handlers."""
 
 import gradio as gr  # noqa: E402
 
@@ -52,14 +32,36 @@ from interface.batch.components import (  # noqa: E402
     on_batch_preset_change,
     on_batch_strategy_change,
     handle_batch_upload,
+    handle_remove_current_image,
+    handle_clear_all_images,
 )
 from interface.tab_prompts import _build_prompts_tab  # noqa: E402
-from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events  # noqa: E402
-from interface.tab_draw import build_draw_tab, wire_draw_events  # noqa: E402
-from interface.tab_realtime_interactive import (  # noqa: E402
+from interface.tab_realtime import (
+    _build_realtime_tab,
+    _wire_realtime_events,
+)  # noqa: E402
+from interface.tab_draw import build_draw_tab, wire_draw_events
+from interface.tab_realtime_interactive import (
     build_realtime_interactive_tab,
     wire_realtime_interactive_events,
 )
+import warnings
+
+# Suppress noisy Starlette/Gradio deprecation (HTTP_422_UNPROCESSABLE_ENTITY → CONTENT)
+# Gradio 6 routes.py:1379 still uses the old name; fixed upstream in 5.8+ but we pin 6.19
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_CONTENT.*")
+try:
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="gradio.*")
+    warnings.filterwarnings("ignore", category=UserWarning, module="gradio.*")
+except Exception:
+    pass
+try:
+    from starlette.warnings import StarletteDeprecationWarning  # type: ignore
+
+    warnings.filterwarnings("ignore", category=StarletteDeprecationWarning)
+except Exception:
+    pass
 
 
 def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id: str):
@@ -118,7 +120,6 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
         )
         payload = _build_hero_payload(viewer_base, anns)
-        # source image is raw_original (keep grid off for hero to avoid double grid)
         info = (
             f'<div class="hero-meta">'
             f'<span class="hero-title">{selected_image}</span> '
@@ -217,6 +218,7 @@ def _wire_events(
         stop_server_wrapper,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )
+
     # ── Log controls (clear / refresh / download) ───────────────────────
     if "clear_logs_btn" in c_srv:
         c_srv["clear_logs_btn"].click(
@@ -256,10 +258,6 @@ def _wire_events(
     )
 
     # ── Batch tab — preprocessing toggles ────────────────────────────────
-    # NOTE: prep_options_group is always mounted (visible=True) so Dropdowns
-    # inside it never suffer the Svelte "mounted while display:none" bug.
-    # The runner gates on prep_enabled_chk at execution time.
-
     c_bat["prep_custom_resize_chk"].change(
         lambda v: gr.update(visible=v),
         inputs=[c_bat["prep_custom_resize_chk"]],
@@ -289,6 +287,33 @@ def _wire_events(
         outputs=[
             c_bat["upload_state"],
             c_bat["source_image_viewer"],
+            c_bat["pipeline_status"],
+        ],
+    )
+
+    # ── Batch tab — Image removal and clearing ───────────────────────────
+    c_bat["remove_current_btn"].click(
+        fn=handle_remove_current_image,
+        inputs=[c_bat["upload_state"], c_bat["selected_img_idx_state"]],
+        outputs=[
+            c_bat["upload_state"],
+            c_bat["source_image_viewer"],
+            c_bat["explorer_image_select"],
+            c_bat["explorer_pos_display"],
+            c_bat["selected_img_idx_state"],
+            c_bat["pipeline_status"],
+        ],
+    )
+
+    c_bat["clear_all_btn"].click(
+        fn=handle_clear_all_images,
+        inputs=[],
+        outputs=[
+            c_bat["upload_state"],
+            c_bat["source_image_viewer"],
+            c_bat["explorer_image_select"],
+            c_bat["explorer_pos_display"],
+            c_bat["selected_img_idx_state"],
             c_bat["pipeline_status"],
         ],
     )
@@ -378,8 +403,6 @@ def _wire_events(
     )
 
     # ── Ultra-Smooth Atomic Explorer Navigator ─────────────────────────────
-    # Every action (⏮, ◀, ▶, ⏭, Image select, Round select, Grid toggle) executes
-    # in ONE atomic server round-trip — zero .then() lag or desynchronization.
     _nav_inputs = [
         c_bat["explorer_image_select"],
         c_bat["explorer_round_select"],
@@ -462,8 +485,6 @@ def _wire_events(
 
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="LLM Object Detection Console") as app:
-        # Gradio 6: <script> inside gr.HTML value never executes (innerHTML);
-        # head= injects it into <head> where it actually runs.
         gr.HTML(value="", head=CONSOLE_JS)
 
         # ── Header with inline status badge ──────────────────────────────

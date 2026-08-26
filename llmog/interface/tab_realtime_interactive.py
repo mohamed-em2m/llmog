@@ -3,6 +3,7 @@ Real-Time Interactive Camera & Draw Tab Module.
 Allows users to open their webcam directly inside the interactive canvas,
 draw bounding boxes, circles, or brush strokes directly over live or frozen camera feeds,
 and classify the selected objects using Vision-Language Models (VLM) in Strict, Hybrid, or Free mode.
+Features instant Auto-Recognize-on-Draw and Manual Batch modes.
 """
 
 from __future__ import annotations
@@ -92,7 +93,20 @@ def _on_realtime_interactive_mode_change(
 # ── Interactive HTML5 Canvas with Native Live Camera Feed ──────────────────────
 _RT_DRAW_CANVAS_HTML = """
 <div id="llmog-custom-canvas-app-rt" class="custom-canvas-container canvas-stage-card">
-    <!-- Canvas Stage Viewport with Live Camera — video kept visible to compositing (opacity 0, NOT display:none so drawImage works) -->
+    <!-- Top Action Ribbon directly above screen -->
+    <div class="canvas-top-ribbon">
+        <div class="ribbon-left">
+            <span class="ribbon-title">📹 Live Camera &amp; Object Annotation</span>
+            <span class="mode-badge-pill manual" id="rt-mode-indicator-pill">✋ Manual Mode</span>
+        </div>
+        <div class="ribbon-right">
+            <button type="button" class="btn-ribbon-cta" id="rt-btn-ribbon-recognize" title="Send all marked regions to VLM (Ctrl+Enter)">
+                <span class="cta-icon">🔎</span> <b>Recognize Now</b>
+            </button>
+        </div>
+    </div>
+
+    <!-- Canvas Stage Viewport with Live Camera -->
     <div class="canvas-stage-wrapper" id="rt-canvas-stage-wrapper">
         <video id="rt-camera-video" playsinline muted autoplay style="position:absolute; width:2px; height:2px; opacity:0.01; pointer-events:none; top:0; left:0;"></video>
         <canvas id="rt-custom-annotation-canvas"></canvas>
@@ -100,7 +114,7 @@ _RT_DRAW_CANVAS_HTML = """
         <div id="rt-canvas-empty-overlay" class="canvas-empty-state">
             <div class="empty-icon">📹</div>
             <h3>Real-Time Interactive Camera &amp; Draw</h3>
-            <p>Start your camera and draw bounding boxes or brush strokes directly over objects to recognize them.</p>
+            <p>Start your camera and draw shapes over objects to recognize them instantly or in batch.</p>
             <div class="empty-actions">
                 <button type="button" class="btn-canvas-primary" id="rt-btn-empty-camera">📹 Start Camera</button>
                 <button type="button" class="btn-canvas-secondary" id="rt-btn-empty-upload">📁 Choose Image</button>
@@ -116,25 +130,38 @@ _RT_DRAW_CANVAS_HTML = """
     <div class="canvas-status-bar">
         <div class="status-left">
             <span class="regions-count-badge" id="rt-regions-count-badge">0 Region(s)</span>
-            <span class="canvas-hint-text">💡 Tip: Start camera, select <b>Box</b> to mark objects directly on the camera feed.</span>
+            <span class="canvas-hint-text" id="rt-canvas-hint-text">💡 Draw a box over any object. Click <b>Recognize Now</b> or switch to <b>⚡ Auto Mode</b>.</span>
         </div>
         <div class="regions-list-chips" id="rt-regions-chips-container"></div>
     </div>
 </div>
 """
 
-# ── RT camera/annotation toolbar extracted below canvas (same IDs — JS binds globally) ──
+# ── Integrated RT camera/annotation toolbar below canvas ──────────────────
 _RT_TOOLBAR_HTML = """
 <div id="llmog-custom-canvas-toolbar-rt" class="custom-canvas-container draw-toolbar-below">
     <div class="canvas-toolbar">
+        <!-- Recognition Execution Mode Toggle -->
+        <div class="canvas-tool-group highlight-group">
+            <span class="tool-group-label">Workflow Mode</span>
+            <button type="button" class="canvas-tool-btn active" id="rt-mode-btn-manual" title="Manual: Draw regions freely, then click Recognize"><span class="tool-icon">✋</span> Manual</button>
+            <button type="button" class="canvas-tool-btn auto-mode-btn" id="rt-mode-btn-auto" title="Auto: Instantly recognize each object as soon as shape drawing completes!"><span class="tool-icon">⚡</span> Auto-Recognize on Draw</button>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Camera Controls -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Camera</span>
-            <button type="button" class="canvas-tool-btn camera-btn" id="rt-btn-start-camera" title="Start Live Webcam Feed"><span class="tool-icon">📹</span> Start Camera</button>
+            <button type="button" class="canvas-tool-btn camera-btn" id="rt-btn-start-camera" title="Start Live Webcam Feed"><span class="tool-icon">📹</span> Start</button>
             <button type="button" class="canvas-tool-btn" id="rt-btn-freeze-camera" style="display:none;" title="Freeze / Resume Live Video [Space]"><span class="tool-icon">⏸️</span> Freeze</button>
             <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-flip-camera" style="display:none;" title="Flip Front / Back Camera">🔄</button>
             <button type="button" class="canvas-tool-btn danger" id="rt-btn-stop-camera" style="display:none;" title="Stop Camera">⏹️ Stop</button>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Drawing Tools -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Tools</span>
             <button type="button" class="canvas-tool-btn active" id="rt-tool-bbox" title="Bounding Box [B]"><span class="tool-icon">🔲</span> Box</button>
@@ -142,7 +169,10 @@ _RT_TOOLBAR_HTML = """
             <button type="button" class="canvas-tool-btn" id="rt-tool-circle" title="Circle / Ellipse [C]"><span class="tool-icon">⭕</span> Circle</button>
             <button type="button" class="canvas-tool-btn" id="rt-tool-eraser" title="Eraser / Delete Region [E]"><span class="tool-icon">🧽</span> Eraser</button>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Color & Size -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Color</span>
             <div class="color-palette-bar" id="rt-palette-swatches">
@@ -155,20 +185,28 @@ _RT_TOOLBAR_HTML = """
             </div>
             <input type="color" id="rt-custom-color-picker" value="#00ffcc" title="Custom color" class="color-picker-input">
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
         <div class="canvas-tool-group">
             <span class="tool-group-label">Size: <b id="rt-brush-size-val">3</b>px</span>
             <input type="range" id="rt-brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Actions -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Actions</span>
             <button type="button" class="canvas-tool-btn" id="rt-btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
             <button type="button" class="canvas-tool-btn" id="rt-btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
-            <button type="button" class="canvas-tool-btn" id="rt-btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
-            <button type="button" class="canvas-tool-btn danger" id="rt-btn-clear-all" title="Clear camera & drawings completely">🧹 Reset All</button>
+            <button type="button" class="canvas-tool-btn" id="rt-btn-clear-drawings" title="Clear drawn boxes only">🧽 Clear</button>
+            <button type="button" class="canvas-tool-btn danger" id="rt-btn-clear-all" title="Reset camera & drawings">🧹 Reset All</button>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Zoom & File -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Zoom</span>
             <button type="button" class="canvas-tool-btn icon-only" id="rt-btn-zoom-in" title="Zoom in">➕</button>
@@ -176,7 +214,9 @@ _RT_TOOLBAR_HTML = """
             <button type="button" class="canvas-tool-btn" id="rt-btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
             <span id="rt-zoom-level-text" class="zoom-indicator">100%</span>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
         <div class="canvas-tool-group">
             <span class="tool-group-label">File</span>
             <button type="button" class="canvas-tool-btn upload-btn" id="rt-btn-toolbar-upload" title="Upload an image from your computer">📁 Upload</button>
@@ -195,6 +235,10 @@ _RT_DRAW_CANVAS_JS = """
         isFrozen: false,
         facingMode: 'user',
         animFrameId: null,
+
+        // Modes: 'manual' (batch click) or 'auto' (instant on shape complete)
+        executionMode: 'manual',
+        isAutoSubmitting: false,
 
         image: null,
         imageSrc: null,
@@ -251,11 +295,41 @@ _RT_DRAW_CANVAS_JS = """
             const self = this;
             window.addEventListener('resize', () => self.resizeCanvas());
 
-            // Scope global handlers to this tab — ignore paste/keys while hidden.
             const isTabVisible = () => {
                 const el = document.getElementById('llmog-custom-canvas-app-rt');
                 return !!(el && el.offsetParent !== null);
             };
+
+            // ── Recognition Mode Toggle ────────────────────────────────────
+            const btnModeManual = document.getElementById('rt-mode-btn-manual');
+            const btnModeAuto = document.getElementById('rt-mode-btn-auto');
+            const modePill = document.getElementById('rt-mode-indicator-pill');
+            const hintText = document.getElementById('rt-canvas-hint-text');
+
+            const setExecutionMode = (mode) => {
+                self.executionMode = mode;
+                if (btnModeManual) btnModeManual.classList.toggle('active', mode === 'manual');
+                if (btnModeAuto) btnModeAuto.classList.toggle('active', mode === 'auto');
+
+                if (modePill) {
+                    modePill.className = 'mode-badge-pill ' + (mode === 'auto' ? 'auto' : 'manual');
+                    modePill.innerHTML = mode === 'auto' ? '⚡ Auto-Recognize Active' : '✋ Manual Mode';
+                }
+                if (hintText) {
+                    hintText.innerHTML = mode === 'auto'
+                        ? '⚡ <b>Auto Mode Active:</b> Complete any box, circle, or stroke and it will be recognized immediately!'
+                        : '💡 Draw shapes over objects. Click <b>Recognize Now</b> when ready.';
+                }
+            };
+
+            if (btnModeManual) btnModeManual.onclick = () => setExecutionMode('manual');
+            if (btnModeAuto) btnModeAuto.onclick = () => setExecutionMode('auto');
+
+            // ── Direct Ribbon Recognize Button ─────────────────────────────
+            const btnRibbonRecognize = document.getElementById('rt-btn-ribbon-recognize');
+            if (btnRibbonRecognize) {
+                btnRibbonRecognize.onclick = () => self.triggerRecognize();
+            }
 
             // ── Camera Controls ───────────────────────────────────────────
             const btnStartCam = document.getElementById('rt-btn-start-camera');
@@ -436,7 +510,10 @@ _RT_DRAW_CANVAS_JS = """
                 if (!isTabVisible()) return;
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    self.triggerRecognize();
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                     e.preventDefault();
                     if (e.shiftKey) self.redo();
                     else self.undo();
@@ -452,8 +529,6 @@ _RT_DRAW_CANVAS_JS = """
                 } else if (e.key === 'e' || e.key === 'E') {
                     setTool('eraser', toolEraser);
                 } else if (e.key === ' ' && self.isCameraRunning) {
-                    // Ignore Space when a toolbar button holds focus — otherwise
-                    // the browser re-activates that button AND freezes the feed.
                     if (e.target.tagName === 'BUTTON') return;
                     e.preventDefault();
                     self.toggleFreezeCamera();
@@ -492,15 +567,13 @@ _RT_DRAW_CANVAS_JS = """
                         self.isFrozen = false;
                         self.imageWidth = self.video.videoWidth || 1280;
                         self.imageHeight = self.video.videoHeight || 720;
-                        self.image = null; // streaming live video
+                        self.image = null;
 
                         if (self.emptyOverlay) self.emptyOverlay.style.display = 'none';
                         self.updateCameraUI(true);
                         self.fitToScreen();
                         self.startRenderLoop();
                     };
-                    // If metadata is already available the loadedmetadata event
-                    // may never fire again — handle both paths.
                     if (self.video.readyState >= 1) {
                         setTimeout(onMeta, 0);
                     } else {
@@ -539,7 +612,6 @@ _RT_DRAW_CANVAS_JS = """
             if (!this.isCameraRunning && !this.isFrozen) return;
 
             if (!this.isFrozen) {
-                // Freeze: snapshot current video frame into static Image
                 const offscreen = document.createElement('canvas');
                 offscreen.width = this.imageWidth;
                 offscreen.height = this.imageHeight;
@@ -567,7 +639,6 @@ _RT_DRAW_CANVAS_JS = """
                 };
                 frozenImg.src = dataUrl;
             } else {
-                // Resume live streaming
                 this.isFrozen = false;
                 this.image = null;
                 const btnFreeze = document.getElementById('rt-btn-freeze-camera');
@@ -615,6 +686,7 @@ _RT_DRAW_CANVAS_JS = """
             const iw = this.imageWidth || 1280, ih = this.imageHeight || 720;
             return Math.min(cw / iw, ch / ih);
         },
+
         clampOffsets: function() {
             const cw = this.canvas.width, ch = this.canvas.height;
             const iw = this.imageWidth || 1280, ih = this.imageHeight || 720;
@@ -625,7 +697,7 @@ _RT_DRAW_CANVAS_JS = """
             if (sh <= ch) this.offsetY = (ch - sh) / 2;
             else this.offsetY = Math.max(ch - sh, Math.min(0, this.offsetY));
         },
-        // ── Canvas Sizing & Navigation ────────────────────────────────────
+
         resizeCanvas: function() {
             if (!this.wrapper || !this.canvas) return;
             const w = this.wrapper.clientWidth;
@@ -879,11 +951,23 @@ _RT_DRAW_CANVAS_JS = """
             }
 
             if (newRegion) {
-                this.saveHistoryState();
-                this.regions.push(newRegion);
+                // If in Auto-Recognize mode, replace previous regions so it focuses immediately on the newest object
+                if (this.executionMode === 'auto') {
+                    this.saveHistoryState();
+                    this.regions = [newRegion];
+                } else {
+                    this.saveHistoryState();
+                    this.regions.push(newRegion);
+                }
+
                 this.redoStack = [];
                 this.updateRegionsList();
                 this.syncGradioPayload();
+
+                // ⚡ AUTO-RECOGNIZE TRIGGER
+                if (this.executionMode === 'auto') {
+                    this.triggerRecognize();
+                }
             }
 
             this.currentStroke = [];
@@ -1016,7 +1100,7 @@ _RT_DRAW_CANVAS_JS = """
                 ctx.drawImage(this.image, 0, 0, this.imageWidth, this.imageHeight);
             }
 
-            // Draw all completed regions
+            // Draw completed regions
             this.regions.forEach((r, idx) => {
                 this.drawSingleRegion(ctx, r, idx + 1);
             });
@@ -1173,7 +1257,7 @@ _RT_DRAW_CANVAS_JS = """
         syncGradioPayload: function() {
             let bgData = this.imageSrc || null;
 
-            // If camera is streaming live and not frozen, capture current frame
+            // If camera is streaming live and not frozen, capture current exact frame
             if (this.isCameraRunning && !this.isFrozen && this.video && this.video.readyState >= 2) {
                 try {
                     const snapCanvas = document.createElement('canvas');
@@ -1210,6 +1294,25 @@ _RT_DRAW_CANVAS_JS = """
                 hiddenTa.dispatchEvent(new Event('input', { bubbles: true }));
             }
             return jsonStr;
+        },
+
+        triggerRecognize: function() {
+            if (this.isAutoSubmitting) return;
+            if (this.regions.length === 0) {
+                alert("Please draw at least one box, circle, or stroke over an object first.");
+                return;
+            }
+
+            this.isAutoSubmitting = true;
+            this.syncGradioPayload();
+
+            setTimeout(() => {
+                const gradioBtn = document.getElementById('rt_run_recognize_btn');
+                if (gradioBtn) {
+                    gradioBtn.click();
+                }
+                setTimeout(() => { this.isAutoSubmitting = false; }, 300);
+            }, 100);
         }
     };
 
@@ -1247,13 +1350,10 @@ def _load_sample_bridge_rt():
 
 
 def build_realtime_interactive_tab() -> Dict[str, Any]:
-    """Real-Time Interactive — twin 520px (camera canvas | recognition viewer), camera toolbar below canvas."""
-    # ── Top twin: RT canvas stage (520) | recognition viewer — same level ──
+    """Real-Time Interactive Tab with fast Auto & Manual recognition modes."""
+    # ── Twin Screens: Stage Viewport (Left) | Recognition Viewer (Right) ──
     with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-            gr.HTML(
-                '<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>'
-            )
             custom_canvas = gr.HTML(
                 value=_RT_DRAW_CANVAS_HTML,
                 js_on_load=_RT_DRAW_CANVAS_JS,
@@ -1262,7 +1362,7 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
             gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
             status = gr.Markdown(
-                "**Status: Idle – open camera, draw boxes over objects, then Recognize**"
+                "**Status: Idle – start camera, draw shapes to recognize objects**"
             )
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 viewer = DetectionViewer(
@@ -1278,19 +1378,31 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                     interactive=False,
                     label="Copy these lines into the image's .txt label file",
                 )
-    # ── Below twin: camera toolbar card (same IDs — JS binds globally) ──
+
+    # ── Camera & Tool Bar directly below screens ──
     toolbar_view = gr.HTML(
         value=_RT_TOOLBAR_HTML, elem_id="rt-interactive-toolbar-html"
     )
+
+    # ── Hidden State Bridges ──
     payload_box = gr.Textbox(
         value="{}", visible=False, elem_id="rt_interactive_payload_box"
     )
     sample_bridge_btn = gr.Button(
         "Sample Bridge", visible=False, elem_id="rt_sample_bridge_btn"
     )
+
+    # ── Prominent Action Row (Bound to Toolbar CTA and Auto-Recognize) ──
     with gr.Row(elem_classes=["btn-group"]):
-        run_btn = gr.Button("🔎  Recognize Drawn Objects", variant="primary", scale=2)
+        run_btn = gr.Button(
+            "🔎  Recognize Drawn Objects",
+            variant="primary",
+            scale=2,
+            elem_id="rt_run_recognize_btn",
+        )
         clear_btn = gr.Button("🗑️ Clear Results", variant="secondary", scale=1)
+
+    # ── Category & Class Definitions ──
     with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
         class_mode = gr.Radio(
             label="🎯 Class Expectation Mode",
@@ -1323,6 +1435,8 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
             value="",
             info="Optional domain guidance.",
         )
+
+    # ── Advanced Context Settings ──
     with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
         conf_threshold = gr.Slider(
             label="Minimum Confidence Threshold (%)",
@@ -1341,7 +1455,7 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
             info="Extra visual context around each drawn region sent to the VLM.",
         )
         request_mode = gr.Radio(
-            label="⚡ Request Mode (optional)",
+            label="⚡ Request Mode",
             choices=[
                 ("Sequential – 1 request per region", "sequential"),
                 ("Parallel – asyncio.gather concurrent", "parallel"),
@@ -1433,7 +1547,7 @@ def wire_realtime_interactive_events(
     # ── Clear results ───────────────────────────────────────────────────────
     c_rt_interactive["clear_btn"].click(
         fn=lambda: (
-            "**Status: Idle – open camera, draw boxes over objects, then Recognize**",
+            "**Status: Idle – start camera, draw shapes to recognize objects**",
             None,
             _RECLS_EMPTY_TABLE,
             "",
