@@ -1,5 +1,4 @@
-(function () {
-    "use strict";
+"use strict";
 
     var MAX_CANVAS_HEIGHT = 600;
     var KEYPOINT_RADIUS = 3;
@@ -24,6 +23,8 @@
     var tooltip = element.querySelector(".tooltip");
     var controlPanel = element.querySelector(".control-panel");
     var annotationList = element.querySelector(".annotation-list");
+    var controlPanelBody = element.querySelector(".control-panel-body");
+    var annotationDropdownBtn = element.querySelector(".annotation-dropdown-btn");
 
     // Read configurable defaults from props (available in js_on_load scope)
     var initialScoreThresholdMin = props.score_threshold_min || 0;
@@ -94,7 +95,8 @@
         sortMode: "none",
         sortedIndices: [],
         expandedIndex: -1,
-        drawOptionsOpen: false
+        drawOptionsOpen: false,
+        annotationDropdownOpen: false
     };
     var latestValueRequestId = 0;
 
@@ -120,6 +122,53 @@
     });
     containerObserver.observe(container, {
         attributes: true, attributeFilter: ["class"]
+    });
+
+    // ── Annotation List Dropdown (minimal space) ───────────────────
+    function syncDropdownButton() {
+        var isOpen = !!state.annotationDropdownOpen;
+        if (annotationDropdownBtn) {
+            annotationDropdownBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            annotationDropdownBtn.classList.toggle("active", isOpen);
+            // Keep label compact: List ▾ / List ▴  + count handled via countEl
+            annotationDropdownBtn.textContent = isOpen ? "List \u25B2" : "List \u25BC";
+        }
+        element.classList.toggle("annotation-dropdown-open", isOpen);
+        if (container) container.classList.toggle("annotation-dropdown-open", isOpen);
+        if (controlPanel) controlPanel.classList.toggle("annotation-dropdown-open", isOpen);
+        if (controlPanelBody) {
+            // Ensure body visibility is forced even if CSS specificity fails (inline fallback)
+            controlPanelBody.style.display = isOpen ? "block" : "none";
+        }
+    }
+
+    function setAnnotationDropdown(open) {
+        state.annotationDropdownOpen = !!open;
+        syncDropdownButton();
+    }
+
+    if (annotationDropdownBtn) {
+        annotationDropdownBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            // Don't open empty list
+            if (state.annotations.length === 0) return;
+            setAnnotationDropdown(!state.annotationDropdownOpen);
+        });
+    }
+
+    // Click outside closes dropdown
+    document.addEventListener("click", function (e) {
+        if (!state.annotationDropdownOpen) return;
+        if (element.contains(e.target)) return;
+        setAnnotationDropdown(false);
+    });
+
+    // Escape closes dropdown before other handlers
+    element.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && state.annotationDropdownOpen) {
+            setAnnotationDropdown(false);
+            e.stopPropagation();
+        }
     });
 
     // ── Event Delegation on annotationList ──────────────────────────
@@ -334,6 +383,9 @@
         tooltip.classList.remove("visible");
         helpOverlay.classList.remove("visible");
         placeholder.classList.remove("hidden");
+        setAnnotationDropdown(false);
+        if (annotationDropdownBtn) annotationDropdownBtn.style.display = "none";
+        element.classList.remove("annotation-dropdown-open");
     }
 
     function showLoading() {
@@ -341,12 +393,14 @@
         canvasWrapper.classList.remove("visible");
         controlPanel.classList.remove("visible");
         loadingIndicator.classList.add("visible");
+        setAnnotationDropdown(false);
     }
 
     function showContent() {
         placeholder.classList.add("hidden");
         loadingIndicator.classList.remove("visible");
         canvasWrapper.classList.add("visible");
+        if (annotationDropdownBtn) annotationDropdownBtn.style.display = "";
     }
 
     // ── Canvas Sizing ─────────────────────────────────────────────
@@ -580,39 +634,113 @@
         var baseAlpha = ctx.globalAlpha;
         var iz = 1 / state.zoom;
 
+        // Bauhaus geometric bbox — crisp stroke with subtle outer glow for contrast
+        ctx.save();
         ctx.strokeStyle = ann.color;
         ctx.lineWidth = state.bboxLineWidth * iz;
-        ctx.strokeRect(x, y, w, h);
+        ctx.shadowColor = "rgba(0,0,0,0.25)";
+        ctx.shadowBlur = 4 * iz;
+        // Rounded bbox for softer Bauhaus feel (fallback to rect if roundRect unavailable)
+        if (ctx.roundRect) {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 3 * iz);
+            ctx.stroke();
+        } else {
+            ctx.strokeRect(x, y, w, h);
+        }
+        ctx.restore();
+        // Inner thin white outline for visibility on dark images
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,255,255,0.6)";
+        ctx.lineWidth = 0.7 * iz;
+        if (ctx.roundRect) {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 3 * iz);
+            ctx.stroke();
+        }
+        ctx.restore();
 
-        // Label + score text
-        var labelText = ann.label || "";
+        // Label + score — formatted, human-friendly
+        var rawLabel = ann.label || "";
+        // Humanize: tennis_racket -> Tennis Racket,  person -> Person
+        var displayLabel = rawLabel.replace(/[_-]+/g, " ").replace(/\b\w/g, function(c){return c.toUpperCase();});
+        var labelText = displayLabel;
         if (ann.score != null) {
-            labelText += (labelText ? " " : "") + (ann.score * 100).toFixed(1) + "%";
+            var pct = (ann.score * 100).toFixed(0);
+            labelText += " " + pct + "%";
         }
         if (labelText) {
-            var fontSize = 11 * iz;
-            ctx.font = "bold " + fontSize + "px -apple-system, BlinkMacSystemFont, sans-serif";
+            var fontSize = 12 * iz;
+            ctx.font = "800 " + fontSize + "px 'Inter','Poppins',system-ui,sans-serif";
             var textMetrics = ctx.measureText(labelText);
-            var textH = 16 * iz;
-            var pad = 4 * iz;
-            var bgW = textMetrics.width + pad * 2;
-            var bgH = textH + pad;
-
-            // Place label above bbox; if clipped, place inside top edge
-            var labelAbove = y - bgH >= 0;
-            var bgY = labelAbove ? y - bgH : y;
-            var textY = labelAbove ? y - pad / 2 : y + bgH - pad / 2;
-
-            // Semi-transparent background
+            var padX = 7 * iz;
+            var padY = 4 * iz;
+            var textH = 15 * iz;
+            // Allow label to be wider than bbox so text is never sliced by bbox width.
+            // Only clamp to canvas width, not bbox width.
+            var desiredW = textMetrics.width + padX * 2;
+            var maxCanvasW = canvas.width - 4 * iz;
+            var bgW = desiredW > maxCanvasW ? maxCanvasW : desiredW;
+            var bgH = textH + padY;
+            var labelAbove = y - bgH - 2*iz >= 0;
+            var labelBelowFits = y + h + bgH + 2*iz <= canvas.height;
+            var bgX = x;
+            // Keep label fully inside canvas horizontally (allow overflow beyond bbox)
+            if (bgX + bgW > canvas.width - 2*iz) bgX = Math.max(2*iz, canvas.width - bgW - 2*iz);
+            if (bgX < 2*iz) bgX = 2*iz;
+            var bgY;
+            if (labelAbove) {
+                bgY = y - bgH - 2*iz;
+            } else if (labelBelowFits) {
+                // If no space above, try below bbox (better than inside tiny box)
+                bgY = y + h + 2*iz;
+            } else {
+                bgY = y + 2*iz;
+                // If bbox is tiny and label would overflow bbox bottom, center or clamp
+                if (bgY + bgH > y + h && h < bgH + 8*iz) {
+                    // Center vertically relative to bbox but keep inside canvas
+                    bgY = y + (h - bgH)/2;
+                    if (bgY < 2*iz) bgY = 2*iz;
+                    if (bgY + bgH > canvas.height - 2*iz) bgY = Math.max(2*iz, canvas.height - bgH - 2*iz);
+                }
+            }
+            var r = 7 * iz;
+            ctx.save();
+            // Pill background — Bauhaus: solid color with navy text for yellow, white for others
+            var isYellow = ann.color.toLowerCase() === "#f5c842" || ann.color.toLowerCase() === "#f5c842";
             ctx.fillStyle = ann.color;
-            ctx.globalAlpha = baseAlpha * 0.7;
-            ctx.fillRect(x, bgY, bgW, bgH);
-
-            // White text
+            ctx.globalAlpha = baseAlpha * 0.92;
+            if (ctx.roundRect) {
+                ctx.beginPath();
+                ctx.roundRect(bgX, bgY, bgW, bgH, r);
+                ctx.fill();
+            } else {
+                ctx.fillRect(bgX, bgY, bgW, bgH);
+            }
+            // Subtle border
+            ctx.globalAlpha = baseAlpha * 0.9;
+            ctx.strokeStyle = "rgba(26,17,69,0.12)";
+            ctx.lineWidth = 1 * iz;
+            if (ctx.roundRect) {
+                ctx.beginPath();
+                ctx.roundRect(bgX, bgY, bgW, bgH, r);
+                ctx.stroke();
+            }
             ctx.globalAlpha = baseAlpha;
-            ctx.fillStyle = "#ffffff";
-            ctx.textBaseline = "bottom";
-            ctx.fillText(labelText, x + pad, textY);
+            ctx.fillStyle = (isYellow || ann.color === "#F5C842") ? "#1A1A1A" : "#FFFFFF";
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "left";
+            // Truncate if still too wide
+            var maxTextW = bgW - padX*2;
+            var finalText = labelText;
+            if (textMetrics.width > maxTextW) {
+                while (finalText.length > 3 && ctx.measureText(finalText + "…").width > maxTextW) {
+                    finalText = finalText.slice(0, -2);
+                }
+                finalText += "…";
+            }
+            ctx.fillText(finalText, bgX + padX, bgY + bgH/2 + 0.5*iz);
+            ctx.restore();
         }
     }
 
@@ -710,12 +838,22 @@
     // ── Helpers ─────────────────────────────────────────────────────
 
     function buildAnnotationSummary(ann) {
+        // Bauhaus: prioritize score, then geometry
+        if (ann.score != null) {
+            return (ann.score * 100).toFixed(0) + "%";
+        }
         var parts = [];
         if (ann.mask) {
             parts.push("mask");
         }
         if (ann.bbox) {
-            parts.push("bbox");
+            var area = ann.bbox.width * ann.bbox.height;
+            if (area > 0) {
+                var size = area > 50000 ? "Large" : area > 10000 ? "Medium" : "Small";
+                parts.push(size);
+            } else {
+                parts.push("bbox");
+            }
         }
         var kps = ann.keypoints || [];
         if (kps.length > 0) {
@@ -735,6 +873,11 @@
         var div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    function humanizeLabel(label) {
+        if (!label) return "";
+        return label.replace(/[_-]+/g, " ").replace(/\b\w/g, function(c){ return c.toUpperCase(); });
     }
 
     function getLabelColor(label) {
@@ -867,8 +1010,11 @@
         if (state.annotations.length === 0) {
             controlPanel.classList.remove("visible");
             annotationList.innerHTML = "";
+            setAnnotationDropdown(false);
+            if (annotationDropdownBtn) annotationDropdownBtn.style.display = "none";
             return;
         }
+        if (annotationDropdownBtn) annotationDropdownBtn.style.display = "";
 
         computeSortedIndices();
 
@@ -901,27 +1047,7 @@
             html += '</div>';
         }
 
-        // Label filters with counts
-        var labels = Object.keys(state.labelVisibility);
-        if (labels.length > 0) {
-            var labelTotalCounts = {};
-            for (var i = 0; i < state.annotations.length; i++) {
-                var lbl = state.annotations[i].label;
-                if (lbl) labelTotalCounts[lbl] = (labelTotalCounts[lbl] || 0) + 1;
-            }
-            html += '<div class="label-filters">';
-            html += '<span class="label-filters-title">Labels</span>';
-            for (var li = 0; li < labels.length; li++) {
-                var lbl = labels[li];
-                var lblActive = state.labelVisibility[lbl];
-                var lblColor = getLabelColor(lbl);
-                html += '<button class="label-filter-btn' + (lblActive ? ' active' : '') + '" data-label="' + escapeHtml(lbl) + '">';
-                html += '<span class="label-color-dot" style="background:' + lblColor + '"></span>';
-                html += escapeHtml(lbl) + ' <span class="label-count">' + (labelTotalCounts[lbl] || 0) + '</span>';
-                html += '</button>';
-            }
-            html += '</div>';
-        }
+        // Label filters removed — clean viewer without label choosing per request
 
         // Sort controls
         var hasScoresForSort = false;
@@ -970,47 +1096,7 @@
             html += '</div>';
         }
 
-        // Collapsible draw options section
-        var drawOptionsHtml = '';
-        if (hasMasks) {
-            drawOptionsHtml += '<div class="threshold-row">';
-            drawOptionsHtml += '<span>Mask Opacity</span>';
-            drawOptionsHtml += '<input type="range" class="mask-alpha-slider" min="0" max="100" step="5" value="' + Math.round(state.maskAlpha * 100) + '">';
-            drawOptionsHtml += '<span class="slider-value mask-alpha-value">' + Math.round(state.maskAlpha * 100) + '%</span>';
-            drawOptionsHtml += '</div>';
-        }
-        if (hasKeypoints) {
-            drawOptionsHtml += '<div class="threshold-row">';
-            drawOptionsHtml += '<span>Keypoint Size</span>';
-            drawOptionsHtml += '<input type="range" class="keypoint-radius-slider" min="1" max="20" step="1" value="' + state.keypointRadius + '">';
-            drawOptionsHtml += '<span class="slider-value keypoint-radius-value">' + state.keypointRadius + '</span>';
-            drawOptionsHtml += '</div>';
-        }
-        if (hasSkeleton) {
-            drawOptionsHtml += '<div class="threshold-row">';
-            drawOptionsHtml += '<span>Line Width</span>';
-            drawOptionsHtml += '<input type="range" class="connection-width-slider" min="1" max="10" step="1" value="' + state.connectionWidth + '">';
-            drawOptionsHtml += '<span class="slider-value connection-width-value">' + state.connectionWidth + '</span>';
-            drawOptionsHtml += '</div>';
-            drawOptionsHtml += '<div class="threshold-row">';
-            drawOptionsHtml += '<span>Line Opacity</span>';
-            drawOptionsHtml += '<input type="range" class="connection-alpha-slider" min="0" max="100" step="5" value="' + Math.round(state.connectionAlpha * 100) + '">';
-            drawOptionsHtml += '<span class="slider-value connection-alpha-value">' + Math.round(state.connectionAlpha * 100) + '%</span>';
-            drawOptionsHtml += '</div>';
-        }
-        if (hasBoxes) {
-            drawOptionsHtml += '<div class="threshold-row">';
-            drawOptionsHtml += '<span>Box Width</span>';
-            drawOptionsHtml += '<input type="range" class="bbox-line-width-slider" min="1" max="10" step="1" value="' + state.bboxLineWidth + '">';
-            drawOptionsHtml += '<span class="slider-value bbox-line-width-value">' + state.bboxLineWidth + '</span>';
-            drawOptionsHtml += '</div>';
-        }
-        if (drawOptionsHtml) {
-            html += '<div class="draw-options' + (state.drawOptionsOpen ? ' open' : '') + '">';
-            html += '<button class="draw-options-toggle">Draw Options <span class="draw-options-arrow">&#9654;</span></button>';
-            html += '<div class="draw-options-body">' + drawOptionsHtml + '</div>';
-            html += '</div>';
-        }
+        // Draw options removed — clean viewer per request
 
         // Select-all row + scrollable annotation rows container
         html += '<div class="annotation-rows">';
@@ -1051,12 +1137,13 @@
 
             var expanded = state.expandedIndex === i;
 
-            html += '<div class="annotation-row' + (selected ? ' selected' : '') + (outsideRange ? ' below-threshold' : '') + (labelHidden ? ' filtered-out' : '') + '" data-index="' + i + '">';
-            html += '<span class="ann-dot" style="background:' + ann.color + '"></span>';
-            html += '<input type="checkbox" class="ann-checkbox" data-index="' + i + '"' + (visible ? ' checked' : '') + '>';
-            html += '<span class="ann-label">' + escapeHtml(ann.label) + '</span>';
-            html += '<span class="ann-summary">' + escapeHtml(summary) + '</span>';
-            html += '<button class="ann-expand' + (expanded ? ' expanded' : '') + '" data-index="' + i + '">&#9654;</button>';
+            var displayLabel = humanizeLabel(ann.label);
+           html += '<div class="annotation-row' + (selected ? ' selected' : '') + (outsideRange ? ' below-threshold' : '') + (labelHidden ? ' filtered-out' : '') + '" data-index="' + i + '" style="display:flex;align-items:center;gap:6px;padding:2px 4px;font-size:11px;line-height:1.2;min-height:18px;">';
+            html += '<span class="ann-dot" style="width:6px;height:6px;background:' + ann.color + '; box-shadow:0 0 0 2px ' + ann.color + '22"></span>';
+            html += '<input type="checkbox" class="ann-checkbox" data-index="' + i + '" style="width:12px;height:12px;margin:0;"' + (visible ? ' checked' : '') + '>';
+            html += '<span class="ann-label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(displayLabel) + '</span>';
+            html += '<span class="ann-summary" style="opacity:.7;">' + escapeHtml(summary) + '</span>';
+            html += '<button class="ann-expand' + (expanded ? ' expanded' : '') + '" data-index="' + i + '" style="width:14px;height:14px;padding:0;font-size:9px;">&#9654;</button>';
             html += '</div>';
 
             // Detail panel (shown when expand button is clicked)
@@ -1070,6 +1157,7 @@
         annotationList.innerHTML = html;
         controlPanel.classList.add("visible");
         updateHeaderStats();
+        syncDropdownButton();
 
         // Initialize dual-range track highlight
         var dualWrapper = annotationList.querySelector(".dual-range-wrapper");
@@ -1794,4 +1882,4 @@
             }
         }, 150);
     });
-})();
+    // annotationList dropdown handles its own height/overflow via CSS
