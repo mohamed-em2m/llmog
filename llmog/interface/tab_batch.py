@@ -3,8 +3,6 @@ Batch Sandbox tab UI and execution engine module.
 Modularized under `interface.batch`. This module forwards all exports for backward compatibility.
 """
 
-from __future__ import annotations
-
 from interface.batch import (
     TASK_CHOICES,
     TASK_FREE_ANNOTATION,
@@ -28,6 +26,10 @@ from interface.batch import (
     on_explorer_round_change,
     on_explorer_prev,
     on_explorer_next,
+    on_explorer_first,
+    on_explorer_last,
+    on_explorer_pos,
+    navigate_batch_explorer,
     build_batch_tab as _build_batch_tab,
     toggle_run_btn,
     toggle_external_api,
@@ -58,6 +60,10 @@ __all__ = [
     "on_explorer_round_change",
     "on_explorer_prev",
     "on_explorer_next",
+    "on_explorer_first",
+    "on_explorer_last",
+    "on_explorer_pos",
+    "navigate_batch_explorer",
     "_build_batch_tab",
     "toggle_run_btn",
     "toggle_external_api",

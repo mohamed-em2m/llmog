@@ -85,9 +85,7 @@ def _prepare_annotated_feedback_image(
     annotated_prep_image = render_detections(
         preprocessed_image, previous_detections_prep
     )
-    annotated_prep_with_grid = draw_premium_grid(
-        annotated_prep_image, **grid_kwargs
-    )
+    annotated_prep_with_grid = draw_premium_grid(annotated_prep_image, **grid_kwargs)
     annotated_prep_uri = pil_to_data_uri(annotated_prep_with_grid)
     return annotated_prep_image, annotated_prep_uri
 
@@ -130,9 +128,7 @@ def _process_single_tile(
                 tile["tile_y"] + tile["tile_h"],
             )
         )
-        annotated_tile_with_grid = draw_premium_grid(
-            annotated_tile_crop, **grid_kwargs
-        )
+        annotated_tile_with_grid = draw_premium_grid(annotated_tile_crop, **grid_kwargs)
         annotated_tile_uri = pil_to_data_uri(annotated_tile_with_grid)
 
         if pipeline.feedback_image_mode == "annotated":
@@ -155,9 +151,7 @@ def _process_single_tile(
             actions=judge_actions,
             som_proposals=None,
         )
-        tile_dets = validate_detections(
-            parse_detections(tile_raw_text), categories
-        )
+        tile_dets = validate_detections(parse_detections(tile_raw_text), categories)
 
         mapped_dets = []
         for det in tile_dets:
@@ -234,15 +228,13 @@ def _run_tiled_detection(
     for idx, tile_raw_text, mapped_dets, err in tile_results:
         if tile_raw_text:
             raw_outputs_collected.append(
-                f"Tile {idx} (x={tiles[idx-1]['tile_x']}, y={tiles[idx-1]['tile_y']}):\n{tile_raw_text}"
+                f"Tile {idx} (x={tiles[idx - 1]['tile_x']}, y={tiles[idx - 1]['tile_y']}):\n{tile_raw_text}"
             )
         if mapped_dets:
             all_tile_detections.extend(mapped_dets)
         if err:
             parse_error = (
-                str(err)
-                if not parse_error
-                else parse_error + f"; Tile {idx}: {err}"
+                str(err) if not parse_error else parse_error + f"; Tile {idx}: {err}"
             )
 
     merged_detections = apply_nms(all_tile_detections, iou_threshold=0.5)

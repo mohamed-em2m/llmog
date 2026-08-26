@@ -4,7 +4,7 @@ Lightweight, pure Python/NumPy implementation requiring no C++ bindings or extra
 """
 
 import numpy as np
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Any, Tuple
 
 
 class KalmanFilterVector:
@@ -39,8 +39,18 @@ class KalmanFilterVector:
         self._H = np.eye(4, 8, dtype=np.float32)
 
     def predict(self) -> None:
-        std_p = [2 * self.mean[0] / 20.0, 2 * self.mean[1] / 20.0, 1e-2, 2 * self.mean[3] / 20.0]
-        std_v = [10 * self.mean[0] / 160.0, 10 * self.mean[1] / 160.0, 1e-5, 10 * self.mean[3] / 160.0]
+        std_p = [
+            2 * self.mean[0] / 20.0,
+            2 * self.mean[1] / 20.0,
+            1e-2,
+            2 * self.mean[3] / 20.0,
+        ]
+        std_v = [
+            10 * self.mean[0] / 160.0,
+            10 * self.mean[1] / 160.0,
+            1e-5,
+            10 * self.mean[3] / 160.0,
+        ]
         Q = np.diag(np.square(np.r_[std_p, std_v]))
 
         self.mean = np.dot(self._F, self.mean)
@@ -55,7 +65,12 @@ class KalmanFilterVector:
         r = w / h
         measurement = np.array([cx, cy, r, h], dtype=np.float32)
 
-        std_m = [2 * measurement[0] / 20.0, 2 * measurement[1] / 20.0, 1e-2, 2 * measurement[3] / 20.0]
+        std_m = [
+            2 * measurement[0] / 20.0,
+            2 * measurement[1] / 20.0,
+            1e-2,
+            2 * measurement[3] / 20.0,
+        ]
         R = np.diag(np.square(std_m))
 
         projected_mean = np.dot(self._H, self.mean)
@@ -81,7 +96,13 @@ class KalmanFilterVector:
 class Track:
     """Represents a single tracked object across frames."""
 
-    def __init__(self, bbox: Tuple[float, float, float, float], score: float, label: str, track_id: int):
+    def __init__(
+        self,
+        bbox: Tuple[float, float, float, float],
+        score: float,
+        label: str,
+        track_id: int,
+    ):
         self.track_id = track_id
         self.kf = KalmanFilterVector(bbox)
         self.score = score
@@ -95,7 +116,9 @@ class Track:
         self.time_since_update += 1
         return self.kf.get_rect()
 
-    def update(self, bbox: Tuple[float, float, float, float], score: float, label: str) -> None:
+    def update(
+        self, bbox: Tuple[float, float, float, float], score: float, label: str
+    ) -> None:
         self.kf.update(bbox)
         self.score = score
         self.label = label
@@ -108,7 +131,10 @@ class Track:
         return [ymin, xmin, ymax, xmax, self.label, self.track_id, self.score]
 
 
-def compute_iou_matrix(boxes1: List[Tuple[float, float, float, float]], boxes2: List[Tuple[float, float, float, float]]) -> np.ndarray:
+def compute_iou_matrix(
+    boxes1: List[Tuple[float, float, float, float]],
+    boxes2: List[Tuple[float, float, float, float]],
+) -> np.ndarray:
     if not boxes1 or not boxes2:
         return np.zeros((len(boxes1), len(boxes2)), dtype=np.float32)
 
@@ -140,7 +166,9 @@ def compute_iou_matrix(boxes1: List[Tuple[float, float, float, float]], boxes2: 
     return iou_matrix
 
 
-def linear_assignment(cost_matrix: np.ndarray, thresh: float) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
+def linear_assignment(
+    cost_matrix: np.ndarray, thresh: float
+) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
     """Greedy matching algorithm for IoU matrix assignment."""
     if cost_matrix.size == 0:
         return [], list(range(cost_matrix.shape[0])), list(range(cost_matrix.shape[1]))
@@ -150,7 +178,9 @@ def linear_assignment(cost_matrix: np.ndarray, thresh: float) -> Tuple[List[Tupl
     unmatched_b = set(range(cost_matrix.shape[1]))
 
     # Flatten and sort pairs by highest IoU / lowest cost
-    rows, cols = np.unravel_index(np.argsort(-cost_matrix, axis=None), cost_matrix.shape)
+    rows, cols = np.unravel_index(
+        np.argsort(-cost_matrix, axis=None), cost_matrix.shape
+    )
     for r, c in zip(rows, cols):
         if r in unmatched_a and c in unmatched_b:
             if cost_matrix[r, c] >= thresh:
@@ -174,7 +204,13 @@ class ByteTracker:
       Kalman state so tracks glide smoothly without re-running association.
     """
 
-    def __init__(self, high_thresh: float = 0.5, low_thresh: float = 0.1, match_thresh: float = 0.8, max_time_lost: int = 30):
+    def __init__(
+        self,
+        high_thresh: float = 0.5,
+        low_thresh: float = 0.1,
+        match_thresh: float = 0.8,
+        max_time_lost: int = 30,
+    ):
         self.high_thresh = high_thresh
         self.low_thresh = low_thresh
         self.match_thresh = match_thresh
@@ -227,7 +263,9 @@ class ByteTracker:
         high_boxes = [d[0] for d in det_high]
         iou_matrix = compute_iou_matrix(track_boxes, high_boxes)
 
-        matches_1, u_track_1, u_det_high = linear_assignment(iou_matrix, thresh=1.0 - self.match_thresh)
+        matches_1, u_track_1, u_det_high = linear_assignment(
+            iou_matrix, thresh=1.0 - self.match_thresh
+        )
 
         # Update matched tracks
         for trk_idx, det_idx in matches_1:
@@ -260,7 +298,9 @@ class ByteTracker:
         u_high_boxes = [det_high[i][0] for i in u_det_high]
         iou_matrix_lost = compute_iou_matrix(lost_boxes, u_high_boxes)
 
-        matches_3, u_lost, u_det_high_final = linear_assignment(iou_matrix_lost, thresh=1.0 - self.match_thresh)
+        matches_3, u_lost, u_det_high_final = linear_assignment(
+            iou_matrix_lost, thresh=1.0 - self.match_thresh
+        )
 
         for lost_idx, det_idx in matches_3:
             orig_det_idx = u_det_high[det_idx]
@@ -270,7 +310,11 @@ class ByteTracker:
             self.tracked_tracks.append(trk)
 
         # Remove restored tracks from lost_tracks
-        self.lost_tracks = [t for i, t in enumerate(self.lost_tracks) if i not in [m[0] for m in matches_3]]
+        self.lost_tracks = [
+            t
+            for i, t in enumerate(self.lost_tracks)
+            if i not in [m[0] for m in matches_3]
+        ]
 
         # Step 5: Init new tracks for unmatched high-score detections
         for det_idx in u_det_high_final:
@@ -279,7 +323,9 @@ class ByteTracker:
             self.tracked_tracks.append(new_trk)
 
         # Step 6: Remove old lost tracks
-        self.lost_tracks = [t for t in self.lost_tracks if t.time_since_update <= self.max_time_lost]
+        self.lost_tracks = [
+            t for t in self.lost_tracks if t.time_since_update <= self.max_time_lost
+        ]
 
         # Combine active tracks to return
         active_boxes = []

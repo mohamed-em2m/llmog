@@ -5,8 +5,7 @@ Realtime image processing, OpenCV drawing, and VLM detection utilities.
 import time
 import tempfile
 import os
-from pathlib import Path
-from typing import List, Tuple, Any, Optional
+from typing import List, Tuple, Any
 from PIL import Image
 import numpy as np
 
@@ -15,15 +14,6 @@ try:
 except ImportError:
     cv2 = None
 
-from free_detection.detection_pipeline import (
-    ObjectDetectionPipeline,
-    pil_to_data_uri,
-    parse_detections,
-    validate_detections,
-    draw_grid,
-    get_realtime_prompt,
-)
-from free_detection.image_preprocessing import map_bbox_to_original
 from interface.realtime.state import get_pipeline
 
 

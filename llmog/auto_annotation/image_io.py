@@ -72,7 +72,6 @@ def detect_defect(
     return output
 
 
-
 def load_or_init_class_map(names_from_yaml):
     """Normalize yaml `names` (list or {id: name} dict) into a name -> id dict."""
     class_map = {}

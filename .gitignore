@@ -2,3 +2,85 @@
 *.egg-info*
 __pycache__
 .venv
+
+gui_runs/
+# Virtual Environment
+.venv/
+venv/
+env/
+.env
+.opencode
+.deepeval
+.adk
+tests/eval/history
+src/config/.env
+.cache
+
+results/
+.ruff_cache/
+.mypy_cache/
+*.ipynb
+.pytest_cache/
+.rag_cache/
+techtrax-echolyzer/config/echolyzer_google_service_outh2.json
+echolyzer_google_service_outh2.json
+.secrets*
+*service_account.json
+.env.locals
+build
+# Python
+*.egg-info
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+data/
+test.ipynb
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test/results/
+temp_*.mp3
+
+# Logs
+logs/
+*.log
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+results_*/*
+results_analytics_comprehensive/*
+results_ads_controller/*
+results_ads_manager/*
+# Cache
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config (if sensitive)
+config/*.env
+config/secrets.yml
+meta_ads_manager.egg-info/
+config/.secrets.toml
+config/settings.toml
+
+cache/*
+tests/results_*/*
+
+__pycache__/*
+src/__pycache__/*
+src/utils/__pycache__/*
+.cache
+src/config/firestore-service-account.json
+firestore-service-account.json
+
+# Ignore dynaconf secret files
+.secrets.*

@@ -129,7 +129,9 @@ class _SOTTrackInstance:
         self.is_valid = False
         return None
 
-    def reinit(self, frame: np.ndarray, new_bbox: Tuple[float, float, float, float]) -> None:
+    def reinit(
+        self, frame: np.ndarray, new_bbox: Tuple[float, float, float, float]
+    ) -> None:
         """Re-initialise this tracker with a new bounding box from VLM detection."""
         ymin, xmin, ymax, xmax = new_bbox
         w = max(1.0, xmax - xmin)
@@ -337,9 +339,7 @@ class MultiAlgorithmTracker:
 
         # Prune any instances that haven't been matched and have lost tracking
         # (don't prune matched ones — they are still being managed)
-        self._sot_instances = [
-            inst for inst in self._sot_instances if inst.is_valid
-        ]
+        self._sot_instances = [inst for inst in self._sot_instances if inst.is_valid]
 
         return results if results else list(detections)
 

@@ -25,7 +25,12 @@ _client_cache_lock = Lock()
 
 def _to_bgr(frame: "np.ndarray") -> "np.ndarray":
     """Convert an RGB numpy frame to BGR for OpenCV tracker calls."""
-    if _cv2 is not None and frame is not None and frame.ndim == 3 and frame.shape[2] == 3:
+    if (
+        _cv2 is not None
+        and frame is not None
+        and frame.ndim == 3
+        and frame.shape[2] == 3
+    ):
         return _cv2.cvtColor(frame, _cv2.COLOR_RGB2BGR)
     return frame
 
@@ -38,7 +43,14 @@ def get_pipeline(
     detector_max_tokens: int = 4096,
     preprocessing_config: Optional[dict] = None,
 ) -> ObjectDetectionPipeline:
-    key = (base_url, api_key, model_name, detector_temperature, detector_max_tokens, str(preprocessing_config))
+    key = (
+        base_url,
+        api_key,
+        model_name,
+        detector_temperature,
+        detector_max_tokens,
+        str(preprocessing_config),
+    )
     with _client_cache_lock:
         pipeline = _client_cache.get(key)
         if pipeline is None:
@@ -62,10 +74,22 @@ def resolve_endpoint(
     ext_api_key: str,
     ext_model_name: str,
 ) -> Tuple[str, str, str]:
-    base_url = ext_api_url if use_external_api else f"http://127.0.0.1:{server_port}/v1"
-    api_key = ext_api_key if use_external_api else "no-key"
-    model_name = ext_model_name if use_external_api else "local-model"
-    return base_url, api_key, model_name
+    if use_external_api:
+        return ext_api_url, ext_api_key, ext_model_name
+    # Local mode: prefer the live server manager so the true port AND model name
+    # are used (vLLM validates `model` against its served list — a placeholder
+    # like "local-model" makes every realtime request fail with 404/400).
+    try:
+        from interface.state import state as _app_state
+
+        with _app_state.server_lock:
+            mgr = _app_state.server_manager
+            if mgr is not None and mgr.is_healthy():
+                return f"http://127.0.0.1:{mgr.port}/v1", "not-needed", mgr.model
+    except Exception:
+        pass
+    # Fallback: no live manager info available — use UI port + generic name.
+    return f"http://127.0.0.1:{server_port}/v1", "no-key", "local-model"
 
 
 @dataclass
@@ -102,7 +126,9 @@ class SessionDetector:
     reference_gray: Optional[Any] = None
     last_detect_time: float = 0.0
     _last_submitted_frame: Optional[Any] = None
-    force_redetect: bool = False   # set True by _run_and_store; cleared by consume_force_redetect()
+    force_redetect: bool = (
+        False  # set True by _run_and_store; cleared by consume_force_redetect()
+    )
 
     def next_frame_id(self) -> int:
         return next(self._frame_counter)
@@ -131,9 +157,12 @@ class SessionDetector:
         try:
             boxes, hud = fn(*args)
         except Exception as e:  # noqa: BLE001
-            boxes, hud = None, (
-                f'<div class="neo-retro-hud-stat" style="color:#ff0055 !important;">'
-                f"ERROR: {html.escape(str(e))}</div>"
+            boxes, hud = (
+                None,
+                (
+                    f'<div class="neo-retro-hud-stat" style="color:#ff0055 !important;">'
+                    f"ERROR: {html.escape(str(e))}</div>"
+                ),
             )
         with self.lock:
             # Use strict > to avoid an older queued frame overwriting a newer result

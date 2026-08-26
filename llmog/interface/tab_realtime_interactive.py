@@ -35,12 +35,16 @@ def _get_sample_image_b64() -> str:
     return ""
 
 
-def _on_realtime_interactive_preset_change(preset_name: str) -> Tuple[gr.update, gr.update]:
+def _on_realtime_interactive_preset_change(
+    preset_name: str,
+) -> Tuple[gr.update, gr.update]:
     preset = CATEGORY_PRESETS.get(preset_name, CATEGORY_PRESETS["Custom / Blank"])
     return gr.update(value=preset["classes"]), gr.update(value=preset["defs"])
 
 
-def _on_realtime_interactive_mode_change(mode: str) -> Tuple[gr.update, gr.update, gr.update]:
+def _on_realtime_interactive_mode_change(
+    mode: str,
+) -> Tuple[gr.update, gr.update, gr.update]:
     if mode == "free":
         return (
             gr.update(
@@ -247,6 +251,12 @@ _RT_DRAW_CANVAS_JS = """
             const self = this;
             window.addEventListener('resize', () => self.resizeCanvas());
 
+            // Scope global handlers to this tab — ignore paste/keys while hidden.
+            const isTabVisible = () => {
+                const el = document.getElementById('llmog-custom-canvas-app-rt');
+                return !!(el && el.offsetParent !== null);
+            };
+
             // ── Camera Controls ───────────────────────────────────────────
             const btnStartCam = document.getElementById('rt-btn-start-camera');
             const btnEmptyCam = document.getElementById('rt-btn-empty-camera');
@@ -410,6 +420,7 @@ _RT_DRAW_CANVAS_JS = """
 
             // ── Clipboard Paste ───────────────────────────────────────────
             window.addEventListener('paste', (e) => {
+                if (!isTabVisible()) return;
                 const items = (e.clipboardData || e.originalEvent.clipboardData).items;
                 for (let i = 0; i < items.length; i++) {
                     if (items[i].type.indexOf('image') !== -1) {
@@ -422,6 +433,7 @@ _RT_DRAW_CANVAS_JS = """
 
             // ── Keyboard Shortcuts ────────────────────────────────────────
             window.addEventListener('keydown', (e) => {
+                if (!isTabVisible()) return;
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
@@ -440,6 +452,9 @@ _RT_DRAW_CANVAS_JS = """
                 } else if (e.key === 'e' || e.key === 'E') {
                     setTool('eraser', toolEraser);
                 } else if (e.key === ' ' && self.isCameraRunning) {
+                    // Ignore Space when a toolbar button holds focus — otherwise
+                    // the browser re-activates that button AND freezes the feed.
+                    if (e.target.tagName === 'BUTTON') return;
                     e.preventDefault();
                     self.toggleFreezeCamera();
                 }
@@ -472,7 +487,7 @@ _RT_DRAW_CANVAS_JS = """
                     self.video.srcObject = stream;
                     self.video.play();
 
-                    self.video.onloadedmetadata = function() {
+                    const onMeta = function() {
                         self.isCameraRunning = true;
                         self.isFrozen = false;
                         self.imageWidth = self.video.videoWidth || 1280;
@@ -484,6 +499,13 @@ _RT_DRAW_CANVAS_JS = """
                         self.fitToScreen();
                         self.startRenderLoop();
                     };
+                    // If metadata is already available the loadedmetadata event
+                    // may never fire again — handle both paths.
+                    if (self.video.readyState >= 1) {
+                        setTimeout(onMeta, 0);
+                    } else {
+                        self.video.onloadedmetadata = onMeta;
+                    }
                 })
                 .catch(function(err) {
                     console.error("Camera access error:", err);
@@ -1229,7 +1251,9 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
     # ── Top twin: RT canvas stage (520) | recognition viewer — same level ──
     with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-            gr.HTML('<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>')
+            gr.HTML(
+                '<p class="section-label">🎥 Live Camera &amp; Object Annotation Canvas</p>'
+            )
             custom_canvas = gr.HTML(
                 value=_RT_DRAW_CANVAS_HTML,
                 js_on_load=_RT_DRAW_CANVAS_JS,
@@ -1237,7 +1261,9 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
             )
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
             gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
-            status = gr.Markdown("**Status: Idle – open camera, draw boxes over objects, then Recognize**")
+            status = gr.Markdown(
+                "**Status: Idle – open camera, draw boxes over objects, then Recognize**"
+            )
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 viewer = DetectionViewer(
                     label="Annotated Recognition Result",
@@ -1253,9 +1279,15 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
                     label="Copy these lines into the image's .txt label file",
                 )
     # ── Below twin: camera toolbar card (same IDs — JS binds globally) ──
-    toolbar_view = gr.HTML(value=_RT_TOOLBAR_HTML, elem_id="rt-interactive-toolbar-html")
-    payload_box = gr.Textbox(value="{}", visible=False, elem_id="rt_interactive_payload_box")
-    sample_bridge_btn = gr.Button("Sample Bridge", visible=False, elem_id="rt_sample_bridge_btn")
+    toolbar_view = gr.HTML(
+        value=_RT_TOOLBAR_HTML, elem_id="rt-interactive-toolbar-html"
+    )
+    payload_box = gr.Textbox(
+        value="{}", visible=False, elem_id="rt_interactive_payload_box"
+    )
+    sample_bridge_btn = gr.Button(
+        "Sample Bridge", visible=False, elem_id="rt_sample_bridge_btn"
+    )
     with gr.Row(elem_classes=["btn-group"]):
         run_btn = gr.Button("🔎  Recognize Drawn Objects", variant="primary", scale=2)
         clear_btn = gr.Button("🗑️ Clear Results", variant="secondary", scale=1)
@@ -1294,12 +1326,18 @@ def build_realtime_interactive_tab() -> Dict[str, Any]:
     with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
         conf_threshold = gr.Slider(
             label="Minimum Confidence Threshold (%)",
-            minimum=0, maximum=100, step=5, value=20,
+            minimum=0,
+            maximum=100,
+            step=5,
+            value=20,
             info="Omit or flag recognitions with confidence below this threshold in YOLO outputs.",
         )
         padding_slider = gr.Slider(
             label="Region Context Padding (%)",
-            minimum=0, maximum=50, step=1, value=10,
+            minimum=0,
+            maximum=50,
+            step=1,
+            value=10,
             info="Extra visual context around each drawn region sent to the VLM.",
         )
         request_mode = gr.Radio(
@@ -1361,7 +1399,7 @@ def wire_realtime_interactive_events(
         fn=_load_sample_bridge_rt,
         inputs=None,
         outputs=[c_rt_interactive["payload_box"]],
-        js="() => { if (window.CustomCanvasControllerRT) { setTimeout(() => { const ta = document.querySelector('#rt_interactive_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasControllerRT.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
+        js="() => { if (window.CustomCanvasControllerRT) { setTimeout(() => { const ta = document.querySelector('#rt_interactive_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) { window.CustomCanvasControllerRT.loadImageFromDataUrl(p.background); } else { alert('Sample image asset not found on server.'); } } catch(e){} } }, 300); } }",
     )
 
     # ── Run recognition on drawn camera regions ─────────────────────────────

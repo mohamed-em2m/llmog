@@ -13,7 +13,6 @@ Requirements:
 """
 
 import sys
-import os
 import time
 import json
 import queue
@@ -40,15 +39,14 @@ src_dir = Path(__file__).parent
 if str(src_dir) not in sys.path:
     sys.path.append(str(src_dir))
 
-from free_detection.detection_pipeline import (
+from free_detection.detection_pipeline import (  # noqa: E402
     ObjectDetectionPipeline,
     RoundResult,
     draw_grid,
     DEFAULT_DETECTOR_TEMPLATE,
     DEFAULT_JUDGE_TEMPLATE,
 )
-from servers.llama_server_manager import LlamaServerManager
-import logging
+from servers.llama_server_manager import LlamaServerManager  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -1265,7 +1263,7 @@ def render_results_fragment():
         if st.session_state.pipeline_running:
             if running_n > 0:
                 status_text = (
-                    f"Processing... ({done_n}/{total} done, " f"{running_n} running)"
+                    f"Processing... ({done_n}/{total} done, {running_n} running)"
                 )
             else:
                 status_text = f"Starting... ({done_n}/{total} done)"
@@ -1436,8 +1434,7 @@ def render_prompts_tab():
         unsafe_allow_html=True,
     )
     st.markdown(
-        "Modify the custom instruction templates fed to the Detector and "
-        "Judge agents."
+        "Modify the custom instruction templates fed to the Detector and Judge agents."
     )
 
     customize = st.checkbox(

@@ -6,7 +6,7 @@ Encapsulates Siamese template extraction and search tracking loop using ONNX mod
 import cv2
 import numpy as np
 import os
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Any, Tuple, Optional
 
 try:
     import onnxruntime as ort
@@ -19,7 +19,7 @@ def preprocess_image(image: np.ndarray, target_size: int) -> np.ndarray:
     img_resized = cv2.resize(image, (target_size, target_size))
     img_data = img_resized.astype(np.float32) / 255.0
     img_data = np.transpose(img_data, (2, 0, 1))  # Convert to CHW format
-    return np.expand_dims(img_data, axis=0)       # Add Batch dimension (1, C, H, W)
+    return np.expand_dims(img_data, axis=0)  # Add Batch dimension (1, C, H, W)
 
 
 class SiamONNXTrackInstance:
@@ -53,9 +53,13 @@ class SiamONNXTrackInstance:
             ymax, xmax = min(h, ymax), min(w, xmax)
             crop = frame[ymin:ymax, xmin:xmax]
             if crop.size > 0:
-                template_input = preprocess_image(crop, target_size=self.target_template_size)
+                template_input = preprocess_image(
+                    crop, target_size=self.target_template_size
+                )
                 template_name = self.template_session.get_inputs()[0].name
-                self.template_features = self.template_session.run(None, {template_name: template_input})[0]
+                self.template_features = self.template_session.run(
+                    None, {template_name: template_input}
+                )[0]
 
     def track_frame(self, frame: np.ndarray) -> List[Any]:
         """Runs tracking inference on a new frame and updates the bounding box."""
@@ -67,7 +71,7 @@ class SiamONNXTrackInstance:
             }
             _outputs = self.track_session.run(None, inputs)
             # Standard Siamese post-processing updates bbox position relative to search patch
-        
+
         # Return box format: [ymin, xmin, ymax, xmax, label, track_id]
         ymin, xmin, ymax, xmax = self.bbox
         return [ymin, xmin, ymax, xmax, self.label, self.track_id]
@@ -95,7 +99,9 @@ class SiamONNXTracker:
             if os.path.exists(track_model_path):
                 self.track_session = ort.InferenceSession(track_model_path)
 
-    def init_tracks(self, frame: np.ndarray, detections: List[List[Any]]) -> List[List[Any]]:
+    def init_tracks(
+        self, frame: np.ndarray, detections: List[List[Any]]
+    ) -> List[List[Any]]:
         """Initializes or resets tracking instances with new VLM detections."""
         self.active_tracks.clear()
         results = []

@@ -21,6 +21,7 @@ Dead code note: free_detection/image_preprocessing.py Section B triage
 (compute_blur_laplacian, compute_edge_density_canny, triage_frame_check etc.)
 is not wired in batch/realtime and can be removed in a follow-up.
 """
+
 # This file intentionally empty — serves as documentation for WS-E.
 SHARED_CANVAS_API = [
     "screenToImageCoords",

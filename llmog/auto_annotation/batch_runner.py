@@ -14,7 +14,6 @@ from auto_annotation.logging_utils import logger
 from auto_annotation.stats import RunStats
 from auto_annotation.image_io import find_labeled_images, chunk_list
 from auto_annotation.single_image import process_one_image
-from auto_annotation.yaml_utils import save_updated_yaml
 from pathlib import Path
 
 

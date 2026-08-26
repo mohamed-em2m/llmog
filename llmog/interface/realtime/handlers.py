@@ -3,9 +3,8 @@ Stream handlers for live webcam frames and video file processing.
 """
 
 import time
-from typing import List, Tuple, Any, Optional
+from typing import List, Tuple, Any
 import gradio as gr
-from PIL import Image
 import numpy as np
 
 try:
@@ -89,6 +88,8 @@ def process_single_frame(
     prep_custom_resize_width: float,
     prep_custom_resize_height: float,
     detector_temp: float = 0.9,
+    stream_mode: str = "Webcam Stream",
+    same_window_on: bool = False,
 ) -> Tuple[Any, Any, str, SessionDetector]:
     """Continuous Live Streaming Processor – now returns both DetectionViewer payload and same-window boxes.
 
@@ -141,7 +142,9 @@ def process_single_frame(
             # copy only when we will submit (saves 1× frame copy on skipped ticks)
             session._last_submitted_frame = frame.copy()
             mode_norm = (category_strategy or "strict").lower().strip()
-            categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
+            categories = [
+                c.strip() for c in (categories_str or "").split(",") if c.strip()
+            ]
             if not categories:
                 if "free" in mode_norm:
                     categories = ["*"]
@@ -208,10 +211,20 @@ def process_single_frame(
         anns = realtime_boxes_to_annotations(tracked_boxes)
     except Exception:
         anns = []
-    viewer_payload = build_viewer_payload(frame, anns)
+    # Perf: when the interactive viewer is hidden (same-window ⚡ overlay ON),
+    # skip the per-tick PIL→WebP encode entirely — the canvas overlay draws
+    # boxes client-side and is the only visible output.
+    viewer_visible = ("video" not in (stream_mode or "").lower()) and not bool(
+        same_window_on
+    )
+    viewer_payload = build_viewer_payload(frame, anns) if viewer_visible else None
     boxes_json = {"boxes": tracked_boxes, "frame_w": frame_w, "frame_h": frame_h}
     if not hud or "DETECTED" not in hud:
-        hud = f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>' if anns else hud
+        hud = (
+            f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>'
+            if anns
+            else hud
+        )
     return (
         viewer_payload,
         boxes_json,
@@ -272,7 +285,9 @@ def process_video_frames(
     """
     # Gradio Video may return dict with 'video' key or filepath string
     if isinstance(video_path, dict):
-        video_path = video_path.get("video") or video_path.get("path") or video_path.get("name")
+        video_path = (
+            video_path.get("video") or video_path.get("path") or video_path.get("name")
+        )
     if not video_path:
         return [], None, "No video file uploaded."
     if cv2 is None:
@@ -372,10 +387,14 @@ def process_video_frames(
                 prep_config,
                 pipeline_params,
             )
-            tracked_boxes = tracker.update_with_detections(
-                cv2.cvtColor(f, cv2.COLOR_RGB2BGR) if cv2 is not None else f,
-                boxes,
-            ) if boxes else []
+            tracked_boxes = (
+                tracker.update_with_detections(
+                    cv2.cvtColor(f, cv2.COLOR_RGB2BGR) if cv2 is not None else f,
+                    boxes,
+                )
+                if boxes
+                else []
+            )
             last_boxes = tracked_boxes if tracked_boxes else boxes
             last_raw = f
         except Exception:
@@ -383,8 +402,22 @@ def process_video_frames(
             errors += 1
             last_raw = f
         # Gallery keeps OpenCV-annotated frames for quick scan (restores sample frame detection)
+        # Perf: downscale gallery copies to ≤960px — 60 full-res 1080p frames
+        # otherwise hold ~370MB RAM and serialize slowly to the browser.
         try:
-            gallery_frames.append(draw_boxes_opencv(f, last_boxes))
+            gal = draw_boxes_opencv(f, last_boxes)
+            if max(gal.shape[0], gal.shape[1]) > 960:
+                scale = 960.0 / max(gal.shape[0], gal.shape[1])
+                gal = (
+                    cv2.resize(
+                        gal,
+                        (int(gal.shape[1] * scale), int(gal.shape[0] * scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                    if cv2 is not None
+                    else gal
+                )
+            gallery_frames.append(gal)
         except Exception:
             gallery_frames.append(f)
         # Viewer keeps last frame's interactive DetectionViewer payload

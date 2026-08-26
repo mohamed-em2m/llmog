@@ -82,13 +82,14 @@ def _count_nvidia_gpus() -> int:
     not installed — so callers always get a safe default rather than a crash.
     """
     import subprocess
+
     try:
         output = subprocess.check_output(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             text=True,
             stderr=subprocess.DEVNULL,
         )
-        count = len([l for l in output.strip().splitlines() if l.strip()])
+        count = len([line for line in output.strip().splitlines() if line.strip()])
         return max(count, 1)
     except Exception:
         return 1

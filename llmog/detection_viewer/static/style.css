@@ -41,6 +41,13 @@
     border-right: none;
     border-bottom: none;
     margin-top: 0;
+    overflow: visible;
+}
+
+&.maximized .pose-viewer-container.annotation-dropdown-open .control-panel-body,
+&.maximized.annotation-dropdown-open .control-panel-body {
+    max-height: min(420px, 42vh);
+    border-radius: 0 0 6px 6px;
 }
 
 &.maximized .maximize-btn {
@@ -209,6 +216,26 @@
 .pose-viewer-container .control-panel-body {
     overflow-y: auto;
     min-height: 0;
+    display: none;
+}
+
+.pose-viewer-container.annotation-dropdown-open .control-panel-body,
+.annotation-dropdown-open .pose-viewer-container .control-panel-body,
+.annotation-dropdown-open .control-panel-body {
+    display: block;
+    position: relative;
+    z-index: 5;
+    background: var(--background-fill-primary, #fff);
+    border-top: 1px solid var(--border-color-primary, #e0e0e0);
+    border-radius: 0 0 6px 6px;
+    max-height: min(420px, 52vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.pose-viewer-container .control-panel {
+    position: relative;
+    overflow: visible;
 }
 
 .pose-viewer-container .annotation-rows {
@@ -216,28 +243,24 @@
     overflow: hidden auto;
 }
 
+/* keep annotation-rows scroll inside dropdown; no expand/shrink animation */
+.annotation-dropdown-open .pose-viewer-container .annotation-rows,
+.annotation-dropdown-open .annotation-rows {
+    max-height: ${list_height}px;
+    overflow: hidden auto;
+}
+
+.pose-viewer-container .annotation-dropdown-btn.active {
+    background: var(--color-accent, #2196F3);
+    color: #fff;
+    border-color: var(--color-accent, #2196F3);
+}
+
+.pose-viewer-container .annotation-dropdown-btn {
+    min-width: 54px;
+}
+
 /* ── Select-All Row ── */
-
-.pose-viewer-container .select-all-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 10px;
-    border-bottom: 1px solid var(--border-color-primary, #e0e0e0);
-    border-left: 3px solid transparent;
-    padding-left: 28px;
-}
-
-.pose-viewer-container .select-all-row .select-all-checkbox {
-    flex-shrink: 0;
-    cursor: pointer;
-}
-
-.pose-viewer-container .select-all-row .select-all-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--body-text-color, #333);
-}
 
 /* ── Annotation Row ── */
 
@@ -260,11 +283,6 @@
     height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
-}
-
-.pose-viewer-container .annotation-row .ann-checkbox {
-    flex-shrink: 0;
-    cursor: pointer;
 }
 
 .pose-viewer-container .annotation-row .ann-label {
@@ -379,58 +397,6 @@
     background: var(--color-accent, #2196F3);
     color: #fff;
     border-color: var(--color-accent, #2196F3);
-}
-
-/* ── Label Filters ── */
-
-.pose-viewer-container .label-filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-color-primary, #e0e0e0);
-}
-
-.pose-viewer-container .label-filters-title {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--body-text-color, #333);
-    margin-right: 4px;
-}
-
-.pose-viewer-container .label-filter-btn {
-    all: unset;
-    display: inline-flex;
-    align-items: center;
-    touch-action: manipulation;
-    gap: 4px;
-    height: 22px;
-    padding: 0 8px;
-    background: var(--background-fill-primary, #eee);
-    border: 1px solid var(--border-color-primary, #d0d0d0);
-    border-radius: 3px;
-    cursor: pointer;
-    font-size: 11px;
-    line-height: 1;
-    color: var(--body-text-color-subdued, #888);
-}
-
-.pose-viewer-container .label-filter-btn.active {
-    color: var(--body-text-color, #333);
-    border-color: var(--body-text-color-subdued, #888);
-}
-
-.pose-viewer-container .label-color-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.pose-viewer-container .label-count {
-    opacity: 0.6;
 }
 
 /* ── Sort Controls ── */
@@ -607,6 +573,7 @@
 /* ── Draw Options (collapsible) ── */
 
 .pose-viewer-container .draw-options {
+    display: none !important;
     border-bottom: 1px solid var(--border-color-primary, #e0e0e0);
 }
 

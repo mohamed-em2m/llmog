@@ -28,9 +28,7 @@ def persist_results(
         best["annotated"].save(out / "best_annotated.jpg")
 
     detections_payload = best.get("detections") or []
-    (out / "best_detections.json").write_text(
-        json.dumps(detections_payload, indent=2)
-    )
+    (out / "best_detections.json").write_text(json.dumps(detections_payload, indent=2))
 
     history_payload = [
         {
@@ -56,9 +54,7 @@ def node_finalize(state: DetectionState) -> Dict[str, Any]:
     output_dir = state.get("output_dir")
     show_plot = state.get("show_plot", False)
 
-    logger.info(
-        "Best result: round %d with score %d/10", best["round"], best["score"]
-    )
+    logger.info("Best result: round %d with score %d/10", best["round"], best["score"])
 
     if output_dir:
         persist_results(output_dir, base_image_raw, best, history)

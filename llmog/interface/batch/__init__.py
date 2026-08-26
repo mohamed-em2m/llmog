@@ -30,10 +30,14 @@ from interface.batch.reclassification import (
     _RECLS_PALETTE,
 )
 from interface.batch.explorer import (
+    navigate_batch_explorer,
     on_explorer_image_change,
     on_explorer_round_change,
     on_explorer_prev,
     on_explorer_next,
+    on_explorer_first,
+    on_explorer_last,
+    on_explorer_pos,
 )
 from interface.batch.components import (
     build_batch_tab,
@@ -66,6 +70,10 @@ __all__ = [
     "on_explorer_round_change",
     "on_explorer_prev",
     "on_explorer_next",
+    "on_explorer_first",
+    "on_explorer_last",
+    "on_explorer_pos",
+    "navigate_batch_explorer",
     "build_batch_tab",
     "toggle_run_btn",
     "toggle_external_api",

@@ -11,13 +11,11 @@ from detection_viewer import DetectionViewer
 
 from interface.state import (
     DEFAULT_CONCURRENCY,
-    panel_header,
     _render_progress_bar,
     _section_title,
 )
-from interface.batch.runner import TASK_CHOICES, TASK_FREE_ANNOTATION
 from interface.batch.helpers import render_status_table, render_status_header
-from interface.batch.reclassification import _RECLS_EMPTY_TABLE, CATEGORY_PRESETS
+from interface.batch.reclassification import CATEGORY_PRESETS
 
 
 def toggle_run_btn(is_running: bool):
@@ -36,7 +34,7 @@ def toggle_external_api(use_external: bool):
         gr.update(interactive=not use_external),  # server_port_input
         gr.update(interactive=not use_external),  # server_thinking_chk
         gr.update(interactive=not use_external),  # server_mtp_chk
-        gr.update(visible=use_external),          # ext_api_group
+        gr.update(visible=use_external),  # ext_api_group
     )
 
 
@@ -96,14 +94,33 @@ def on_batch_strategy_change(strategy: str):
 
 
 def handle_batch_upload(new_files, cur_state):
-    """Accumulate UploadButton files into persistent State — fixes transient UploadButton bug (Gradio 6.19)."""
+    """Accumulate UploadButton files into persistent State — fixes transient UploadButton bug (Gradio 6.19).
+
+    Returns ``(upload_state, preview_path, status_header)`` so the source
+    viewer shows the first queued image immediately.
+    """
     if new_files is None:
         count = len(cur_state) if isinstance(cur_state, list) else 0
         if count == 0:
-            return cur_state if isinstance(cur_state, list) else [], render_status_header(
-                "Idle — upload images, open sections below if needed, then Run.", state="idle"
+            return (
+                cur_state if isinstance(cur_state, list) else [],
+                None,
+                render_status_header(
+                    "Idle — upload images, open sections below if needed, then Run.",
+                    state="idle",
+                ),
             )
-        return cur_state, render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle")
+        first = cur_state[0] if cur_state else None
+        preview = getattr(first, "name", None) or (
+            first.get("path") if isinstance(first, dict) else None
+        )
+        return (
+            cur_state,
+            preview,
+            render_status_header(
+                f"📥 {count} image(s) queued — ready to Run.", state="idle"
+            ),
+        )
     if isinstance(new_files, (list, tuple)):
         to_add = [f for f in new_files if f is not None]
     else:
@@ -112,24 +129,39 @@ def handle_batch_upload(new_files, cur_state):
     seen = set()
     for f in base:
         try:
-            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+            key = getattr(f, "name", None) or (
+                f.get("path") if isinstance(f, dict) else str(f)
+            )
             seen.add(key)
         except Exception:
             seen.add(str(f))
     updated = list(base)
     for f in to_add:
         try:
-            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+            key = getattr(f, "name", None) or (
+                f.get("path") if isinstance(f, dict) else str(f)
+            )
         except Exception:
             key = str(f)
         if key not in seen:
             updated.append(f)
             seen.add(key)
     count = len(updated)
-    header = render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle") if count else render_status_header(
-        "Idle — upload images, open sections below if needed, then Run.", state="idle"
+    header = (
+        render_status_header(
+            f"📥 {count} image(s) queued — ready to Run.", state="idle"
+        )
+        if count
+        else render_status_header(
+            "Idle — upload images, open sections below if needed, then Run.",
+            state="idle",
+        )
     )
-    return updated, header
+    first = updated[0] if updated else None
+    preview = getattr(first, "name", None) or (
+        first.get("path") if isinstance(first, dict) else None
+    )
+    return updated, preview, header
 
 
 def build_batch_tab() -> Dict[str, Any]:
@@ -137,9 +169,10 @@ def build_batch_tab() -> Dict[str, Any]:
 
     with gr.Column():
         # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
-        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        with gr.Row(
+            equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]
+        ):
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-                gr.HTML('<p class="section-label">📥 Input — Source Image</p>')
                 source_image_viewer = gr.Image(
                     label="Source Image (Reference)",
                     type="pil",
@@ -147,13 +180,80 @@ def build_batch_tab() -> Dict[str, Any]:
                 )
                 hero_source_image = source_image_viewer
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-                gr.HTML('<p class="section-label">👁️ Output — Detections (Interactive)</p>')
                 best_annotated_viewer = DetectionViewer(
                     label="Detections (Interactive)",
                     panel_title="Detections",
                     list_height=520,
                 )
                 hero_viewer = best_annotated_viewer
+
+        # ── Explorer transport bar — single horizontal strip ──
+        # [⏮][◀]  Image …………  (3/10)  [▶][⏭]  Round ……  Score  Grid
+        with gr.Group(elem_classes=["batch-explorer-bar", "explorer-nav-top"]):
+            with gr.Row(equal_height=True, elem_classes=["explorer-transport"]):
+                explorer_first_btn = gr.Button(
+                    "⏮",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn", "xp-dim"],
+                    min_width=28,
+                )
+                explorer_prev_btn = gr.Button(
+                    "◀",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn"],
+                    min_width=28,
+                )
+                explorer_image_select = gr.Dropdown(
+                    label="Image",
+                    show_label=False,
+                    choices=[],
+                    interactive=True,
+                    scale=6,
+                    min_width=140,
+                    elem_classes=["xp-image-select"],
+                )
+                explorer_pos_display = gr.HTML(
+                    value='<span class="xp-pos">–&hairsp;/&hairsp;–</span>',
+                    elem_classes=["xp-pos-wrap"],
+                )
+                explorer_next_btn = gr.Button(
+                    "▶",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn"],
+                    min_width=28,
+                )
+                explorer_last_btn = gr.Button(
+                    "⏭",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn", "xp-dim"],
+                    min_width=28,
+                )
+                explorer_round_select = gr.Dropdown(
+                    label="Round",
+                    show_label=False,
+                    choices=[],
+                    interactive=True,
+                    scale=2,
+                    min_width=96,
+                    elem_classes=["xp-round-select"],
+                )
+                round_score_display = gr.HTML(
+                    value='<span class="xp-score">Score: -/10</span>',
+                    elem_classes=["xp-score-wrap"],
+                )
+                show_grid_chk = gr.Checkbox(
+                    label="🔲 Grid",
+                    value=True,
+                    elem_classes=["xp-grid-chk"],
+                )
 
         # ── Compact upload button + Run (always visible) — State-backed to survive Gradio transient UploadButton ──
         upload_state = gr.State([])
@@ -191,7 +291,9 @@ def build_batch_tab() -> Dict[str, Any]:
             progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
 
         # ── DROPDOWN 1: Input & Categories — focused ──
-        with gr.Accordion("📥 Input & Categories — Strategy, Presets & Definitions", open=False):
+        with gr.Accordion(
+            "📥 Input & Categories — Strategy, Presets & Definitions", open=False
+        ):
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     category_strategy = gr.Radio(
@@ -208,6 +310,7 @@ def build_batch_tab() -> Dict[str, Any]:
                         label="📋 Category Domain Presets",
                         choices=list(CATEGORY_PRESETS.keys()),
                         value="Fabric & Surface Defects",
+                        interactive=True,
                         visible=False,
                         info="Quickly load target categories & distinguishing definitions.",
                     )
@@ -227,7 +330,9 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 2: Pipeline Parameters — focused ──
-        with gr.Accordion("⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False) as rounds_accordion:
+        with gr.Accordion(
+            "⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False
+        ) as rounds_accordion:
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     rounds_slider = gr.Slider(
@@ -273,14 +378,18 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 3: Preprocessing — focused ──
-        with gr.Accordion("🎨 Image Preprocessing & Augmentation", open=False) as prep_accordion:
+        with gr.Accordion(
+            "🎨 Image Preprocessing & Augmentation", open=False
+        ) as prep_accordion:
             prep_enabled_chk = gr.Checkbox(
                 label="Enable Preprocessing",
                 value=False,
                 info="Master toggle for all preprocessing steps below.",
             )
 
-            with gr.Group(visible=False) as prep_options_group:
+            with gr.Group(
+                visible=True, elem_classes=["prep-options-group"]
+            ) as prep_options_group:
                 gr.HTML(_section_title("📐", "Resolution & Padding"))
                 prep_short_edge_slider = gr.Slider(
                     label="Target Short Edge (px)",
@@ -319,6 +428,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Contrast Correction Method",
                     choices=["none", "clahe", "autocontrast"],
                     value="clahe",
+                    interactive=True,
                 )
                 prep_gamma_slider = gr.Slider(
                     label="Gamma Correction",
@@ -337,6 +447,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Denoising Filter",
                     choices=["none", "bilateral", "nlm"],
                     value="none",
+                    interactive=True,
                 )
                 prep_sharpen_chk = gr.Checkbox(
                     label="Apply Unsharp Mask (Sharpen)", value=False
@@ -347,6 +458,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Grid Style",
                     choices=["Standard Red", "transparent", "fine", "none"],
                     value="Standard Red",
+                    interactive=True,
                     info="Select standard, semi-transparent, fine 10×10 grid, or disable.",
                 )
                 prep_grid_step_slider = gr.Slider(
@@ -386,6 +498,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="red",
+                        interactive=True,
                     )
                     prep_grid_line_color_custom = gr.Textbox(
                         label="Custom Line Color (Hex/Name)",
@@ -407,6 +520,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="white",
+                        interactive=True,
                     )
                     prep_grid_text_color_custom = gr.Textbox(
                         label="Custom Text Color (Hex/Name)",
@@ -426,6 +540,7 @@ def build_batch_tab() -> Dict[str, Any]:
                             "custom",
                         ],
                         value="black",
+                        interactive=True,
                     )
                     prep_grid_backing_color_custom = gr.Textbox(
                         label="Custom Backing (Hex/Name)",
@@ -496,34 +611,9 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 4: Explorer & Diagnostics — focused ──
-        with gr.Accordion("🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False):
-            with gr.Group(elem_classes=["batch-explorer-bar"]):
-                with gr.Row(equal_height=True, elem_classes=["explorer-nav-row"]):
-                    explorer_prev_btn = gr.Button("◀", scale=1, size="sm", variant="secondary", elem_classes=["nav-arrow"], min_width=40)
-                    explorer_image_select = gr.Dropdown(
-                        label="Select Image",
-                        choices=[],
-                        interactive=True,
-                        scale=4,
-                    )
-                    explorer_next_btn = gr.Button("▶", scale=1, size="sm", variant="secondary", elem_classes=["nav-arrow"], min_width=40)
-                    explorer_round_select = gr.Dropdown(
-                        label="Select Round",
-                        choices=[],
-                        interactive=True,
-                        scale=3,
-                    )
-                    with gr.Column(scale=2):
-                        round_score_display = gr.HTML(
-                            value='<span class="score-badge">Score: -/10</span>',
-                            elem_classes="score-display",
-                        )
-                    with gr.Column(scale=2):
-                        show_grid_chk = gr.Checkbox(
-                            label="0-1000 Grid",
-                            value=True,
-                        )
-
+        with gr.Accordion(
+            "🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False
+        ):
             hero_info = gr.HTML(
                 value='<div class="hero-empty">Results will appear here after Run.</div>',
                 elem_classes=["hero-info"],
@@ -630,8 +720,11 @@ def build_batch_tab() -> Dict[str, Any]:
         hero_source_image=hero_source_image,
         hero_info=hero_info,
         explorer_image_select=explorer_image_select,
+        explorer_first_btn=explorer_first_btn,
         explorer_prev_btn=explorer_prev_btn,
         explorer_next_btn=explorer_next_btn,
+        explorer_last_btn=explorer_last_btn,
+        explorer_pos_display=explorer_pos_display,
         explorer_round_select=explorer_round_select,
         round_score_display=round_score_display,
         show_grid_chk=show_grid_chk,

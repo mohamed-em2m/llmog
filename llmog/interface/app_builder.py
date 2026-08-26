@@ -20,35 +20,41 @@ try:
 except Exception:
     pass
 
-import gradio as gr
+import gradio as gr  # noqa: E402
 
-from interface.console_theme import theme
-from interface.state import custom_css, CONSOLE_JS, handle_preset_change, toggle_custom_color_field
-from interface.tab_server import (
+from interface.state import (  # noqa: E402
+    CONSOLE_JS,
+    handle_preset_change,
+    toggle_custom_color_field,
+    _cache_get as _hero_cache_get,
+)
+from interface.viewer_utils import (  # noqa: E402
+    pipeline_detections_to_annotations,
+    build_viewer_payload as _build_hero_payload,
+)
+from interface.tab_server import (  # noqa: E402
     _build_server_tab,
     start_server_wrapper,
     stop_server_wrapper,
     get_server_status_and_logs,
+    on_server_backend_change,
 )
-from interface.tab_batch import (
+from interface.tab_batch import (  # noqa: E402
     _build_batch_tab,
     toggle_run_btn,
     run_batch_dispatcher,
     cancel_pipeline,
-    on_explorer_image_change,
-    on_explorer_round_change,
-    on_explorer_prev,
-    on_explorer_next,
+    navigate_batch_explorer,
 )
-from interface.batch.explorer import _viewer_payload_for as _hero_payload_builder
-from interface.state import _cache_get as _hero_cache_get
-from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
-from PIL import Image as _PILImage
-from interface.batch.components import on_batch_preset_change, on_batch_strategy_change, handle_batch_upload
-from interface.tab_prompts import _build_prompts_tab
-from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
-from interface.tab_draw import build_draw_tab, wire_draw_events
-from interface.tab_realtime_interactive import (
+from interface.batch.components import (  # noqa: E402
+    on_batch_preset_change,
+    on_batch_strategy_change,
+    handle_batch_upload,
+)
+from interface.tab_prompts import _build_prompts_tab  # noqa: E402
+from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events  # noqa: E402
+from interface.tab_draw import build_draw_tab, wire_draw_events  # noqa: E402
+from interface.tab_realtime_interactive import (  # noqa: E402
     build_realtime_interactive_tab,
     wire_realtime_interactive_events,
 )
@@ -58,12 +64,24 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
     """Sync top hero preview to current explorer selection (instant feedback)."""
     try:
         batch_results = _hero_cache_get(batch_id)
-        if not batch_results or not selected_image or selected_image not in batch_results:
-            return None, None, '<div class="hero-empty">No results yet — run batch to see a large live preview here.</div>'
+        if (
+            not batch_results
+            or not selected_image
+            or selected_image not in batch_results
+        ):
+            return (
+                None,
+                None,
+                '<div class="hero-empty">No results yet — run batch to see a large live preview here.</div>',
+            )
         img_data = batch_results[selected_image]
         viewer_base = img_data.get("raw_original")
         if viewer_base is None:
-            return None, None, f'<div class="hero-meta">{selected_image} — waiting…</div>'
+            return (
+                None,
+                None,
+                f'<div class="hero-meta">{selected_image} — waiting…</div>',
+            )
         # Determine which detections to show (Final Best vs specific round)
         if not selected_round or selected_round == "Final Best":
             dets = img_data.get("detections") or []
@@ -78,7 +96,11 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             else:
                 # compute best score for info
                 try:
-                    score = max(r.get("score", -1) for r in img_data.get("rounds", [])) if img_data.get("rounds") else "-"
+                    score = (
+                        max(r.get("score", -1) for r in img_data.get("rounds", []))
+                        if img_data.get("rounds")
+                        else "-"
+                    )
                 except Exception:
                     score = "-"
         else:
@@ -90,7 +112,9 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             except Exception:
                 dets = img_data.get("detections") or []
                 score = "-"
-        anns = pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
+        anns = (
+            pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
+        )
         payload = _build_hero_payload(viewer_base, anns)
         # source image is raw_original (keep grid off for hero to avoid double grid)
         info = (
@@ -98,7 +122,7 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             f'<span class="hero-title">{selected_image}</span> '
             f'<span class="score-badge">Score: {score}/10</span> '
             f'<span class="hero-count">{len(dets)} detections</span>'
-            f'</div>'
+            f"</div>"
         )
         return viewer_base, payload, info
     except Exception:
@@ -109,8 +133,8 @@ def _on_endpoint_mode_change(mode: str):
     is_ext = mode == "External API"
     return (
         gr.update(visible=not is_ext),  # local_server_group
-        gr.update(visible=is_ext),       # ext_api_group
-        is_ext,                          # use_external_api_chk (hidden bool)
+        gr.update(visible=is_ext),  # ext_api_group
+        is_ext,  # use_external_api_chk (hidden bool)
         gr.update(interactive=not is_ext),  # start_server_btn
         gr.update(interactive=not is_ext),  # stop_server_btn
         gr.update(interactive=not is_ext),  # server_preset
@@ -122,8 +146,9 @@ def _on_endpoint_mode_change(mode: str):
     )
 
 
-def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state):
-
+def _wire_events(
+    c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state
+):
     """Wire all event handlers across server, batch, and prompt tabs."""
 
     # ── Server tab ────────────────────────────────────────────────────────
@@ -149,6 +174,17 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         handle_preset_change,
         c_srv["server_preset"],
         c_srv["server_model_input"],
+    )
+
+    # Backend-aware advanced options: llama-only vs vLLM groups
+    c_srv["server_backend"].change(
+        on_server_backend_change,
+        inputs=[c_srv["server_backend"]],
+        outputs=[
+            c_srv["llama_advanced_group"],
+            c_srv["vllm_advanced_group"],
+            c_srv["server_mtp_chk"],
+        ],
     )
 
     c_srv["start_server_btn"].click(
@@ -199,11 +235,9 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
     )
 
     # ── Batch tab — preprocessing toggles ────────────────────────────────
-    c_bat["prep_enabled_chk"].change(
-        lambda v: gr.update(visible=v),
-        inputs=[c_bat["prep_enabled_chk"]],
-        outputs=[c_bat["prep_options_group"]],
-    )
+    # NOTE: prep_options_group is always mounted (visible=True) so Dropdowns
+    # inside it never suffer the Svelte "mounted while display:none" bug.
+    # The runner gates on prep_enabled_chk at execution time.
 
     c_bat["prep_custom_resize_chk"].change(
         lambda v: gr.update(visible=v),
@@ -231,7 +265,11 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
     c_bat["input_images"].upload(
         fn=handle_batch_upload,
         inputs=[c_bat["input_images"], c_bat["upload_state"]],
-        outputs=[c_bat["upload_state"], c_bat["pipeline_status"]],
+        outputs=[
+            c_bat["upload_state"],
+            c_bat["source_image_viewer"],
+            c_bat["pipeline_status"],
+        ],
     )
 
     # ── Run / Cancel ──────────────────────────────────────────────────────
@@ -318,8 +356,19 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         queue=False,
     )
 
-    # ── Explorer interactions ─────────────────────────────────────────────
-    _explorer_outputs = [
+    # ── Ultra-Smooth Atomic Explorer Navigator ─────────────────────────────
+    # Every action (⏮, ◀, ▶, ⏭, Image select, Round select, Grid toggle) executes
+    # in ONE atomic server round-trip — zero .then() lag or desynchronization.
+    _nav_inputs = [
+        c_bat["explorer_image_select"],
+        c_bat["explorer_round_select"],
+        batch_id_state,
+        c_bat["show_grid_chk"],
+    ]
+    _explorer_all_outputs = [
+        c_bat["explorer_image_select"],
+        c_bat["explorer_pos_display"],
+        c_bat["explorer_round_select"],
         c_bat["source_image_viewer"],
         c_bat["best_annotated_viewer"],
         c_bat["round_score_display"],
@@ -328,71 +377,70 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         c_bat["round_parse_error_display"],
         c_bat["detections_json_box"],
     ]
-    _explorer_inputs = [
-        c_bat["explorer_image_select"],
-        c_bat["explorer_round_select"],
-        batch_id_state,
-        c_bat["show_grid_chk"],
-    ]
 
-    _hero_outputs = [
-        c_bat["hero_source_image"],
-        c_bat["hero_viewer"],
-        c_bat["hero_info"],
-    ]
-    _hero_inputs = [
-        c_bat["explorer_image_select"],
-        c_bat["explorer_round_select"],
-        batch_id_state,
-    ]
+    c_bat["explorer_first_btn"].click(
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "first", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
+    )
+    c_bat["explorer_prev_btn"].click(
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "prev", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
+    )
+    c_bat["explorer_next_btn"].click(
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "next", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
+    )
+    c_bat["explorer_last_btn"].click(
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "last", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
+    )
 
     c_bat["explorer_image_select"].change(
-        on_explorer_image_change,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_round_select"]],
-    ).then(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
-    ).then(
-        _hero_view_for_selection,
-        inputs=_hero_inputs,
-        outputs=_hero_outputs,
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "image_select", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
     )
 
     c_bat["explorer_round_select"].change(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
-    ).then(
-        _hero_view_for_selection,
-        inputs=_hero_inputs,
-        outputs=_hero_outputs,
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "round_select", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
     )
 
     c_bat["show_grid_chk"].change(
-        on_explorer_round_change,
-        inputs=_explorer_inputs,
-        outputs=_explorer_outputs,
-    )
-
-    # ── Arrow navigation for batch explorer ──
-    c_bat["explorer_prev_btn"].click(
-        on_explorer_prev,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
-    )
-    c_bat["explorer_next_btn"].click(
-        on_explorer_next,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "grid_toggle", img, rnd, bid, grid
+        ),
+        inputs=_nav_inputs,
+        outputs=_explorer_all_outputs,
+        queue=False,
     )
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(
-        theme=theme, css=custom_css, title="LLM Object Detection Console"
-    ) as app:
+    with gr.Blocks(title="LLM Object Detection Console") as app:
         # Gradio 6: <script> inside gr.HTML value never executes (innerHTML);
         # head= injects it into <head> where it actually runs.
         gr.HTML(value="", head=CONSOLE_JS)
@@ -437,11 +485,12 @@ def build_app() -> gr.Blocks:
                 c_rt_interactive = build_realtime_interactive_tab()
 
         # ── Wire all events ───────────────────────────────────────────────
-        _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state)
+        _wire_events(
+            c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state
+        )
         wire_draw_events(c_draw, c_srv, c_bat)
         _wire_realtime_events(c_rt, c_srv, c_bat)
         wire_realtime_interactive_events(c_rt_interactive, c_srv)
-
 
         # ── Auto-refresh server status every 5 s ─────────────────────────
         status_timer = gr.Timer(value=5.0)

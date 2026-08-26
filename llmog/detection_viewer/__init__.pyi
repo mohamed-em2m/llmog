@@ -22,7 +22,6 @@ _COLOR_PALETTE = [
     "#8BC34A",
 ]
 
-
 def _load_image(image: str | Path | Image.Image | np.ndarray) -> Image.Image:
     if isinstance(image, np.ndarray):
         return Image.fromarray(image)
@@ -30,18 +29,17 @@ def _load_image(image: str | Path | Image.Image | np.ndarray) -> Image.Image:
         return image
     return Image.open(image)
 
-
 def _save_image_to_cache(img: Image.Image, cache_dir: str) -> str:
     cached_path = processing_utils.save_pil_to_cache(img, cache_dir, format="webp")
     return f"/gradio_api/file={cached_path}"
-
-from gradio.events import Dependency
 
 class DetectionViewer(gr.HTML):
     def __init__(
         self,
         value: tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]]]
-        | tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]]
+        | tuple[
+            str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]
+        ]
         | None = None,
         *,
         label: str | None = None,
@@ -70,7 +68,7 @@ class DetectionViewer(gr.HTML):
 
         has_label = label is not None
         # Gradio 5+ supports html_template/css_template/js_on_load on gr.HTML,
-        # Gradio 4 does not — fall back to placeholder so build_app still works.
+        # Gradio 4 does not -- fall back to placeholder so build_app still works.
         try:
             super().__init__(
                 value=value,
@@ -90,11 +88,15 @@ class DetectionViewer(gr.HTML):
             )
         except TypeError:
             # Fallback for Gradio 4: Bauhaus soft placeholder
-            fallback_kwargs = {k: v for k, v in kwargs.items() if k in ("elem_id", "elem_classes", "visible", "render", "key")}
+            fallback_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k in ("elem_id", "elem_classes", "visible", "render", "key")
+            }
             placeholder = (
                 f"<div style='border:1px solid #E9E0CC; background:#FFD6E0; color:#1A1145; padding:14px; "
                 f"border-radius:16px; font-family:Inter, sans-serif; font-weight:700;'>"
-                f"{panel_title} — viewer requires Gradio 5+ (current {gr.__version__})</div>"
+                f"{panel_title} -- viewer requires Gradio 5+ (current {gr.__version__})</div>"
             )
             super().__init__(
                 value=placeholder,
@@ -112,7 +114,9 @@ class DetectionViewer(gr.HTML):
     def _process(
         self,
         value: tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]]]
-        | tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]]
+        | tuple[
+            str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]
+        ]
         | None,
     ) -> str | None:
         if value is None:
@@ -180,8 +184,3 @@ class DetectionViewer(gr.HTML):
                 "scoreThresholdMin?: float, scoreThresholdMax?: float}"
             ),
         }
-    from typing import Callable, Literal, Sequence, Any, TYPE_CHECKING
-    from gradio.blocks import Block
-    if TYPE_CHECKING:
-        from gradio.components import Timer
-        from gradio.components.base import Component

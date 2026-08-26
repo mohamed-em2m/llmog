@@ -7,10 +7,9 @@ threshold is hit or rounds run out.
 from __future__ import annotations
 
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 from PIL import Image
 from openai import OpenAI
 
@@ -144,7 +143,7 @@ class ObjectDetectionPipeline:
 
     def run_inference(
         self,
-        image_uris: str | list[str],
+        image_uris: Union[str, List[str]],
         categories: List[str],
         category_definitions: str,
         feedback: Optional[str] = None,
@@ -166,7 +165,7 @@ class ObjectDetectionPipeline:
 
         extra_args = self._pixel_bounds_extra_args()
 
-        content_list = [{"type": "text", "text": prompt}]
+        content_list: List[Dict[str, Any]] = []
         if isinstance(image_uris, list):
             for i, uri in enumerate(image_uris):
                 if len(image_uris) > 1:
@@ -181,14 +180,15 @@ class ObjectDetectionPipeline:
             content_list.append({"type": "image_url", "image_url": {"url": image_uris}})
 
         def _do_call():
-            kwargs = dict(
+            kwargs: Dict[str, Any] = dict(
                 model=self.detector_model,
                 max_tokens=self.detector_max_tokens,
                 messages=[
+                    {"role": "system", "content": prompt},
                     {
                         "role": "user",
                         "content": content_list,
-                    }
+                    },
                 ],
                 **extra_args,
             )
@@ -200,7 +200,7 @@ class ObjectDetectionPipeline:
         response = _call_with_retries(
             _do_call, retries=self.api_retries, what="Detector call"
         )
-        return response.choices[0].message.content
+        return (response.choices[0].message.content or "").strip()
 
     def verify_crop(self, crop_image: Image.Image, label: str) -> bool:
         """Verify if target label is present in cropped image."""
@@ -210,17 +210,17 @@ class ObjectDetectionPipeline:
         extra_args = self._pixel_bounds_extra_args()
 
         def _do_call():
-            kwargs = dict(
+            kwargs: Dict[str, Any] = dict(
                 model=self.detector_model,
                 max_tokens=50,
                 messages=[
+                    {"role": "system", "content": prompt},
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": prompt},
                             {"type": "image_url", "image_url": {"url": crop_uri}},
                         ],
-                    }
+                    },
                 ],
                 **extra_args,
             )
@@ -232,12 +232,13 @@ class ObjectDetectionPipeline:
             response = _call_with_retries(
                 _do_call, retries=self.api_retries, what="Crop verification call"
             )
-            text = response.choices[0].message.content.strip()
+            text = (response.choices[0].message.content or "").strip()
             logger.info("Verification response for label '%s': %s", label, text)
             match = re.search(r"<present>\s*(YES|NO)\s*</present>", text, re.IGNORECASE)
             if match:
                 return match.group(1).upper() == "YES"
-            return "YES" in text.upper()
+            # Fallback with strict word-boundary matching to prevent false positives
+            return bool(re.search(r"\bYES\b", text, re.IGNORECASE))
         except Exception as e:
             logger.warning(
                 "Crop verification failed for label '%s', keeping detection: %s",
@@ -255,15 +256,18 @@ class ObjectDetectionPipeline:
     ):
         prompt = self.get_judge_prompt(category_definitions, detections)
 
-        extra_args = {}
+        extra_args = self._pixel_bounds_extra_args()
         if self.judge_enable_thinking and not self.external_api:
-            extra_args["extra_body"] = {"enable_thinking": True}
+            extra_body = extra_args.get("extra_body", {})
+            extra_body["enable_thinking"] = True
+            extra_args["extra_body"] = extra_body
 
         def _do_call():
-            kwargs = dict(
+            kwargs: Dict[str, Any] = dict(
                 model=self.judge_model,
                 max_tokens=self.judge_max_tokens,
                 messages=[
+                    {"role": "system", "content": prompt},  # Fixed missing comma
                     {
                         "role": "user",
                         "content": [
@@ -284,7 +288,7 @@ class ObjectDetectionPipeline:
                                 "image_url": {"url": annotated_grid_uri},
                             },
                         ],
-                    }
+                    },
                 ],
                 **extra_args,
             )
@@ -295,13 +299,13 @@ class ObjectDetectionPipeline:
         response = _call_with_retries(
             _do_call, retries=self.api_retries, what="Judge call"
         )
-        text = _strip_think_blocks(response.choices[0].message.content)
+        text = _strip_think_blocks(response.choices[0].message.content or "")
 
-        score_match = re.search(r"<score>\s*(\d+)\s*</score>", text)
+        score_match = re.search(r"<score>\s*(\d+(?:\.\d+)?)\s*</score>", text)
         feedback_match = re.search(r"<feedback>(.*?)</feedback>", text, re.DOTALL)
         actions_match = re.search(r"<actions>(.*?)</actions>", text, re.DOTALL)
 
-        score = int(score_match.group(1)) if score_match else 0
+        score = int(round(float(score_match.group(1)))) if score_match else 0
         score = max(0, min(10, score))
         feedback_text = (
             feedback_match.group(1).strip() if feedback_match else text.strip()
@@ -324,7 +328,7 @@ class ObjectDetectionPipeline:
         category_definitions: str,
         show_plot: bool = True,
         output_dir: Optional[str] = None,
-        progress_callback: Optional[callable] = None,
+        progress_callback: Optional[Callable[..., Any]] = None,
     ):
         """
         Runs the object detection pipeline with custom preprocessing, tiling, NMS, SoM,

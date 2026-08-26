@@ -11,11 +11,9 @@ from servers import LlamaServerManager, LlamaCppPythonManager, VllmServerManager
 from servers.llama_server_manager import num_gpus as _num_gpus
 from interface.state import (
     state,
-    LOG_TAIL_BYTES,
     MODEL_PRESETS,
     panel_header,
     _section_title,
-    handle_preset_change,
 )
 
 logger = logging.getLogger("detection_pipeline")
@@ -63,7 +61,17 @@ def start_server_wrapper(
     vllm_gpu_util=0.90,
     vllm_max_seq=20000,
 ):
-    ctx_size = ctx_size * parallel_slots
+    # Coerce numeric inputs — gr.Number can yield None when cleared
+    try:
+        parallel_slots = max(1, int(parallel_slots or 1))
+    except (TypeError, ValueError):
+        parallel_slots = 1
+    try:
+        ctx_size = int(ctx_size or 10000) * parallel_slots
+    except (TypeError, ValueError):
+        ctx_size = 10000 * parallel_slots
+    port = int(port or 8080)
+    gpu_layers = int(gpu_layers if gpu_layers is not None else -1)
 
     with state.server_lock:
         if state.server_manager is not None and state.server_manager.is_healthy():
@@ -256,6 +264,20 @@ def stop_server_wrapper():
             )
 
 
+def on_server_backend_change(backend: str):
+    """Toggle backend-specific advanced groups when the runtime changes.
+
+    llama.cpp / llama-cpp-python share the llama option set (incl. MTP);
+    vLLM has its own tensor-parallel / memory options.
+    """
+    is_llama = backend in ("llama_cpp", "llama_cpp_python")
+    return (
+        gr.update(visible=is_llama),  # llama_advanced_group
+        gr.update(visible=backend == "vllm"),  # vllm_advanced_group
+        gr.update(interactive=is_llama),  # server_mtp_chk
+    )
+
+
 def get_server_status_and_logs():
     with state.server_lock:
         if state.server_manager is None:
@@ -301,17 +323,19 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
     # ── Status hero — always visible, Bauhaus card ──
     with gr.Group(elem_classes=["config-card"]):
         gr.HTML('<div class="config-card-title">📡 Server Status — live</div>')
-        gr.HTML('<p style="color:#6B6B6B;font-size:12px;margin:4px 0 0 0;">Start a local VLM or connect to an external API. All tabs respect this Endpoint Mode.</p>')
+        gr.HTML(
+            '<p style="color:#6B6B6B;font-size:12px;margin:4px 0 0 0;">Start a local VLM or connect to an external API. All tabs respect this Endpoint Mode.</p>'
+        )
 
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
         # ── Left: Quick Start + Advanced (progressive disclosure) ──
         with gr.Column(scale=1, min_width=420):
             gr.HTML('<p class="section-label">🖥️ Local Server — Quick Start</p>')
-            with gr.Accordion("⚙️ Server Options — Model, Runtime & Advanced", open=True):
+            with gr.Accordion(
+                "⚙️ Server Options — Model, Runtime & Advanced", open=True
+            ):
                 with gr.Group(visible=True) as local_server_group:
-                    gr.HTML(
-                        '<div class="config-card"><div class="config-card-title">🦙 Local Model Selection</div>'
-                    )
+                    gr.HTML(_section_title("🦙", "Local Model Selection"))
                     server_preset = gr.Dropdown(
                         label="Recommended Model Presets",
                         choices=MODEL_PRESETS,
@@ -338,11 +362,7 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                         placeholder="e.g. C:/models/qwen.gguf or HF ID",
                         interactive=True,
                     )
-                    gr.HTML("</div>")
-
-                    gr.HTML(
-                        '<div class="config-card"><div class="config-card-title">⚙️ Runtime Options</div>'
-                    )
+                    gr.HTML(_section_title("⚙️", "Runtime Options"))
                     server_port_input = gr.Number(
                         label="Port Number",
                         value=8080,
@@ -358,91 +378,95 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                             value=True,
                             interactive=True,
                         )
-                    gr.HTML("</div>")
 
                     with gr.Accordion("Advanced Server Parameters", open=False):
-                        gr.HTML(_section_title("🖧", "Network"))
-                        server_host_input = gr.Textbox(label="Host Binding", value="0.0.0.0")
-                        gr.HTML(_section_title("🎛️", "Compute"))
-                        server_ctx_input = gr.Number(
-                            label="Context Size per Slot",
-                            value=10000,
-                            precision=0,
-                        )
-                        server_parallel_slots_input = gr.Number(
-                            label="Parallel Slots", value=1, precision=0
-                        )
-                        server_gpu_layers = gr.Number(
-                            label="GPU Layers (-ngl)", value=-1, precision=0
-                        )
-                        server_kv_cache = gr.Dropdown(
-                            label="KV Cache Type",
-                            choices=[
-                                "f32",
-                                "f16",
-                                "bf16",
-                                "q8_0",
-                                "q4_0",
-                                "q4_1",
-                                "iq4_nl",
-                                "q5_0",
-                                "q5_1",
-                            ],
-                            value="q4_0",
-                        )
-                        gr.HTML(_section_title("⚡", "Batch Processing Sizes"))
-                        with gr.Row():
-                            server_batch_size = gr.Number(
-                                label="Batch Size (-b / --batch-size)",
-                                value=1024,
+                        # Backend-aware groups — llama-only vs vLLM options are
+                        # shown/hidden by server_backend.change (less noise).
+                        with gr.Group(visible=True) as llama_advanced_group:
+                            gr.HTML(_section_title("🖧", "Network"))
+                            server_host_input = gr.Textbox(
+                                label="Host Binding", value="0.0.0.0"
+                            )
+                            gr.HTML(_section_title("🎛️", "Compute"))
+                            server_ctx_input = gr.Number(
+                                label="Context Size per Slot",
+                                value=10000,
                                 precision=0,
-                                info="Logical batch size for prompt processing.",
                             )
-                            server_ubatch_size = gr.Number(
-                                label="Micro-Batch Size (-ub / --ubatch-size)",
-                                value=1024,
-                                precision=0,
-                                info="Physical micro-batch size submitted to GPU.",
+                            server_parallel_slots_input = gr.Number(
+                                label="Parallel Slots", value=1, precision=0
                             )
-                        gr.HTML(_section_title("🧠", "vLLM Options"))
-                        with gr.Row():
-                            server_vllm_tp = gr.Number(
-                                label="Tensor Parallel Size",
-                                value=1,
-                                precision=0,
-                                info="Number of GPUs to shard the model across (vLLM).",
+                            server_gpu_layers = gr.Number(
+                                label="GPU Layers (-ngl)", value=-1, precision=0
                             )
-                            server_vllm_gpu_util = gr.Number(
-                                label="GPU Memory Utilization",
-                                value=0.90,
-                                precision=None,
-                                info="Fraction of GPU memory to use (vLLM, e.g. 0.90).",
+                            server_kv_cache = gr.Dropdown(
+                                label="KV Cache Type",
+                                choices=[
+                                    "f32",
+                                    "f16",
+                                    "bf16",
+                                    "q8_0",
+                                    "q4_0",
+                                    "q4_1",
+                                    "iq4_nl",
+                                    "q5_0",
+                                    "q5_1",
+                                ],
+                                value="q4_0",
                             )
-                        with gr.Row():
+                            gr.HTML(_section_title("⚡", "Batch Processing Sizes"))
+                            with gr.Row():
+                                server_batch_size = gr.Number(
+                                    label="Batch Size (-b / --batch-size)",
+                                    value=1024,
+                                    precision=0,
+                                    info="Logical batch size for prompt processing.",
+                                )
+                                server_ubatch_size = gr.Number(
+                                    label="Micro-Batch Size (-ub / --ubatch-size)",
+                                    value=1024,
+                                    precision=0,
+                                    info="Physical micro-batch size submitted to GPU.",
+                                )
+                            gr.HTML(_section_title("🖼️", "Vision / Image Tokens"))
+                            with gr.Row():
+                                server_img_min_tokens = gr.Number(
+                                    label="Min Image Tokens (--image-min-tokens)",
+                                    value=1024,
+                                    precision=0,
+                                    info="Minimum tokens for image encoding. Lower = faster but lower quality.",
+                                )
+                                server_img_max_tokens = gr.Number(
+                                    label="Max Image Tokens (--image-max-tokens)",
+                                    value=4096,
+                                    precision=0,
+                                    info="Maximum tokens for image encoding. Higher = more detail but slower.",
+                                )
+                            server_log_disable = gr.Checkbox(
+                                label="Disable Server Console Logs (--log-disable)",
+                                value=False,
+                            )
+
+                        with gr.Group(visible=False) as vllm_advanced_group:
+                            gr.HTML(_section_title("🧠", "vLLM Options"))
+                            with gr.Row():
+                                server_vllm_tp = gr.Number(
+                                    label="Tensor Parallel Size",
+                                    value=1,
+                                    precision=0,
+                                    info="Number of GPUs to shard the model across (vLLM).",
+                                )
+                                server_vllm_gpu_util = gr.Number(
+                                    label="GPU Memory Utilization",
+                                    value=0.90,
+                                    precision=None,
+                                    info="Fraction of GPU memory to use (vLLM, e.g. 0.90).",
+                                )
                             server_vllm_max_seq = gr.Number(
                                 label="Max Model Length",
                                 value=20000,
                                 precision=0,
                                 info="Maximum sequence length (vLLM --max-model-len).",
-                            )
-                        gr.HTML(_section_title("🖼️", "Vision / Image Tokens"))
-                        with gr.Row():
-                            server_img_min_tokens = gr.Number(
-                                label="Min Image Tokens (--image-min-tokens)",
-                                value=1024,
-                                precision=0,
-                                info="Minimum tokens for image encoding. Lower = faster but lower quality.",
-                            )
-                            server_img_max_tokens = gr.Number(
-                                label="Max Image Tokens (--image-max-tokens)",
-                                value=4096,
-                                precision=0,
-                                info="Maximum tokens for image encoding. Higher = more detail but slower.",
-                            )
-                        with gr.Row():
-                            server_log_disable = gr.Checkbox(
-                                label="Disable Server Console Logs (--log-disable)",
-                                value=False,
                             )
 
                 with gr.Group(visible=False) as ext_api_group:
@@ -451,7 +475,8 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                         '<p style="color:#7d8590;font-size:0.85rem;margin:0;">Used by <b>Batch</b>, <b>Draw & Recognize</b> and <b>Realtime</b> tabs when Endpoint Mode is External.</p></div>'
                     )
                     ext_api_url = gr.Textbox(
-                        label="Base URL", value="https://api.openai.com/v1",
+                        label="Base URL",
+                        value="https://api.openai.com/v1",
                         placeholder="https://api.openai.com/v1",
                     )
                     ext_api_key = gr.Textbox(
@@ -463,7 +488,9 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                     ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
 
             with gr.Row(elem_classes=["btn-group"]):
-                start_server_btn = gr.Button("▶  Start Server", variant="primary", scale=2)
+                start_server_btn = gr.Button(
+                    "▶  Start Server", variant="primary", scale=2
+                )
                 stop_server_btn = gr.Button(
                     "⏹  Stop Server", variant="secondary", scale=1
                 )
@@ -513,6 +540,8 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
         server_img_min_tokens=server_img_min_tokens,
         server_img_max_tokens=server_img_max_tokens,
         server_log_disable=server_log_disable,
+        llama_advanced_group=llama_advanced_group,
+        vllm_advanced_group=vllm_advanced_group,
         start_server_btn=start_server_btn,
         stop_server_btn=stop_server_btn,
         server_logs_viewer=server_logs_viewer,

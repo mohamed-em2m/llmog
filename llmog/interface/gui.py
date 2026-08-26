@@ -16,7 +16,9 @@ import warnings
 # This is a Gradio internal (gradio/routes.py:1379) not our code; fixed in Gradio 5.8+
 try:
     warnings.filterwarnings(
-        "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=DeprecationWarning
+        "ignore",
+        message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
+        category=DeprecationWarning,
     )
     warnings.filterwarnings(
         "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=UserWarning
@@ -32,6 +34,8 @@ except Exception:
     pass
 
 from interface.app_builder import build_app
+from interface.state import custom_css
+from interface.console_theme import theme
 
 
 def main():
@@ -47,7 +51,18 @@ def main():
         "--port", type=int, default=7860, help="Port to run the Gradio server on."
     )
     parser.add_argument(
-        "--not_share", action="store_true", help="To not create a public Gradio share link."
+        "--not_share",
+        "--not-share",
+        "--no-share",
+        dest="not_share",
+        action="store_true",
+        help="To not create a public Gradio share link.",
+    )
+    parser.add_argument(
+        "--share",
+        dest="not_share",
+        action="store_false",
+        help="Create a public Gradio share link (default).",
     )
     parser.add_argument(
         "--no-queue", action="store_true", help="Disable Gradio's request queue."
@@ -57,13 +72,21 @@ def main():
     # imported here so --help is instant
     demo = build_app()
     if args.no_queue:
-        demo.launch(server_name=args.host, server_port=args.port, share=not args.not_share)
+        demo.launch(
+            server_name=args.host,
+            server_port=args.port,
+            share=not args.not_share,
+            theme=theme,
+            css=custom_css,
+        )
     else:
         demo.queue().launch(
-            server_name=args.host, server_port=args.port, share=not args.not_share
+            server_name=args.host,
+            server_port=args.port,
+            share=not args.not_share,
+            theme=theme,
+            css=custom_css,
         )
-
-
 
 
 if __name__ == "__main__":

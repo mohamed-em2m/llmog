@@ -102,6 +102,7 @@ DEFAULT_AUTO_LABEL_TEMPLATE: str = (
 # Jinja2 render helper
 # ---------------------------------------------------------------------------
 
+
 def _jinja_render(template: str, **kwargs) -> str:
     """Render *template* with Jinja2, falling back to str.format on failure."""
     try:
@@ -119,9 +120,10 @@ def _jinja_render(template: str, **kwargs) -> str:
 # Realtime prompt
 # ---------------------------------------------------------------------------
 
+
 def get_realtime_prompt(categories: list[str] | None = None) -> str:
     """Render the real-time free-detection prompt."""
-    cats_str = ", ".join(categories) if categories else "*"
+    cats_str = categories_prompt_text(categories)
 
     dp = _dynaprompt_attr("realtime_detector")
     if dp is not None:
@@ -136,8 +138,36 @@ def get_realtime_prompt(categories: list[str] | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Categories text helper
+# ---------------------------------------------------------------------------
+
+_OPEN_WORLD_CATEGORIES_TEXT = (
+    "**OPEN-WORLD DETECTION MODE** — no fixed category list.\n"
+    "- Detect **every clearly visible, distinct object** in the image: people, animals, "
+    "vehicles, furniture, sports equipment, buildings, signs, plants, food, tools, etc.\n"
+    "- Give each detection a short, specific, lowercase label naming the object itself "
+    "(e.g. `person`, `tennis_racket`, `airplane`, `scoreboard`, `parking_sign`).\n"
+    "- Use concrete nouns — never generic labels like `object` or `thing`, and never the scene name."
+)
+
+
+def categories_prompt_text(categories: List[str] | None) -> str:
+    """Render the *Categories to detect* block for a category list.
+
+    ``["*"]`` (or any list containing ``"*"``) switches to open-world phrasing
+    so the model is instructed to detect everything instead of matching a
+    literal asterisk label.
+    """
+    cats = [c for c in (categories or []) if c]
+    if not cats or "*" in cats:
+        return _OPEN_WORLD_CATEGORIES_TEXT
+    return ", ".join(cats)
+
+
+# ---------------------------------------------------------------------------
 # Detector prompt
 # ---------------------------------------------------------------------------
+
 
 def render_detector_prompt(
     template: str,
@@ -191,16 +221,19 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
         )
         for prop in som_proposals:
             som_block += f"- Candidate #{prop['id']}: bbox_2d ≈ {prop['bbox_2d']}\n"
-        som_block += "\nYou may refer to these candidates or output standard bounding boxes."
+        som_block += (
+            "\nYou may refer to these candidates or output standard bounding boxes."
+        )
 
     # --- Render via DynaPrompt (if using the default template) ---
+    cats_text = categories_prompt_text(categories)
     if template == DEFAULT_DETECTOR_TEMPLATE:
         dp = _dynaprompt_attr("detector_agent")
         if dp is not None:
             try:
                 return dp.render(
                     {
-                        "categories_list": ", ".join(categories),
+                        "categories_list": cats_text,
                         "category_definitions": category_definitions + som_block,
                         "feedback_block": feedback_block,
                     }
@@ -212,7 +245,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
 
     return _jinja_render(
         template,
-        categories_list=", ".join(categories),
+        categories_list=cats_text,
         category_definitions=category_definitions + som_block,
         feedback_block=feedback_block,
     )
@@ -221,6 +254,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
 # ---------------------------------------------------------------------------
 # Judge prompt
 # ---------------------------------------------------------------------------
+
 
 def render_judge_prompt(
     template: str,
@@ -264,6 +298,7 @@ def render_judge_prompt(
 # Crop verification prompt
 # ---------------------------------------------------------------------------
 
+
 def render_crop_verify_prompt(label: str, template: Optional[str] = None) -> str:
     """Render the crop-verification YES/NO prompt for a given *label*.
 
@@ -293,6 +328,7 @@ def render_crop_verify_prompt(label: str, template: Optional[str] = None) -> str
 # ---------------------------------------------------------------------------
 # Auto-label defect classification prompt
 # ---------------------------------------------------------------------------
+
 
 def render_auto_label_prompt(
     known_class_names: List[str],
@@ -384,4 +420,3 @@ def render_auto_label_prompt(
     # Fallback: append the mode instruction to the rendered template
     rendered = _jinja_render(t, known_classes=known_str)
     return rendered + "\n\n" + mode_instruction
-

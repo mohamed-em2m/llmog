@@ -44,8 +44,7 @@ class RunStats:
         eta_s = (total - done) / rate if rate > 0 else float("inf")
         eta_str = "unknown" if eta_s == float("inf") else f"{eta_s:,.0f}s"
         logger.info(
-            f"[{done}/{total}] finished {img_file} "
-            f"({rate:.2f} img/s, ETA {eta_str})"
+            f"[{done}/{total}] finished {img_file} ({rate:.2f} img/s, ETA {eta_str})"
         )
 
     def summary_lines(self):
