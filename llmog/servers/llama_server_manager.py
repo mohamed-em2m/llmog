@@ -1,7 +1,11 @@
+import datetime as _dt
+import logging
 import subprocess
 import threading
 import time
 import requests
+
+logger = logging.getLogger("detection_pipeline.server")
 
 
 def _detect_gpu_count() -> int:
@@ -77,6 +81,8 @@ class LlamaServerManager:
         self.server_ready_event = threading.Event()
         self.logs = []
         self.log_lock = threading.Lock()
+        self._started_at: float | None = None
+        self._last_health_latency_ms: float | None = None
 
         # Resolve connection URL (use localhost if binding to all interfaces)
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
@@ -126,7 +132,7 @@ class LlamaServerManager:
         ]
         if self.log_disable:
             cmd.append("--log-disable")
-        print("cmd: ", cmd)
+        logger.info("Spawning llama-server: %s", " ".join(cmd))
         # Dynamically append speculative drafting options
         if self.spec_type and self.spec_type.lower() != "none":
             cmd.extend(["--spec-type", self.spec_type])
@@ -155,6 +161,8 @@ class LlamaServerManager:
         self.server_ready_event.clear()
         with self.log_lock:
             self.logs = []
+        self._started_at = time.time()
+        self._last_health_latency_ms = None
 
         # Start the subprocess
         self.process = subprocess.Popen(
@@ -162,16 +170,24 @@ class LlamaServerManager:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
         )
 
         # Background reader thread to monitor server startup output
         def monitor_output():
             for line in self.process.stdout:
+                ts = _dt.datetime.now().strftime("%H:%M:%S")
+                stamped = f"[{ts}] {line}" if not line.startswith("[") else line
                 with self.log_lock:
-                    self.logs.append(line)
-                    if len(self.logs) > 2000:
+                    self.logs.append(stamped)
+                    if len(self.logs) > 3000:
                         self.logs.pop(0)
-                print(line, end="", flush=True)
+                # Also feed Python logger so pre-commit's rich handler shows timestamps
+                try:
+                    logger.debug(stamped.rstrip())
+                except Exception:
+                    pass
+                print(stamped, end="", flush=True)
                 if (
                     "HTTP server listening" in line
                     or "server is listening" in line.lower()
@@ -294,15 +310,38 @@ class LlamaServerManager:
     def is_healthy(self) -> bool:
         """Check if the llama-server is running and responsive."""
         if self.process is None or self.process.poll() is not None:
+            self._last_health_latency_ms = None
             return False
+        t0 = time.time()
         try:
             r = requests.get(f"{self.server_url}/health", timeout=1)
+            self._last_health_latency_ms = (time.time() - t0) * 1000
             if r.status_code == 200:
-                data = r.json()
-                return data.get("status") == "ok"
+                try:
+                    data = r.json()
+                    return data.get("status") == "ok"
+                except Exception:
+                    return True
         except Exception:
+            self._last_health_latency_ms = None
             pass
         return False
+
+    def get_detailed_status(self) -> dict:
+        """Return structured status for the Model/Endpoint tab."""
+        pid = self.process.pid if self.process and self.process.poll() is None else None
+        uptime_s = int(time.time() - self._started_at) if self._started_at else 0
+        return {
+            "pid": pid,
+            "port": self.port,
+            "host": self.host,
+            "url": self.server_url,
+            "model": self.model,
+            "uptime_s": uptime_s,
+            "health_latency_ms": self._last_health_latency_ms,
+            "healthy": self.is_healthy() if pid else False,
+            "log_lines": len(self.logs),
+        }
 
     # ─── Context Manager ──────────────────────────────────────────────────────
     def __enter__(self):

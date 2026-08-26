@@ -2,6 +2,7 @@
 Llama Server tab UI and lifecycle server management logic.
 """
 
+import tempfile
 import time
 import logging
 from typing import Dict, Any
@@ -278,32 +279,165 @@ def on_server_backend_change(backend: str):
     )
 
 
+def _fmt_uptime(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    m, s = divmod(seconds, 60)
+    if m < 60:
+        return f"{m}m {s}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m"
+
+
+def _render_status_html(details: dict | None, healthy: bool | None) -> str:
+    if details is None:
+        return '<div style="color:#6B6B6B;font-size:13px;padding:8px;border:1px dashed #ddd;border-radius:6px;">No local server — start one or switch to External API.</div>'
+    pid = details.get("pid") or "—"
+    port = details.get("port", "—")
+    model = details.get("model", "—")
+    url = details.get("url", "—")
+    uptime = _fmt_uptime(details.get("uptime_s", 0)) if details.get("uptime_s") else "—"
+    latency = details.get("health_latency_ms")
+    latency_s = f"{latency:.0f} ms" if isinstance(latency, (int, float)) else "—"
+    log_lines = details.get("log_lines", 0)
+    health_dot = "🟢" if healthy else ("🟡" if details.get("pid") else "🔴")
+    health_txt = (
+        "Healthy" if healthy else ("Starting" if details.get("pid") else "Stopped")
+    )
+    # Shorten model for display
+    short_model = model.split("/")[-1] if "/" in str(model) else str(model)
+    if len(short_model) > 48:
+        short_model = short_model[:46] + "…"
+    return f"""
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">
+  <div><b>{health_dot} {health_txt}</b><br/><span style="color:#6B6B6B">PID {pid} · Port {port}</span></div>
+  <div style="text-align:right;color:#6B6B6B">Uptime {uptime}<br/>Health {latency_s} · {log_lines} log lines</div>
+  <div style="grid-column:1/-1;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{model}">📦 {short_model}</div>
+  <div style="grid-column:1/-1;color:#6B6B6B;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{url}">{url}</div>
+</div>
+"""
+
+
 def get_server_status_and_logs():
     with state.server_lock:
         if state.server_manager is None:
             return (
-                "No server instance exists.",
+                "No server instance exists.\nTip: Start a local server below or switch Endpoint Mode to External API.",
                 '<span class="status-badge badge-stopped">STOPPED</span>',
+                _render_status_html(None, None),
             )
-        if (
-            state.server_manager.process
-            and state.server_manager.process.poll() is not None
-        ):
-            exit_code = state.server_manager.process.poll()
+        mgr = state.server_manager
+        # Prefer detailed status if manager implements it
+        try:
+            details = (
+                mgr.get_detailed_status()
+                if hasattr(mgr, "get_detailed_status")
+                else None
+            )
+        except Exception:
+            details = None
+        if details is None:
+            # Fallback minimal details
+            pid = (
+                mgr.process.pid if mgr.process and mgr.process.poll() is None else None
+            )
+            details = {
+                "pid": pid,
+                "port": getattr(mgr, "port", "—"),
+                "host": getattr(mgr, "host", "—"),
+                "url": getattr(mgr, "server_url", "—"),
+                "model": getattr(mgr, "model", "—"),
+                "uptime_s": 0,
+                "health_latency_ms": getattr(mgr, "_last_health_latency_ms", None),
+                "log_lines": len(getattr(mgr, "logs", [])),
+            }
+        is_dead = mgr.process and mgr.process.poll() is not None
+        if is_dead:
+            exit_code = mgr.process.poll()
+            logs = mgr.get_logs()
+            # Keep last ~80 lines instead of raw char slice so timestamps stay intact
+            tail = "\n".join(logs.splitlines()[-80:])
             return (
-                f"Server process is dead (Exit code: {exit_code}).\n\n--- Logs ---\n{state.server_manager.get_logs()}",
+                f"Server process is dead (Exit code: {exit_code}).\n\n--- Last 80 log lines ---\n{tail}",
                 '<span class="status-badge badge-error">CRASHED</span>',
+                _render_status_html(details, False),
             )
-        logs = state.server_manager.get_logs()
-        if state.server_manager.is_healthy():
-            return (
-                f"Server is healthy and running.\n\n--- Logs ---\n{logs[-2000:]}",
-                f'<span class="status-badge badge-running">RUNNING (Port {state.server_manager.port})</span>',
-            )
-        return (
-            f"Server is starting or unhealthy.\n\n--- Logs ---\n{logs[-2000:]}",
-            '<span class="status-badge badge-starting">STARTING...</span>',
+        # Health check (also updates latency)
+        healthy = mgr.is_healthy()
+        logs = mgr.get_logs()
+        tail = "\n".join(logs.splitlines()[-120:])
+        badge = (
+            f'<span class="status-badge badge-running">RUNNING (Port {mgr.port}) · {details.get("health_latency_ms", 0):.0f}ms</span>'
+            if healthy and isinstance(details.get("health_latency_ms"), (int, float))
+            else f'<span class="status-badge badge-running">RUNNING (Port {mgr.port})</span>'
+            if healthy
+            else '<span class="status-badge badge-starting">STARTING...</span>'
         )
+        prefix = (
+            "Server is healthy and running."
+            if healthy
+            else "Server is starting or unhealthy."
+        )
+        return (
+            f"{prefix}\nUptime {_fmt_uptime(details.get('uptime_s', 0))} · {len(logs.splitlines())} lines\n\n--- Last 120 log lines ---\n{tail}",
+            badge,
+            _render_status_html(details, healthy),
+        )
+
+
+def clear_server_logs():
+    """Clear in-memory logs; keeps server running."""
+    with state.server_lock:
+        if state.server_manager is None:
+            return "No server to clear.", _render_status_html(None, None)
+        with state.server_manager.log_lock:
+            state.server_manager.logs.clear()
+            # leave a marker so user sees action
+            ts = time.strftime("%H:%M:%S")
+            state.server_manager.logs.append(f"[{ts}] [UI] Logs cleared by user.\n")
+        return state.server_manager.get_logs()[-2000:], _render_status_html(
+            state.server_manager.get_detailed_status()
+            if hasattr(state.server_manager, "get_detailed_status")
+            else None,
+            state.server_manager.is_healthy(),
+        )
+
+
+def download_server_logs():
+    """Write full logs to a temp file and return its path for gr.File download."""
+    with state.server_lock:
+        if state.server_manager is None:
+            # Create a small temp file with message so Download still works
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".log", mode="w", encoding="utf-8"
+            )
+            tmp.write("No server instance — no logs to download.\n")
+            tmp.close()
+            return tmp.name
+        logs = state.server_manager.get_logs()
+        tmp = tempfile.NamedTemporaryFile(
+            delete=False, suffix=".log", mode="w", encoding="utf-8"
+        )
+        # Add header with status
+        try:
+            details = (
+                state.server_manager.get_detailed_status()
+                if hasattr(state.server_manager, "get_detailed_status")
+                else {}
+            )
+            header = (
+                f"# LLM Server Logs\n# Model: {details.get('model', '?')}\n"
+                f"# URL: {details.get('url', '?')}  PID: {details.get('pid', '?')}  "
+                f"Uptime: {_fmt_uptime(details.get('uptime_s', 0))}\n"
+                f"# Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"# Lines: {len(logs.splitlines())}\n\n"
+            )
+            tmp.write(header)
+        except Exception:
+            pass
+        tmp.write(logs)
+        tmp.close()
+        return tmp.name
 
 
 def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
@@ -495,12 +629,18 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                     "⏹  Stop Server", variant="secondary", scale=1
                 )
 
-        # ── Right: Logs (symmetric) ─────────────────────────────────────
+        # ── Right: Live Status + Logs (improved) ─────────────────────────
         with gr.Column(scale=1, min_width=420):
+            gr.HTML('<p class="section-label">📡 Live Server Status</p>')
+            with gr.Group(elem_classes=["config-card"]):
+                server_details = gr.HTML(value=_render_status_html(None, None))
+
             gr.HTML('<p class="section-label">Server Output Console</p>')
             gr.HTML(
                 '<div class="output-panel" id="server-log-panel">'
-                + panel_header("Live Logs", "server-log-ta")
+                + panel_header(
+                    "Live Logs — auto-refresh 5s, timestamps added", "server-log-ta"
+                )
             )
             with gr.Group(elem_classes=["out-md-wrap"]):
                 server_logs_viewer = gr.Textbox(
@@ -510,7 +650,25 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                     show_label=False,
                     container=False,
                     elem_id="server-log-ta",
+                    placeholder="Logs appear here after you start a local server. External API mode has no local logs.",
                 )
+            with gr.Row(elem_classes=["btn-group"]):
+                clear_logs_btn = gr.Button(
+                    "🗑 Clear", variant="secondary", size="sm", scale=1
+                )
+                download_logs_btn = gr.Button(
+                    "⬇ Download logs", variant="secondary", size="sm", scale=1
+                )
+                refresh_logs_btn = gr.Button(
+                    "↻ Refresh", variant="secondary", size="sm", scale=1
+                )
+            # Hidden file for log download (triggered by Download button)
+            log_download_file = gr.File(visible=False)
+            gr.HTML(
+                '<p style="color:#6B6B6B;font-size:11px;margin:4px 0 0 0;">'
+                "Logs are timestamped <code>[HH:MM:SS]</code> on capture, kept last 3000 lines in RAM, "
+                "and also streamed to the Python <code>detection_pipeline.server</code> logger.</p>"
+            )
             gr.HTML("</div>")
 
     return dict(
@@ -545,4 +703,9 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
         start_server_btn=start_server_btn,
         stop_server_btn=stop_server_btn,
         server_logs_viewer=server_logs_viewer,
+        server_details=server_details,
+        clear_logs_btn=clear_logs_btn,
+        download_logs_btn=download_logs_btn,
+        refresh_logs_btn=refresh_logs_btn,
+        log_download_file=log_download_file,
     )

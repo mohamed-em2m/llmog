@@ -1,8 +1,12 @@
+import datetime as _dt
+import logging
 import os
 import subprocess
 import threading
 import time
 import requests
+
+logger = logging.getLogger("detection_pipeline.server")
 
 
 # ─── vLLM Server Class ─────────────────────────────────────────────────────
@@ -58,6 +62,8 @@ class VllmServerManager:
         self.server_ready_event = threading.Event()
         self.logs = []
         self.log_lock = threading.Lock()
+        self._started_at: float | None = None
+        self._last_health_latency_ms: float | None = None
 
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
         self.server_url = f"http://{req_host}:{self.port}"
@@ -121,11 +127,13 @@ class VllmServerManager:
 
         cmd.extend(self.extra_args)
 
-        print("cmd: ", cmd)
+        logger.info("Spawning vLLM: %s", " ".join(cmd))
 
         self.server_ready_event.clear()
         with self.log_lock:
             self.logs = []
+        self._started_at = time.time()
+        self._last_health_latency_ms = None
 
         env = os.environ.copy()
         # Common fix for stale AOT compile cache issues across restarts
@@ -137,15 +145,22 @@ class VllmServerManager:
             stderr=subprocess.STDOUT,
             text=True,
             env=env,
+            bufsize=1,
         )
 
         def monitor_output():
             for line in self.process.stdout:
+                ts = _dt.datetime.now().strftime("%H:%M:%S")
+                stamped = f"[{ts}] {line}" if not line.startswith("[") else line
                 with self.log_lock:
-                    self.logs.append(line)
-                    if len(self.logs) > 2000:
+                    self.logs.append(stamped)
+                    if len(self.logs) > 3000:
                         self.logs.pop(0)
-                print(line, end="", flush=True)
+                try:
+                    logger.debug(stamped.rstrip())
+                except Exception:
+                    pass
+                print(stamped, end="", flush=True)
                 if (
                     "Uvicorn running on" in line
                     or "Application startup complete" in line
@@ -261,12 +276,31 @@ class VllmServerManager:
     def is_healthy(self) -> bool:
         """Check if the vLLM server is running and responsive."""
         if self.process is None or self.process.poll() is not None:
+            self._last_health_latency_ms = None
             return False
+        t0 = time.time()
         try:
             r = requests.get(f"{self.server_url}/health", timeout=1)
+            self._last_health_latency_ms = (time.time() - t0) * 1000
             return r.status_code == 200
         except Exception:
+            self._last_health_latency_ms = None
             return False
+
+    def get_detailed_status(self) -> dict:
+        pid = self.process.pid if self.process and self.process.poll() is None else None
+        uptime_s = int(time.time() - self._started_at) if self._started_at else 0
+        return {
+            "pid": pid,
+            "port": self.port,
+            "host": self.host,
+            "url": self.server_url,
+            "model": self.model,
+            "uptime_s": uptime_s,
+            "health_latency_ms": self._last_health_latency_ms,
+            "healthy": self.is_healthy() if pid else False,
+            "log_lines": len(self.logs),
+        }
 
     # ─── Context Manager ────────────────────────────────────────────────────
     def __enter__(self):

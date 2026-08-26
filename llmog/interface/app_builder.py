@@ -38,6 +38,8 @@ from interface.tab_server import (  # noqa: E402
     stop_server_wrapper,
     get_server_status_and_logs,
     on_server_backend_change,
+    clear_server_logs,
+    download_server_logs,
 )
 from interface.tab_batch import (  # noqa: E402
     _build_batch_tab,
@@ -215,7 +217,26 @@ def _wire_events(
         stop_server_wrapper,
         outputs=[c_srv["server_logs_viewer"], server_status_badge],
     )
-    # Logs auto-refresh every 5s via gr.Timer below — no manual refresh button.
+    # ── Log controls (clear / refresh / download) ───────────────────────
+    if "clear_logs_btn" in c_srv:
+        c_srv["clear_logs_btn"].click(
+            clear_server_logs,
+            outputs=[c_srv["server_logs_viewer"], c_srv["server_details"]],
+        )
+    if "refresh_logs_btn" in c_srv:
+        c_srv["refresh_logs_btn"].click(
+            get_server_status_and_logs,
+            outputs=[
+                c_srv["server_logs_viewer"],
+                server_status_badge,
+                c_srv["server_details"],
+            ],
+        )
+    if "download_logs_btn" in c_srv and "log_download_file" in c_srv:
+        c_srv["download_logs_btn"].click(
+            download_server_logs,
+            outputs=[c_srv["log_download_file"]],
+        )
 
     # ── Batch tab — category strategy & presets ──────────────────────────
     c_bat["category_strategy"].change(
@@ -492,15 +513,23 @@ def build_app() -> gr.Blocks:
         _wire_realtime_events(c_rt, c_srv, c_bat)
         wire_realtime_interactive_events(c_rt_interactive, c_srv)
 
-        # ── Auto-refresh server status every 5 s ─────────────────────────
+        # ── Auto-refresh server status every 5 s (logs + badge + details) ──
         status_timer = gr.Timer(value=5.0)
         app.load(
             get_server_status_and_logs,
-            outputs=[c_srv["server_logs_viewer"], server_status_badge],
+            outputs=[
+                c_srv["server_logs_viewer"],
+                server_status_badge,
+                c_srv["server_details"],
+            ],
         )
         status_timer.tick(
             get_server_status_and_logs,
-            outputs=[c_srv["server_logs_viewer"], server_status_badge],
+            outputs=[
+                c_srv["server_logs_viewer"],
+                server_status_badge,
+                c_srv["server_details"],
+            ],
         )
 
     return app
