@@ -29,9 +29,7 @@ jobs:
 
       - name: Set environment variables
         run: |
-          printf '%s' "$FIRESTORE_CREDENTIALS" | base64 -d > omni_meta/config/firestore-service-account.json
-          printf '%s' "$FIRESTORE_CREDENTIALS" | base64 -d > google_service_account.json
-          printf '%s' "$APP_SECERTS" | base64 -d > omni_meta/config/.secrets.toml
+          printf '%s' "$APP_SECERTS" | base64 -d > llmog/config/.secrets.toml
 
       - name: Run tests
         run: uv run pytest tests --ignore=tests/eval -vv
