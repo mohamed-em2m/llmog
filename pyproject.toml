@@ -9,7 +9,7 @@ dependencies = [
     "matplotlib==3.11.0",
     "openai==2.43.0",
     "pillow==12.2.0",
-    "gradio==6.19.0",
+    "gradio==6.25.0",
     "requests>=2.34.2",
     "wrapt>=2.2.2",
     "httpx>=0.28.1",
