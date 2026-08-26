@@ -1,9 +1,11 @@
 """
-Batch Sandbox tab UI and execution engine module.
-Modularized under `interface.batch`. This module forwards all exports for backward compatibility.
+Batch Sandbox package entry point.
+Exposes UI builders, runner routines, and reclassification modules for backward compatibility.
 """
 
-from interface.batch import (
+from __future__ import annotations
+
+from interface.batch.runner import (
     TASK_CHOICES,
     TASK_FREE_ANNOTATION,
     TASK_RECLASSIFICATION,
@@ -11,25 +13,30 @@ from interface.batch import (
     run_batch_detection_gui,
     run_batch_dispatcher,
     cancel_pipeline,
-    render_status_table as _render_status_table,
-    detections_to_yolo as _detections_to_yolo,
+)
+from interface.batch.helpers import (
+    render_status_table,
+    detections_to_yolo,
+)
+from interface.batch.reclassification import (
     classify_regions_gui,
-    classify_region as _classify_region,
-    crop_with_padding as _crop_with_padding,
-    extract_regions as _extract_regions,
-    draw_recls_bbox as _draw_recls_bbox,
-    make_recls_client as _make_recls_client,
-    render_recls_table as _render_recls_table,
+    classify_region,
+    crop_with_padding,
+    extract_regions,
+    draw_recls_bbox,
+    make_recls_client,
+    render_recls_table,
     _RECLS_EMPTY_TABLE,
     _RECLS_PALETTE,
+)
+from interface.batch.explorer import (
     on_explorer_image_change,
     on_explorer_round_change,
     on_explorer_prev,
     on_explorer_next,
-    on_explorer_first,
-    on_explorer_last,
-    on_explorer_pos,
-    build_batch_tab as _build_batch_tab,
+)
+from interface.batch.components import (
+    build_batch_tab,
     toggle_run_btn,
     toggle_external_api,
     on_batch_preset_change,
@@ -44,25 +51,22 @@ __all__ = [
     "run_batch_detection_gui",
     "run_batch_dispatcher",
     "cancel_pipeline",
-    "_render_status_table",
-    "_detections_to_yolo",
+    "render_status_table",
+    "detections_to_yolo",
     "classify_regions_gui",
-    "_classify_region",
-    "_crop_with_padding",
-    "_extract_regions",
-    "_draw_recls_bbox",
-    "_make_recls_client",
-    "_render_recls_table",
+    "classify_region",
+    "crop_with_padding",
+    "extract_regions",
+    "draw_recls_bbox",
+    "make_recls_client",
+    "render_recls_table",
     "_RECLS_EMPTY_TABLE",
     "_RECLS_PALETTE",
     "on_explorer_image_change",
     "on_explorer_round_change",
     "on_explorer_prev",
     "on_explorer_next",
-    "on_explorer_first",
-    "on_explorer_last",
-    "on_explorer_pos",
-    "_build_batch_tab",
+    "build_batch_tab",
     "toggle_run_btn",
     "toggle_external_api",
     "on_batch_preset_change",

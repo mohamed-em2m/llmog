@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 from openai import OpenAI
 
 from interface.state import state
+from free_detection.detection_pipeline import _load_font
 from pathlib import Path
 
 logger = logging.getLogger("detection_pipeline.reclassification")
@@ -916,7 +917,7 @@ async def classify_regions_gui(
                 nw = max(0.0, min(1.0, nw))
                 nh = max(0.0, min(1.0, nh))
                 yolo_lines.append(
-                    f"{class_ids[cls]} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}"
+                    f"{class_ids[cls]} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}  # {cls}"
                 )
 
         conf_txt = f"{confidence:.0f}%" if cls != "error" else "—"

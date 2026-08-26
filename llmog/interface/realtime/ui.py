@@ -416,19 +416,28 @@ def _wire_realtime_events(
     ]:
         dd.change(toggle_custom_color_field, inputs=[dd], outputs=[custom_field])
 
-    # Same-window overlay toggle – free detection max speed
+    # Same-window overlay toggle – free detection max speed.
+    # Viewer visibility must respect BOTH the overlay flag AND the input source,
+    # otherwise toggling overlay in Video mode resurrects the webcam-only viewer.
+    def _toggle_same_window(enabled, mode):
+        is_cam = mode == "Webcam Stream"
+        return (
+            gr.update(visible=enabled),
+            gr.update(visible=is_cam and not enabled),
+        )
+
     c_real["same_window_chk"].change(
-        fn=lambda enabled: (gr.update(visible=enabled), gr.update(visible=not enabled)),
-        inputs=[c_real["same_window_chk"]],
+        fn=_toggle_same_window,
+        inputs=[c_real["same_window_chk"], c_real["stream_mode"]],
         outputs=[c_real["same_window_html"], c_real["realtime_viewer"]],
     )
 
-    def toggle_mode(mode, session):
+    def toggle_mode(mode, session, same_on):
         is_cam = mode == "Webcam Stream"
         fresh_session = reset_session(session)
         return (
             gr.update(visible=is_cam),
-            gr.update(visible=is_cam),  # realtime_viewer
+            gr.update(visible=is_cam and not same_on),  # realtime_viewer
             gr.update(visible=not is_cam),  # video_wrap_group
             gr.update(visible=not is_cam),
             gr.update(visible=not is_cam),  # gallery
@@ -438,7 +447,7 @@ def _wire_realtime_events(
 
     c_real["stream_mode"].change(
         toggle_mode,
-        inputs=[c_real["stream_mode"], c_real["session_state"]],
+        inputs=[c_real["stream_mode"], c_real["session_state"], c_real["same_window_chk"]],
         outputs=[
             c_real["webcam_wrap_group"],
             c_real["realtime_viewer"],
@@ -498,6 +507,8 @@ def _wire_realtime_events(
             c_real["prep_custom_resize_width"],
             c_real["prep_custom_resize_height"],
             c_real["det_temp_slider"],
+            c_real["stream_mode"],
+            c_real["same_window_chk"],
         ],
         outputs=[
             c_real["realtime_viewer"],

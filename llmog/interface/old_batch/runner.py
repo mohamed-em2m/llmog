@@ -164,28 +164,15 @@ def run_batch_detection_gui(
         return
 
     mode_norm = (category_strategy or "strict").lower().strip()
-    domain_hint = ""
-    if "free" in mode_norm:
-        # Open-world: the text field is a *domain hint*, not a closed-set
-        # category list. Always run with the "*" wildcard so the detector is
-        # free to name real objects (person, tennis_racket, …).
-        domain_hint = (categories_str or "").strip()
-        categories = ["*"]
-    else:
-        categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
-        if not categories:
+    categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
+    if not categories:
+        if "free" in mode_norm:
+            categories = ["*"]
+        else:
             yield _sth(f"Please list at least one category for {category_strategy.capitalize()} mode (or choose Free mode).", state="error"), _render_progress_bar(
                 0
             ), *_empty_yield
             return
-
-    # Inject the open-world domain focus as context for the detector/judge.
-    if domain_hint:
-        category_definitions = (
-            (category_definitions or "")
-            + f"\n\nDomain focus: The images are from a '{domain_hint}' setting. "
-            f"Prioritize objects commonly found and relevant in this setting."
-        ).strip()
 
     # Normalize image_files into a list (prevent iterating character-by-character if a string is passed)
     raw_list: List[Any]

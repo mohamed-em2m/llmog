@@ -89,6 +89,8 @@ def process_single_frame(
     prep_custom_resize_width: float,
     prep_custom_resize_height: float,
     detector_temp: float = 0.9,
+    stream_mode: str = "Webcam Stream",
+    same_window_on: bool = False,
 ) -> Tuple[Any, Any, str, SessionDetector]:
     """Continuous Live Streaming Processor – now returns both DetectionViewer payload and same-window boxes.
 
@@ -208,7 +210,13 @@ def process_single_frame(
         anns = realtime_boxes_to_annotations(tracked_boxes)
     except Exception:
         anns = []
-    viewer_payload = build_viewer_payload(frame, anns)
+    # Perf: when the interactive viewer is hidden (same-window ⚡ overlay ON),
+    # skip the per-tick PIL→WebP encode entirely — the canvas overlay draws
+    # boxes client-side and is the only visible output.
+    viewer_visible = ("video" not in (stream_mode or "").lower()) and not bool(
+        same_window_on
+    )
+    viewer_payload = build_viewer_payload(frame, anns) if viewer_visible else None
     boxes_json = {"boxes": tracked_boxes, "frame_w": frame_w, "frame_h": frame_h}
     if not hud or "DETECTED" not in hud:
         hud = f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>' if anns else hud
@@ -383,8 +391,18 @@ def process_video_frames(
             errors += 1
             last_raw = f
         # Gallery keeps OpenCV-annotated frames for quick scan (restores sample frame detection)
+        # Perf: downscale gallery copies to ≤960px — 60 full-res 1080p frames
+        # otherwise hold ~370MB RAM and serialize slowly to the browser.
         try:
-            gallery_frames.append(draw_boxes_opencv(f, last_boxes))
+            gal = draw_boxes_opencv(f, last_boxes)
+            if max(gal.shape[0], gal.shape[1]) > 960:
+                scale = 960.0 / max(gal.shape[0], gal.shape[1])
+                gal = cv2.resize(
+                    gal,
+                    (int(gal.shape[1] * scale), int(gal.shape[0] * scale)),
+                    interpolation=cv2.INTER_AREA,
+                ) if cv2 is not None else gal
+            gallery_frames.append(gal)
         except Exception:
             gallery_frames.append(f)
         # Viewer keeps last frame's interactive DetectionViewer payload

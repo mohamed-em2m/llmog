@@ -57,35 +57,6 @@ def on_explorer_next(current: str, batch_id: str):
     return gr.update(value=choices[new_idx])
 
 
-def on_explorer_first(current: str, batch_id: str):
-    """Jump to the first result image."""
-    batch_results = _cache_get(batch_id)
-    choices = list(batch_results.keys()) if batch_results else []
-    if not choices:
-        return gr.update()
-    return gr.update(value=choices[0])
-
-
-def on_explorer_last(current: str, batch_id: str):
-    """Jump to the last result image."""
-    batch_results = _cache_get(batch_id)
-    choices = list(batch_results.keys()) if batch_results else []
-    if not choices:
-        return gr.update()
-    return gr.update(value=choices[-1])
-
-
-def on_explorer_pos(current: str, batch_id: str) -> str:
-    """Position badge for the results navigator — '3 / 10'."""
-    batch_results = _cache_get(batch_id)
-    choices = list(batch_results.keys()) if batch_results else []
-    total = len(choices)
-    if not total:
-        return '<span class="xp-pos">–&hairsp;/&hairsp;–</span>'
-    idx = choices.index(current) + 1 if current in choices else 1
-    return f'<span class="xp-pos">{idx}&hairsp;/&hairsp;{total}</span>'
-
-
 def _viewer_payload_for(
     base_img: Optional[Image.Image],
     detections: list | None,

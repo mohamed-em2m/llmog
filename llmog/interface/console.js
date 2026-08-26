@@ -7,13 +7,17 @@
      ════════════════════════════════════════════════════════════════════════ -->
 <script>
 // ── Copy panel text to clipboard ──────────────────────────────────────────
-function copyOut(elementId) {
+function copyOut(elementId, btn) {
     const wrapper = document.getElementById(elementId);
     if (!wrapper) return;
+    // Capture the button NOW — `window.event` is unreliable inside async callbacks
+    if (!btn) {
+        try { btn = (typeof event !== 'undefined' && event && event.currentTarget) || null; } catch (_) { btn = null; }
+    }
     const textarea = wrapper.querySelector('textarea');
     const text = textarea ? textarea.value : (wrapper.innerText || wrapper.textContent);
     navigator.clipboard.writeText(text).then(() => {
-        const btn = event.currentTarget;
+        if (!btn) return;
         const orig = btn.textContent;
         btn.textContent = '✓ Copied';
         btn.classList.add('copied');
@@ -137,12 +141,27 @@ function initBauhausMotion() {
     });
 }
 
+// ── Force dropdown option lists to escape overflow:hidden ancestors ─────
+function fixDropdownClipping() {
+    // Gradio renders option lists inside the component — any ancestor with
+    // overflow:hidden (tabs/tabitem/accordion/container) clips the popup.
+    // On every click inside a dropdown, force all ancestors to visible.
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.gr-dropdown, [data-testid="dropdown"]')) return;
+        const chain = ['.gradio-container','.tabs','.tabitem','.gr-accordion','.gr-dropdown','.gr-group'];
+        chain.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => { el.style.overflow = 'visible'; });
+        });
+    }, true);
+}
+
 // Initialise on load
 document.addEventListener('DOMContentLoaded', () => {
     attachLogAutoScroll('server-log-ta');
     attachLogAutoScroll('pipeline-log-ta');
     observeProgressBar();
     initBauhausMotion();
+    fixDropdownClipping();
 });
 // Gradio re-renders after navigation, so also run after a short delay
 setTimeout(() => {
@@ -150,5 +169,6 @@ setTimeout(() => {
     attachLogAutoScroll('pipeline-log-ta');
     observeProgressBar();
     initBauhausMotion();
+    fixDropdownClipping();
 }, 2000);
 </script>

@@ -415,6 +415,13 @@ _CUSTOM_CANVAS_JS = """
         bindEvents: function() {
             const self = this;
             window.addEventListener('resize', () => self.resizeCanvas());
+
+            // Scope global handlers to this tab — the canvas keeps living while
+            // its Gradio tab is hidden, so paste/keys must be ignored there.
+            const isTabVisible = () => {
+                const el = document.getElementById('llmog-custom-canvas-app');
+                return !!(el && el.offsetParent !== null);
+            };
             
             const toolBbox = document.getElementById('tool-bbox');
             const toolBrush = document.getElementById('tool-brush');
@@ -575,6 +582,7 @@ _CUSTOM_CANVAS_JS = """
             });
             
             window.addEventListener('paste', (e) => {
+                if (!isTabVisible()) return;
                 const items = (e.clipboardData || e.originalEvent.clipboardData).items;
                 for (let i = 0; i < items.length; i++) {
                     if (items[i].type.indexOf('image') !== -1) {
@@ -586,6 +594,7 @@ _CUSTOM_CANVAS_JS = """
             });
             
             window.addEventListener('keydown', (e) => {
+                if (!isTabVisible()) return;
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
                 
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
@@ -1375,7 +1384,7 @@ def wire_draw_events(
             fn=_load_sample_bridge,
             inputs=None,
             outputs=[c_draw["custom_draw_payload"]],
-            js="() => { if (window.CustomCanvasController) { setTimeout(() => { const ta = document.querySelector('#custom_draw_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) window.CustomCanvasController.loadImageFromDataUrl(p.background); } catch(e){} } }, 300); } }",
+            js="() => { if (window.CustomCanvasController) { setTimeout(() => { const ta = document.querySelector('#custom_draw_payload_box textarea'); if (ta && ta.value) { try { const p = JSON.parse(ta.value); if (p.background) { window.CustomCanvasController.loadImageFromDataUrl(p.background); } else { alert('Sample image asset not found on server.'); } } catch(e){} } }, 300); } }",
         )
 
     # ── Recognition execution with Gradio Backend ───────────────────────────

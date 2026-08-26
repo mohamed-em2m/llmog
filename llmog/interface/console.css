@@ -922,9 +922,138 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
 /* Batch — upload + Run on one row; pill tokens */
 .upload-run-row { align-items: center !important; gap: 10px !important; flex-wrap: nowrap !important; }
 .upload-run-row .gr-button { min-width: 140px !important; border-radius: 999px !important; }
-/* Batch explorer arrow navigation */
-.explorer-nav-row { align-items: center !important; gap: 6px !important; }
-.nav-arrow { min-width: 40px !important; width: 40px !important; height: 36px !important; border-radius: 999px !important; padding: 0 !important; font-weight: 800 !important; }
+/* ── Batch explorer transport bar — single minimal horizontal strip ──── */
+.explorer-nav-top {
+  margin-top: 6px !important;
+  padding: 5px 8px !important;
+  border-radius: 12px !important;
+}
+/* One line, never wrapping — but NEVER clip the dropdown popup lists */
+.explorer-transport {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 4px !important;
+  overflow: visible !important;
+}
+.explorer-transport > * { flex-shrink: 0 !important; }
+.explorer-transport .xp-image-select { flex: 1 1 auto !important; min-width: 140px !important; }
+.explorer-transport .xp-round-select { flex: 1 1 auto !important; min-width: 96px !important; }
+/* Dropdown option lists must float above everything and never be clipped */
+.explorer-transport .xp-image-select,
+.explorer-transport .xp-round-select {
+  position: relative !important;
+  z-index: 30 !important;
+}
+.explorer-transport .xp-image-select ul,
+.explorer-transport .xp-round-select ul,
+.explorer-transport ul[role="listbox"],
+.explorer-nav-top ul[role="listbox"] {
+  overflow: visible !important;
+  max-height: none !important;
+  z-index: 1000 !important;
+}
+.explorer-nav-top, .explorer-nav-top * { pointer-events: auto !important; }
+
+/* Minimal icon buttons */
+.explorer-transport .gr-button {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 8px !important;
+  font-size: .72rem !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: none !important;
+  transition: background .12s ease, transform .1s ease !important;
+}
+.explorer-transport .gr-button:hover { background: rgba(27,123,110,.18) !important; }
+.explorer-transport .gr-button:active { transform: scale(.92) !important; }
+.xp-dim { opacity: .55 !important; }
+
+/* Slim dropdowns inside the bar (fix selector rendering) */
+.explorer-transport .xp-image-select,
+.explorer-transport .xp-round-select {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.explorer-transport .xp-image-select input,
+.explorer-transport .xp-image-select .wrap > div,
+.explorer-transport .xp-round-select input,
+.explorer-transport .xp-round-select .wrap > div,
+.explorer-transport .xp-image-select select,
+.explorer-transport .xp-round-select select {
+  min-height: 26px !important;
+  height: 26px !important;
+  padding: 2px 8px !important;
+  font-size: .82rem !important;
+  border-radius: 8px !important;
+}
+
+/* Position + score chips */
+.xp-pos-wrap, .xp-score-wrap {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.xp-pos, .xp-score, .xp-score-wrap .score-badge {
+  display: inline-block !important;
+  padding: 3px 9px !important;
+  border-radius: 999px !important;
+  background: rgba(127,127,127,.14) !important;
+  font-weight: 700 !important;
+  font-size: .74rem !important;
+  font-variant-numeric: tabular-nums !important;
+  white-space: nowrap !important;
+}
+.xp-pos { min-width: 48px !important; text-align: center !important; }
+
+/* Compact grid checkbox */
+.xp-grid-chk { margin: 0 !important; padding: 0 !important; }
+.xp-grid-chk label { margin: 0 !important; gap: 4px !important; white-space: nowrap !important; font-size: .78rem !important; }
+/* Explorer-specific nav arrows: larger, more prominent */
+.explorer-nav-arrow { min-width: 46px !important; width: 46px !important; height: 40px !important; font-size: 1.05rem !important; border-radius: 999px !important; transition: transform 0.12s ease, box-shadow 0.12s ease !important; }
+.explorer-nav-arrow:hover { transform: scale(1.1) !important; box-shadow: 0 0 0 3px rgba(27,123,110,0.25) !important; }
+.explorer-nav-arrow:active { transform: scale(0.95) !important; }
+/* Batch — queue navigator (browse/delete queued images) */
+.queue-nav-row { align-items: center !important; gap: 8px !important; margin-top: -4px !important; flex-wrap: nowrap !important; }
+.queue-stats-wrap { flex: 1 1 auto !important; min-width: 0 !important; display: flex !important; align-items: center !important; }
+.queue-nav-stats {
+  display: flex !important; align-items: center !important; gap: 10px !important;
+  width: 100% !important; padding: 5px 14px !important;
+  background: var(--color-surface, rgba(125,133,144,0.08)) !important;
+  border: 1px solid rgba(125,133,144,0.25) !important;
+  border-radius: 999px !important;
+}
+.queue-pos {
+  font-weight: 800 !important; font-size: 0.82rem !important;
+  color: var(--color-accent-teal) !important;
+  white-space: nowrap !important; letter-spacing: 0.02em !important;
+}
+.queue-name {
+  font-size: 0.75rem !important; color: #7d8590 !important;
+  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;
+}
+.queue-nav-stats.empty .queue-name { font-style: italic !important; opacity: 0.7 !important; }
+.queue-delete-btn { height: 36px !important; border-radius: 999px !important; font-weight: 700 !important; }
+/* Batch — results position badge */
+.pos-display-col { display: flex !important; align-items: center !important; justify-content: center !important; }
+.pos-badge {
+  display: inline-block !important; padding: 4px 12px !important;
+  border-radius: 999px !important; font-weight: 800 !important; font-size: 0.8rem !important;
+  background: rgba(27,123,110,0.10) !important; color: var(--color-accent-teal) !important;
+  border: 1px solid rgba(27,123,110,0.35) !important; white-space: nowrap !important;
+}
 /* Batch source viewer — fixed 520px, prevent collapse before results */
 .batch-bottom-col .gr-image { height: 520px !important; min-height: 520px !important; max-height: 520px !important; display: flex !important; align-items: center !important; justify-content: center !important; border-radius: 16px !important; overflow: hidden !important; }
 .batch-bottom-col .gr-image .wrap, .batch-bottom-col .gr-image [data-testid="image"] { height: 100% !important; min-height: 520px !important; display: flex !important; align-items: center !important; justify-content: center !important; }
@@ -975,3 +1104,33 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--color-accent-n
 /* Ensure decorative circles don't block interaction — scoped, not global */
 .gradio-container, .tabitem, .gr-group, .gr-column, .batch-bottom-col, .custom-canvas-container, .rt-webcam-wrap { position: relative !important; }
 .gradio-container::before, .gradio-container::after, .bauhaus-bubble { pointer-events: none !important; }
+
+/* ── GLOBAL DROPDOWN FIX ─────────────────────────────────────────────────
+   Gradio renders each Dropdown's option list inside the component. Any
+   `overflow: hidden` on an ancestor (tabs/tabitem/wrappers/container/
+   accordion) clips the popup and makes every dropdown look dead.
+   Force every ancestor that historically clipped to overflow: visible,
+   and float option lists above everything. High-specificity
+   `html body` prefix beats earlier rules with the same !important. */
+html body .gradio-container,
+html body .tabs,
+html body .tabitem,
+html body .gradio-container .tabitem,
+html body .gr-accordion,
+html body .accordion,
+html body details,
+html body .gr-dropdown,
+html body .gr-dropdown .wrap,
+html body .gr-dropdown > div,
+html body [data-testid="dropdown"] {
+  overflow: visible !important;
+}
+html body .gr-dropdown ul.options,
+html body .gr-dropdown ul[role="listbox"],
+html body ul.options,
+html body .dropdown-menu {
+  z-index: 99999 !important;
+  position: absolute !important;
+  overflow-y: auto !important;
+  max-height: 260px !important;
+}

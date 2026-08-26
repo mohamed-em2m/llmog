@@ -121,7 +121,7 @@ def _jinja_render(template: str, **kwargs) -> str:
 
 def get_realtime_prompt(categories: list[str] | None = None) -> str:
     """Render the real-time free-detection prompt."""
-    cats_str = ", ".join(categories) if categories else "*"
+    cats_str = categories_prompt_text(categories)
 
     dp = _dynaprompt_attr("realtime_detector")
     if dp is not None:
@@ -133,6 +133,33 @@ def get_realtime_prompt(categories: list[str] | None = None) -> str:
             )
 
     return _jinja_render(DEFAULT_REALTIME_TEMPLATE, categories_list=cats_str)
+
+
+# ---------------------------------------------------------------------------
+# Categories text helper
+# ---------------------------------------------------------------------------
+
+_OPEN_WORLD_CATEGORIES_TEXT = (
+    "**OPEN-WORLD DETECTION MODE** — no fixed category list.\n"
+    "- Detect **every clearly visible, distinct object** in the image: people, animals, "
+    "vehicles, furniture, sports equipment, buildings, signs, plants, food, tools, etc.\n"
+    "- Give each detection a short, specific, lowercase label naming the object itself "
+    "(e.g. `person`, `tennis_racket`, `airplane`, `scoreboard`, `parking_sign`).\n"
+    "- Use concrete nouns — never generic labels like `object` or `thing`, and never the scene name."
+)
+
+
+def categories_prompt_text(categories: List[str] | None) -> str:
+    """Render the *Categories to detect* block for a category list.
+
+    ``["*"]`` (or any list containing ``"*"``) switches to open-world phrasing
+    so the model is instructed to detect everything instead of matching a
+    literal asterisk label.
+    """
+    cats = [c for c in (categories or []) if c]
+    if not cats or "*" in cats:
+        return _OPEN_WORLD_CATEGORIES_TEXT
+    return ", ".join(cats)
 
 
 # ---------------------------------------------------------------------------
@@ -194,13 +221,14 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
         som_block += "\nYou may refer to these candidates or output standard bounding boxes."
 
     # --- Render via DynaPrompt (if using the default template) ---
+    cats_text = categories_prompt_text(categories)
     if template == DEFAULT_DETECTOR_TEMPLATE:
         dp = _dynaprompt_attr("detector_agent")
         if dp is not None:
             try:
                 return dp.render(
                     {
-                        "categories_list": ", ".join(categories),
+                        "categories_list": cats_text,
                         "category_definitions": category_definitions + som_block,
                         "feedback_block": feedback_block,
                     }
@@ -212,7 +240,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
 
     return _jinja_render(
         template,
-        categories_list=", ".join(categories),
+        categories_list=cats_text,
         category_definitions=category_definitions + som_block,
         feedback_block=feedback_block,
     )

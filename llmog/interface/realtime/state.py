@@ -62,10 +62,22 @@ def resolve_endpoint(
     ext_api_key: str,
     ext_model_name: str,
 ) -> Tuple[str, str, str]:
-    base_url = ext_api_url if use_external_api else f"http://127.0.0.1:{server_port}/v1"
-    api_key = ext_api_key if use_external_api else "no-key"
-    model_name = ext_model_name if use_external_api else "local-model"
-    return base_url, api_key, model_name
+    if use_external_api:
+        return ext_api_url, ext_api_key, ext_model_name
+    # Local mode: prefer the live server manager so the true port AND model name
+    # are used (vLLM validates `model` against its served list — a placeholder
+    # like "local-model" makes every realtime request fail with 404/400).
+    try:
+        from interface.state import state as _app_state
+
+        with _app_state.server_lock:
+            mgr = _app_state.server_manager
+            if mgr is not None and mgr.is_healthy():
+                return f"http://127.0.0.1:{mgr.port}/v1", "not-needed", mgr.model
+    except Exception:
+        pass
+    # Fallback: no live manager info available — use UI port + generic name.
+    return f"http://127.0.0.1:{server_port}/v1", "no-key", "local-model"
 
 
 @dataclass

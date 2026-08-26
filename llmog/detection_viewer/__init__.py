@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import weakref
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import gradio as gr
 import numpy as np
@@ -31,36 +32,51 @@ def _load_image(image: str | Path | Image.Image | np.ndarray) -> Image.Image:
     return Image.open(image)
 
 
-_WEBP_URL_CACHE: dict[int, str] = {}
+# url -> cached entry. Two key kinds:
+#   - id(img): object-identity dedup. Guarded by a weakref — Python may recycle
+#     ids of freed objects, so a dead ref means the entry MUST be dropped
+#     (otherwise a brand-new image could be served a stale URL).
+#   - content hash: byte-dedup for realtime frames (safe without a live ref,
+#     the key is derived from the image content itself).
+_WEBP_URL_CACHE: dict[Any, Tuple[str, Optional["weakref.ref"]]] = {}
 
 
 def _save_image_to_cache(img: Image.Image, cache_dir: str) -> str:
-    # Dedup: same PIL object (id) reused across explorer round switches → reuse URL
-    # without re-encoding WebP.  Also handle identical bytes via hash for realtime frames.
+    img_id: Optional[int] = None
+    h_key: Optional[int] = None
     try:
         img_id = id(img)
-        if img_id in _WEBP_URL_CACHE:
-            return _WEBP_URL_CACHE[img_id]
-        # For realtime numpy frames that are new objects but identical bytes,
-        # hash a thumbnail to avoid O(W*H) hash on 4K frames.
         thumb = img.copy()
         thumb.thumbnail((64, 64), Image.Resampling.NEAREST)
-        h = hash(thumb.tobytes())
-        h_key = hash((h, img.size))
-        if h_key in _WEBP_URL_CACHE:
-            return _WEBP_URL_CACHE[h_key]
+        h_key = hash((hash(thumb.tobytes()), img.size))
     except Exception:
-        h_key = None
-        img_id = None
+        pass
+
+    # Identity lookup — only valid while the original object is alive.
+    if img_id is not None:
+        ent = _WEBP_URL_CACHE.get(img_id)
+        if ent is not None:
+            url, ref = ent
+            if ref is not None and ref() is not None:
+                return url
+            _WEBP_URL_CACHE.pop(img_id, None)
+
+    # Content lookup — safe even when the source object was freed.
+    if h_key is not None:
+        ent = _WEBP_URL_CACHE.get(h_key)
+        if ent is not None:
+            return ent[0]
+
     cached_path = processing_utils.save_pil_to_cache(img, cache_dir, format="webp")
     url = f"/gradio_api/file={cached_path}"
     try:
+        ref = weakref.ref(img)
         if img_id is not None:
-            _WEBP_URL_CACHE[img_id] = url
-            if len(_WEBP_URL_CACHE) > 128:
-                _WEBP_URL_CACHE.pop(next(iter(_WEBP_URL_CACHE)))
+            _WEBP_URL_CACHE[img_id] = (url, ref)
         if h_key is not None:
-            _WEBP_URL_CACHE[h_key] = url
+            _WEBP_URL_CACHE[h_key] = (url, None)
+        while len(_WEBP_URL_CACHE) > 256:
+            _WEBP_URL_CACHE.pop(next(iter(_WEBP_URL_CACHE)))
     except Exception:
         pass
     return url

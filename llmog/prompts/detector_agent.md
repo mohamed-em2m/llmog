@@ -54,7 +54,7 @@ Then output your final answer inside `<answer>` tags — **pure JSON only**:
 
 ## Hard rules
 - Coordinates must be **integers** in the **0–1000** range with **x1 < x2** and **y1 < y2**.
-- `"label"` must be **exactly** one of: `{{ categories_list }}` — no variations, plurals, synonyms, or abbreviations.
+- `"label"` must be a short, specific category name consistent with the **Categories to detect** section above — no variations, plurals, synonyms, or abbreviations of the listed names.
 - The content inside `<answer>` must be **pure, valid JSON** (an array, possibly `[]`) — no comments, no trailing commas, no markdown code fences, no extra text.
 - If no target objects are visible in the image, output an empty array: `[]`.
 - Do **not** include your `<analysis>` reasoning inside the `<answer>` block.

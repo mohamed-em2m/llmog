@@ -23,12 +23,20 @@ except Exception:
 import gradio as gr
 
 from interface.console_theme import theme
-from interface.state import custom_css, CONSOLE_JS, handle_preset_change, toggle_custom_color_field
+from interface.state import (
+    custom_css,
+    CONSOLE_JS,
+    handle_preset_change,
+    toggle_custom_color_field,
+    _cache_get as _hero_cache_get,
+)
+from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
 from interface.tab_server import (
     _build_server_tab,
     start_server_wrapper,
     stop_server_wrapper,
     get_server_status_and_logs,
+    on_server_backend_change,
 )
 from interface.tab_batch import (
     _build_batch_tab,
@@ -39,12 +47,15 @@ from interface.tab_batch import (
     on_explorer_round_change,
     on_explorer_prev,
     on_explorer_next,
+    on_explorer_first,
+    on_explorer_last,
+    on_explorer_pos,
 )
-from interface.batch.explorer import _viewer_payload_for as _hero_payload_builder
-from interface.state import _cache_get as _hero_cache_get
-from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
-from PIL import Image as _PILImage
-from interface.batch.components import on_batch_preset_change, on_batch_strategy_change, handle_batch_upload
+from interface.batch.components import (
+    on_batch_preset_change,
+    on_batch_strategy_change,
+    handle_batch_upload,
+)
 from interface.tab_prompts import _build_prompts_tab
 from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
 from interface.tab_draw import build_draw_tab, wire_draw_events
@@ -109,8 +120,8 @@ def _on_endpoint_mode_change(mode: str):
     is_ext = mode == "External API"
     return (
         gr.update(visible=not is_ext),  # local_server_group
-        gr.update(visible=is_ext),       # ext_api_group
-        is_ext,                          # use_external_api_chk (hidden bool)
+        gr.update(visible=is_ext),  # ext_api_group
+        is_ext,  # use_external_api_chk (hidden bool)
         gr.update(interactive=not is_ext),  # start_server_btn
         gr.update(interactive=not is_ext),  # stop_server_btn
         gr.update(interactive=not is_ext),  # server_preset
@@ -122,8 +133,9 @@ def _on_endpoint_mode_change(mode: str):
     )
 
 
-def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state):
-
+def _wire_events(
+    c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state
+):
     """Wire all event handlers across server, batch, and prompt tabs."""
 
     # ── Server tab ────────────────────────────────────────────────────────
@@ -149,6 +161,17 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         handle_preset_change,
         c_srv["server_preset"],
         c_srv["server_model_input"],
+    )
+
+    # Backend-aware advanced options: llama-only vs vLLM groups
+    c_srv["server_backend"].change(
+        on_server_backend_change,
+        inputs=[c_srv["server_backend"]],
+        outputs=[
+            c_srv["llama_advanced_group"],
+            c_srv["vllm_advanced_group"],
+            c_srv["server_mtp_chk"],
+        ],
     )
 
     c_srv["start_server_btn"].click(
@@ -231,7 +254,7 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
     c_bat["input_images"].upload(
         fn=handle_batch_upload,
         inputs=[c_bat["input_images"], c_bat["upload_state"]],
-        outputs=[c_bat["upload_state"], c_bat["pipeline_status"]],
+        outputs=[c_bat["upload_state"], c_bat["source_image_viewer"], c_bat["pipeline_status"]],
     )
 
     # ── Run / Cancel ──────────────────────────────────────────────────────
@@ -358,8 +381,42 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         _hero_view_for_selection,
         inputs=_hero_inputs,
         outputs=_hero_outputs,
+    ).then(
+        on_explorer_pos,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_pos_display"]],
+        queue=False,
     )
 
+    # ── Arrow / jump navigation for batch explorer ──
+    # Each button just moves the image dropdown; the dropdown's .change chain
+    # above refreshes rounds, viewer, hero and the position badge.
+    c_bat["explorer_first_btn"].click(
+        on_explorer_first,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+        queue=False,
+    )
+    c_bat["explorer_prev_btn"].click(
+        on_explorer_prev,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+        queue=False,
+    )
+    c_bat["explorer_next_btn"].click(
+        on_explorer_next,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+        queue=False,
+    )
+    c_bat["explorer_last_btn"].click(
+        on_explorer_last,
+        inputs=[c_bat["explorer_image_select"], batch_id_state],
+        outputs=[c_bat["explorer_image_select"]],
+        queue=False,
+    )
+
+    # Round dropdown changed: refresh all explorer outputs
     c_bat["explorer_round_select"].change(
         on_explorer_round_change,
         inputs=_explorer_inputs,
@@ -376,23 +433,9 @@ def _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write
         outputs=_explorer_outputs,
     )
 
-    # ── Arrow navigation for batch explorer ──
-    c_bat["explorer_prev_btn"].click(
-        on_explorer_prev,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
-    )
-    c_bat["explorer_next_btn"].click(
-        on_explorer_next,
-        inputs=[c_bat["explorer_image_select"], batch_id_state],
-        outputs=[c_bat["explorer_image_select"]],
-    )
-
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(
-        theme=theme, css=custom_css, title="LLM Object Detection Console"
-    ) as app:
+    with gr.Blocks(title="LLM Object Detection Console") as app:
         # Gradio 6: <script> inside gr.HTML value never executes (innerHTML);
         # head= injects it into <head> where it actually runs.
         gr.HTML(value="", head=CONSOLE_JS)
@@ -437,11 +480,12 @@ def build_app() -> gr.Blocks:
                 c_rt_interactive = build_realtime_interactive_tab()
 
         # ── Wire all events ───────────────────────────────────────────────
-        _wire_events(c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state)
+        _wire_events(
+            c_srv, c_bat, c_pmt, server_status_badge, batch_id_state, write_yolo_state
+        )
         wire_draw_events(c_draw, c_srv, c_bat)
         _wire_realtime_events(c_rt, c_srv, c_bat)
         wire_realtime_interactive_events(c_rt_interactive, c_srv)
-
 
         # ── Auto-refresh server status every 5 s ─────────────────────────
         status_timer = gr.Timer(value=5.0)

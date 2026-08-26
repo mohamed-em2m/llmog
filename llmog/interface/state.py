@@ -118,7 +118,7 @@ def panel_header(title: str, raw_ta_id: str) -> str:
     <span class="out-header-title">{title}</span>
   </div>
   <div class="out-header-right">
-    <button class="copy-btn" onclick="copyOut('{raw_ta_id}')">&#9096; Copy Raw Text</button>
+    <button class="copy-btn" onclick="copyOut('{raw_ta_id}', this)">&#9096; Copy Raw Text</button>
   </div>
 </div>"""
 

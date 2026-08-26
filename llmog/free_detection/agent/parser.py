@@ -117,8 +117,12 @@ def validate_detections(
     """
     Drop malformed entries (bad label, bad/degenerate bbox) instead of letting
     them silently corrupt rendering and the judge prompt. Logs what it drops.
+
+    Open-world mode: ``"*"`` in *categories* acts as a wildcard — any non-empty
+    string label is accepted.
     """
     valid_labels = set(categories)
+    open_world = "*" in valid_labels
     cleaned = []
     for i, item in enumerate(detections):
         if not isinstance(item, dict):
@@ -126,7 +130,16 @@ def validate_detections(
             continue
 
         label = item.get("label")
-        if label not in valid_labels:
+        if open_world:
+            if not isinstance(label, str) or not label.strip():
+                logger.warning(
+                    "Dropping detection #%d: empty label in open-world mode %r",
+                    i,
+                    label,
+                )
+                continue
+            item = {**item, "label": label.strip()}
+        elif label not in valid_labels:
             logger.warning("Dropping detection #%d: unknown label %r", i, label)
             continue
 
