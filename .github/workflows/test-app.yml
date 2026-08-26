@@ -1,0 +1,35 @@
+name: Run pytest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      APP_SECERTS: ${{ secrets.APP_SECERTS }}
+      FIRESTORE_CREDENTIALS: ${{ secrets.FIRESTORE_CREDENTIALS }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          uv sync
+          source .venv/bin/activate
+
+      - name: Set environment variables
+        run: |
+          printf '%s' "$APP_SECERTS" | base64 -d > llmog/config/.secrets.toml
+
+      - name: Run tests
+        run: uv run pytest tests --ignore=tests/eval -vv

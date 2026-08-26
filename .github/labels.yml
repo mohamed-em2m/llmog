@@ -1,0 +1,92 @@
+- name: bug
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: documentation
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: duplicate
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: enhancement
+  color: "a2eeef"
+  description: "New feature or request"
+
+- name: good first issue
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: help wanted
+  color: "008672"
+  description: "Extra attention is needed"
+
+- name: invalid
+  color: "e4e669"
+  description: "This doesn't seem right"
+
+- name: question
+  color: "d876e3"
+  description: "Further information is requested"
+
+- name: wontfix
+  color: "d1d5da"
+  description: "This will not be worked on"
+
+# Custom labels
+- name: high-priority
+  color: "b60205"
+  description: "High priority task"
+
+- name: dependencies
+  color: "0366d6"
+  description: "Pull requests that update a dependency file"
+
+- name: need-testing
+  color: "f9d0c4"
+  description: "Needs additional testing before merging"
+
+- name: refactor
+  color: "1d76db"
+  description: "Code refactoring"
+
+- name: core
+  color: "0052cc"
+  description: "Core logic and controllers"
+
+- name: config
+  color: "bfd4f2"
+  description: "Configuration and environment setup"
+
+- name: utils
+  color: "5319e7"
+  description: "Utility functions and helpers"
+
+- name: tests
+  color: "c5def5"
+  description: "Test suites and mocking"
+
+- name: ci/cd
+  color: "e99695"
+  description: "GitHub Actions or deployment workflows"
+
+- name: chore
+  color: "ededed"
+  description: "Maintenance tasks or internal changes"
+
+- name: performance
+  color: "ffcc00"
+  description: "Improvements to response times or efficiency"
+
+- name: security
+  color: "ff0000"
+  description: "Critical security fixes or advisories"
+
+- name: breaking-change
+  color: "d93f0b"
+  description: "Incompatible API or logic changes"
+
+- name: stale
+  color: "6c757d"
+  description: "Inactive issue or PR to be closed"

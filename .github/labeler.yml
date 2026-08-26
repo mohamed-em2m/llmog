@@ -1,0 +1,40 @@
+core:
+  - changed-files:
+      - any-glob-to-any-file: "techtrax-echolyzer/core/**/*"
+
+config:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "techtrax-echolyzer/config/**/*"
+          - "*.yaml"
+          - "*.json"
+
+utils:
+  - changed-files:
+      - any-glob-to-any-file: "techtrax-echolyzer/utils/**/*"
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: "tests/**/*"
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**/*"
+          - "*.md"
+
+ci/cd:
+  - changed-files:
+      - any-glob-to-any-file: ".github/workflows/**/*"
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "requirements.txt"
+          - "pyproject.toml"
+          - "uv.lock"
+
+agents:
+  - changed-files:
+      - any-glob-to-any-file:
+          - techtrax-echolyzer/analyzers/**/*

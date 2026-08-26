@@ -68,7 +68,7 @@ class DetectionViewer(gr.HTML):
 
         has_label = label is not None
         # Gradio 5+ supports html_template/css_template/js_on_load on gr.HTML,
-        # Gradio 4 does not -- fall back to placeholder so build_app still works.
+        # Gradio 4 does not — fall back to placeholder so build_app still works.
         try:
             super().__init__(
                 value=value,
@@ -96,7 +96,7 @@ class DetectionViewer(gr.HTML):
             placeholder = (
                 f"<div style='border:1px solid #E9E0CC; background:#FFD6E0; color:#1A1145; padding:14px; "
                 f"border-radius:16px; font-family:Inter, sans-serif; font-weight:700;'>"
-                f"{panel_title} -- viewer requires Gradio 5+ (current {gr.__version__})</div>"
+                f"{panel_title} — viewer requires Gradio 5+ (current {gr.__version__})</div>"
             )
             super().__init__(
                 value=placeholder,
@@ -184,3 +184,8 @@ class DetectionViewer(gr.HTML):
                 "scoreThresholdMin?: float, scoreThresholdMax?: float}"
             ),
         }
+    from typing import Callable, Literal, Sequence, Any, TYPE_CHECKING
+    from gradio.blocks import Block
+    if TYPE_CHECKING:
+        from gradio.components import Timer
+        from gradio.components.base import Component
