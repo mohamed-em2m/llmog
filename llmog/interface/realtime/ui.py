@@ -9,7 +9,6 @@ from detection_viewer import DetectionViewer
 from free_detection.trackers import MultiAlgorithmTracker
 from interface.batch.reclassification import CATEGORY_PRESETS
 from interface.realtime.state import (
-    SessionDetector,
     new_session_detector,
     reset_session,
     DEFAULT_HUD,
@@ -72,13 +71,24 @@ def _build_realtime_tab() -> Dict[str, Any]:
     c["session_state"] = gr.State(new_session_detector)
 
     with gr.Column(elem_classes=["neo-retro-card"]):
-        gr.HTML('<p class="section-label">🎥 Real-Time Detection — Webcam & Video (Multi-Tracker Integrated)</p>')
+        gr.HTML(
+            '<p class="section-label">🎥 Real-Time Detection — Webcam & Video (Multi-Tracker Integrated)</p>'
+        )
 
         # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) FIXED: equal_height=False prevents flex thrash on stream start ──
-        with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row", "rt-twin-screens"]):
-            with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col", "rt-input-col"]):
+        with gr.Row(
+            equal_height=False,
+            elem_classes=["draw-tab-row", "twin-screens-row", "rt-twin-screens"],
+        ):
+            with gr.Column(
+                scale=1,
+                min_width=420,
+                elem_classes=["batch-bottom-col", "rt-input-col"],
+            ):
                 gr.HTML('<p class="section-label">📥 Input — Live Webcam / Video</p>')
-                with gr.Group(elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]) as webcam_wrap:
+                with gr.Group(
+                    elem_id="rt_webcam_wrap", elem_classes=["rt-webcam-wrap"]
+                ) as webcam_wrap:
                     c["webcam_input"] = gr.Image(
                         sources=["webcam"],
                         streaming=True,
@@ -98,7 +108,11 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         elem_id="rt_same_window_html",
                     )
                 c["webcam_wrap_group"] = webcam_wrap
-                with gr.Group(elem_id="rt_video_wrap", elem_classes=["rt-video-wrap"], visible=False) as video_wrap:
+                with gr.Group(
+                    elem_id="rt_video_wrap",
+                    elem_classes=["rt-video-wrap"],
+                    visible=False,
+                ) as video_wrap:
                     c["video_input"] = gr.Video(
                         label="INPUT VIDEO FILE",
                         sources=["upload"],
@@ -153,7 +167,10 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
 
         # ── DROPDOWN 1: Categories — focused ──
-        with gr.Accordion("📥 Categories & Detection Mode — Strategy, Presets & Definitions", open=False):
+        with gr.Accordion(
+            "📥 Categories & Detection Mode — Strategy, Presets & Definitions",
+            open=False,
+        ):
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     c["category_strategy"] = gr.Radio(
@@ -189,7 +206,9 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 2: Advanced Detection — focused ──
-        with gr.Accordion("⚙️ Advanced Detection Settings — Tracker, Motion & Temperature", open=False):
+        with gr.Accordion(
+            "⚙️ Advanced Detection Settings — Tracker, Motion & Temperature", open=False
+        ):
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     c["tracker_algorithm"] = gr.Dropdown(
@@ -213,7 +232,7 @@ def _build_realtime_tab() -> Dict[str, Any]:
                         value=True,
                         label="⚡ MOTION GATE (Scene-Change Gating)",
                         info="ON: only re-detect when scene changes or stale timer fires. "
-                             "OFF: re-detect as fast as GPU can respond.",
+                        "OFF: re-detect as fast as GPU can respond.",
                     )
                     c["motion_sensitivity"] = gr.Slider(
                         minimum=0.5,
@@ -279,7 +298,10 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["prep_gamma_slider"] = gr.Slider(
                     label="Gamma Correction",
-                    minimum=0.5, maximum=2.0, step=0.05, value=1.0
+                    minimum=0.5,
+                    maximum=2.0,
+                    step=0.05,
+                    value=1.0,
                 )
                 c["prep_wb_chk"] = gr.Checkbox(
                     label="Gray World White Balance Correction", value=False
@@ -301,20 +323,39 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 )
                 c["prep_grid_step_slider"] = gr.Slider(
                     label="Grid Step Size (px)",
-                    minimum=20, maximum=500, step=10, value=250
+                    minimum=20,
+                    maximum=500,
+                    step=10,
+                    value=250,
                 )
                 c["prep_grid_line_width_slider"] = gr.Slider(
                     label="Grid Line Thickness (px)",
-                    minimum=1, maximum=10, step=1, value=1
+                    minimum=1,
+                    maximum=10,
+                    step=1,
+                    value=1,
                 )
                 c["prep_grid_font_size_slider"] = gr.Slider(
                     label="Grid Label Font Size (0 = Auto)",
-                    minimum=0, maximum=48, step=1, value=0
+                    minimum=0,
+                    maximum=48,
+                    step=1,
+                    value=0,
                 )
                 with gr.Row():
                     c["prep_grid_line_color_dropdown"] = gr.Dropdown(
                         label="Grid Line Color",
-                        choices=["red", "blue", "green", "white", "black", "yellow", "cyan", "magenta", "custom"],
+                        choices=[
+                            "red",
+                            "blue",
+                            "green",
+                            "white",
+                            "black",
+                            "yellow",
+                            "cyan",
+                            "magenta",
+                            "custom",
+                        ],
                         value="red",
                     )
                     c["prep_grid_line_color_custom"] = gr.Textbox(
@@ -323,7 +364,17 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 with gr.Row():
                     c["prep_grid_text_color_dropdown"] = gr.Dropdown(
                         label="Grid Text Color",
-                        choices=["white", "black", "red", "blue", "green", "yellow", "cyan", "magenta", "custom"],
+                        choices=[
+                            "white",
+                            "black",
+                            "red",
+                            "blue",
+                            "green",
+                            "yellow",
+                            "cyan",
+                            "magenta",
+                            "custom",
+                        ],
                         value="white",
                     )
                     c["prep_grid_text_color_custom"] = gr.Textbox(
@@ -332,7 +383,15 @@ def _build_realtime_tab() -> Dict[str, Any]:
                 with gr.Row():
                     c["prep_grid_backing_color_dropdown"] = gr.Dropdown(
                         label="Grid Text Backing Color",
-                        choices=["black", "none", "white", "red", "blue", "green", "custom"],
+                        choices=[
+                            "black",
+                            "none",
+                            "white",
+                            "red",
+                            "blue",
+                            "green",
+                            "custom",
+                        ],
                         value="black",
                     )
                     c["prep_grid_backing_color_custom"] = gr.Textbox(
@@ -346,7 +405,11 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     label="Enable Image Tiling", value=False
                 )
                 c["prep_tile_size_slider"] = gr.Slider(
-                    label="Tile Size (px)", minimum=256, maximum=1024, step=128, value=512
+                    label="Tile Size (px)",
+                    minimum=256,
+                    maximum=1024,
+                    step=128,
+                    value=512,
                 )
                 c["prep_tile_overlap_slider"] = gr.Slider(
                     label="Tile Overlap (%)", minimum=0, maximum=50, step=5, value=20
@@ -355,21 +418,28 @@ def _build_realtime_tab() -> Dict[str, Any]:
                     label="Enable Crop & Verify Validation", value=False
                 )
                 c["prep_cv_padding_slider"] = gr.Slider(
-                    label="Crop Context Padding (%)", minimum=0, maximum=50, step=5, value=15
+                    label="Crop Context Padding (%)",
+                    minimum=0,
+                    maximum=50,
+                    step=5,
+                    value=15,
                 )
                 c["prep_send_pixel_bounds_chk"] = gr.Checkbox(
                     label="Send Pixel Bounds in API Request", value=False
                 )
                 with gr.Row(visible=False) as prep_pixel_bounds_row:
-                    c["prep_min_pixels_num"] = gr.Number(label="min_pixels", value=200704, precision=0)
-                    c["prep_max_pixels_num"] = gr.Number(label="max_pixels", value=4194304, precision=0)
+                    c["prep_min_pixels_num"] = gr.Number(
+                        label="min_pixels", value=200704, precision=0
+                    )
+                    c["prep_max_pixels_num"] = gr.Number(
+                        label="max_pixels", value=4194304, precision=0
+                    )
 
                 c["prep_options_group"] = prep_options_group
                 c["prep_custom_resize_row"] = prep_custom_resize_row
                 c["prep_pixel_bounds_row"] = prep_pixel_bounds_row
 
     return c
-
 
 
 def _wire_realtime_events(
@@ -410,9 +480,18 @@ def _wire_realtime_events(
     from interface.state import toggle_custom_color_field
 
     for dd, custom_field in [
-        (c_real["prep_grid_line_color_dropdown"], c_real["prep_grid_line_color_custom"]),
-        (c_real["prep_grid_text_color_dropdown"], c_real["prep_grid_text_color_custom"]),
-        (c_real["prep_grid_backing_color_dropdown"], c_real["prep_grid_backing_color_custom"]),
+        (
+            c_real["prep_grid_line_color_dropdown"],
+            c_real["prep_grid_line_color_custom"],
+        ),
+        (
+            c_real["prep_grid_text_color_dropdown"],
+            c_real["prep_grid_text_color_custom"],
+        ),
+        (
+            c_real["prep_grid_backing_color_dropdown"],
+            c_real["prep_grid_backing_color_custom"],
+        ),
     ]:
         dd.change(toggle_custom_color_field, inputs=[dd], outputs=[custom_field])
 
@@ -447,7 +526,11 @@ def _wire_realtime_events(
 
     c_real["stream_mode"].change(
         toggle_mode,
-        inputs=[c_real["stream_mode"], c_real["session_state"], c_real["same_window_chk"]],
+        inputs=[
+            c_real["stream_mode"],
+            c_real["session_state"],
+            c_real["same_window_chk"],
+        ],
         outputs=[
             c_real["webcam_wrap_group"],
             c_real["realtime_viewer"],
@@ -622,5 +705,9 @@ def _wire_realtime_events(
             c_real["det_temp_slider"],
             c_real["tracker_algorithm"],
         ],
-        outputs=[c_real["video_gallery_output"], c_real["video_viewer"], c_real["hud_status"]],
+        outputs=[
+            c_real["video_gallery_output"],
+            c_real["video_viewer"],
+            c_real["hud_status"],
+        ],
     )

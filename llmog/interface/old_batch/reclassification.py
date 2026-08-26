@@ -20,7 +20,6 @@ from PIL import Image, ImageDraw, ImageFont
 from openai import OpenAI
 
 from interface.state import state
-from free_detection.detection_pipeline import _load_font
 from pathlib import Path
 
 logger = logging.getLogger("detection_pipeline.reclassification")
@@ -338,13 +337,15 @@ def extract_regions(
             y2 = max(0, min(target_h, y2))
 
             if x2 - x1 >= 4 and y2 - y1 >= 4:
-                parsed_regions.append({
-                    "x1": x1,
-                    "y1": y1,
-                    "x2": x2,
-                    "y2": y2,
-                    "area": (x2 - x1) * (y2 - y1),
-                })
+                parsed_regions.append(
+                    {
+                        "x1": x1,
+                        "y1": y1,
+                        "x2": x2,
+                        "y2": y2,
+                        "area": (x2 - x1) * (y2 - y1),
+                    }
+                )
         if parsed_regions:
             parsed_regions.sort(key=lambda r: (r["y1"], r["x1"]))
             return parsed_regions[:max_regions]
@@ -513,7 +514,7 @@ def classify_region(
             "Look carefully at the cropped region and provide a concise, accurate, lowercase "
             "descriptor (1-3 words, e.g. 'hole', 'stain', 'person', 'car', 'zipper', 'scratch') "
             "as the class name. If the region is completely blank, empty background, or unidentifiable noise, "
-            "respond with class \"none\".\n"
+            'respond with class "none".\n'
             "Respond with ONLY valid JSON in exactly this format:\n"
             '{"class":"<descriptive_class_name>","confidence":<0-100>,"reasoning":"<short reason>"}. '
             "Do not include markdown code fences, comments, or extra text."
@@ -532,7 +533,7 @@ def classify_region(
             "If it matches, use that exact class name.\n"
             "2. If the object/defect is clearly a distinct real-world object or defect that does NOT "
             "fit any priority class, assign a NEW concise, specific lowercase category name (e.g. 'zipper', 'button', 'scratch', 'rust').\n"
-            "3. If the region is purely empty background with no meaningful object, respond with class \"none\".\n"
+            '3. If the region is purely empty background with no meaningful object, respond with class "none".\n'
             "Respond with ONLY valid JSON in exactly this format:\n"
             '{"class":"<class_name>","is_new_class":<true_or_false>,"confidence":<0-100>,"reasoning":"<short reason>"}. '
             "Do not include markdown code fences, comments, or extra text."
@@ -588,7 +589,13 @@ async def _classify_one_async(
     """Async wrapper for classify_region via asyncio.to_thread for parallel mode."""
     try:
         return await asyncio.to_thread(
-            classify_region, crop, client, model_name, classes, class_definitions, class_mode
+            classify_region,
+            crop,
+            client,
+            model_name,
+            classes,
+            class_definitions,
+            class_mode,
         )
     except Exception as e:
         return {"class": "error", "confidence": 0, "reasoning": f"API error: {e}"}
@@ -629,7 +636,7 @@ def classify_regions_batched(
             prompt += f"Optional context:\n{class_definitions}\n"
         prompt += (
             "For each region, provide a concise lowercase descriptor (1-3 words). "
-            "If blank/unknown, use \"none\".\n"
+            'If blank/unknown, use "none".\n'
             f"Respond with ONLY a JSON array of {n} objects in order, each like "
             '{"region":<1..N>,"class":"<name>","confidence":<0-100>,"reasoning":"<short>"}. '
             "No markdown, no extra text."
@@ -643,7 +650,7 @@ def classify_regions_batched(
             prompt += f"Category definitions:\n{class_definitions}\n"
         prompt += (
             f"For each region: if it matches a priority class use that name; "
-            f"elif distinct object/defect assign a NEW concise lowercase name; else \"none\".\n"
+            f'elif distinct object/defect assign a NEW concise lowercase name; else "none".\n'
             f"Respond with ONLY a JSON array of {n} objects, each like "
             '{"region":<1..N>,"class":"<name>","is_new_class":<bool>,"confidence":<0-100>,"reasoning":"<short>"}. '
             "No markdown."
@@ -656,7 +663,7 @@ def classify_regions_batched(
         if class_definitions and class_definitions.strip():
             prompt += f"Class definitions:\n{class_definitions}\n"
         prompt += (
-            f"For each region choose EXACTLY ONE class from the list or \"none\". "
+            f'For each region choose EXACTLY ONE class from the list or "none". '
             f"Respond with ONLY a JSON array of {n} objects, each like "
             '{"region":<1..N>,"class":"<name>","confidence":<0-100>,"reasoning":"<short>"}. '
             "No markdown."
@@ -664,7 +671,7 @@ def classify_regions_batched(
 
     content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
     for i, uri in enumerate(data_uris):
-        content.append({"type": "text", "text": f"Region {i+1}:"})
+        content.append({"type": "text", "text": f"Region {i + 1}:"})
         content.append({"type": "image_url", "image_url": {"url": uri}})
 
     response = client.chat.completions.create(
@@ -698,7 +705,16 @@ def classify_regions_batched(
                 ri = len(by_region) + 1
             by_region[ri] = item
     for i in range(1, n + 1):
-        out.append(by_region.get(i, {"class": "error", "confidence": 0, "reasoning": f"Missing region {i} in batched response"}))
+        out.append(
+            by_region.get(
+                i,
+                {
+                    "class": "error",
+                    "confidence": 0,
+                    "reasoning": f"Missing region {i} in batched response",
+                },
+            )
+        )
     return out
 
 
@@ -750,7 +766,7 @@ async def classify_regions_gui(
     """
     mode_norm = (class_mode or "strict").lower().strip()
     classes = [c.strip().lower() for c in (classes_str or "").split(",") if c.strip()]
-    
+
     if not classes and "free" not in mode_norm:
         return (
             f"Error: provide at least one target class for {class_mode.capitalize()} mode (or switch to Free Classify).",
@@ -765,7 +781,11 @@ async def classify_regions_gui(
         except Exception:
             editor_value = {}
 
-    if not editor_value or not isinstance(editor_value, dict) or not editor_value.get("background"):
+    if (
+        not editor_value
+        or not isinstance(editor_value, dict)
+        or not editor_value.get("background")
+    ):
         return (
             "Error: upload an image and draw boxes or strokes over each object first.",
             None,
@@ -829,45 +849,83 @@ async def classify_regions_gui(
                 crops, client, model_name, classes, class_definitions, class_mode
             )
             if len(results) != len(regions):
-                raise ValueError(f"Batched returned {len(results)} results for {len(regions)} regions")
+                raise ValueError(
+                    f"Batched returned {len(results)} results for {len(regions)} regions"
+                )
         except Exception as e:
-            logger.warning(f"Batched single-request failed ({e}), falling back to sequential")
+            logger.warning(
+                f"Batched single-request failed ({e}), falling back to sequential"
+            )
             results = []
             for crop in crops:
                 try:
                     results.append(
-                        classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                        classify_region(
+                            crop,
+                            client,
+                            model_name,
+                            classes,
+                            class_definitions,
+                            class_mode,
+                        )
                     )
                 except Exception as ex:
-                    results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {ex}"})
+                    results.append(
+                        {
+                            "class": "error",
+                            "confidence": 0,
+                            "reasoning": f"API error: {ex}",
+                        }
+                    )
     elif mode_req == "parallel":
         # Parallel via asyncio.gather + to_thread – ~4× faster than sequential, keeps per-region prompts
         try:
             # classify_regions_gui is async, so we can await gather directly
             tasks = [
-                _classify_one_async(crop, client, model_name, classes, class_definitions, class_mode)
+                _classify_one_async(
+                    crop, client, model_name, classes, class_definitions, class_mode
+                )
                 for crop in crops
             ]
             results = await asyncio.gather(*tasks)
         except Exception as e:
-            logger.warning(f"Parallel asyncio.gather failed ({e}), falling back to sequential")
+            logger.warning(
+                f"Parallel asyncio.gather failed ({e}), falling back to sequential"
+            )
             results = []
             for crop in crops:
                 try:
                     results.append(
-                        classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                        classify_region(
+                            crop,
+                            client,
+                            model_name,
+                            classes,
+                            class_definitions,
+                            class_mode,
+                        )
                     )
                 except Exception as ex:
-                    results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {ex}"})
+                    results.append(
+                        {
+                            "class": "error",
+                            "confidence": 0,
+                            "reasoning": f"API error: {ex}",
+                        }
+                    )
     else:  # sequential
         results = []
         for crop in crops:
             try:
                 results.append(
-                    classify_region(crop, client, model_name, classes, class_definitions, class_mode)
+                    classify_region(
+                        crop, client, model_name, classes, class_definitions, class_mode
+                    )
                 )
             except Exception as e:
-                results.append({"class": "error", "confidence": 0, "reasoning": f"API error: {e}"})
+                results.append(
+                    {"class": "error", "confidence": 0, "reasoning": f"API error: {e}"}
+                )
 
     # ── Build UI rows/YOLO/viewer from results (order-preserving) ──
     for idx, (reg, result) in enumerate(zip(regions, results)):
@@ -879,7 +937,9 @@ async def classify_regions_gui(
             confidence = 0.0
         reasoning = str(result.get("reasoning") or "").strip()
 
-        is_new = bool(result.get("is_new_class")) or (cls not in classes and cls not in ("none", "error"))
+        is_new = bool(result.get("is_new_class")) or (
+            cls not in classes and cls not in ("none", "error")
+        )
 
         if is_new and cls not in ("none", "error"):
             if cls not in class_ids:
@@ -929,20 +989,33 @@ async def classify_regions_gui(
         )
 
     # Build viewer payload – defer all box rendering to DetectionViewer JS canvas
-    from interface.viewer_utils import region_results_to_annotations, build_viewer_payload as _build_payload
+    from interface.viewer_utils import (
+        region_results_to_annotations,
+        build_viewer_payload as _build_payload,
+    )
 
     # Reuse palette colours; region_results_to_annotations assigns per-index colour
-    viewer_anns = region_results_to_annotations(viewer_regions, viewer_labels, viewer_scores)
+    viewer_anns = region_results_to_annotations(
+        viewer_regions, viewer_labels, viewer_scores
+    )
     viewer_payload = _build_payload(background, viewer_anns)
 
     # Build YOLO output header with class mapping
-    yolo_header_lines = [f"# Class Index Mapping:"]
+    yolo_header_lines = ["# Class Index Mapping:"]
     for c_name, c_idx in class_ids.items():
         tag = " (new)" if c_name in discovered_new_classes else ""
         yolo_header_lines.append(f"# {c_idx}: {c_name}{tag}")
     yolo_header_lines.append("")
-    full_yolo_text = "\n".join(yolo_header_lines + yolo_lines) if yolo_lines else "\n".join(yolo_header_lines)
+    full_yolo_text = (
+        "\n".join(yolo_header_lines + yolo_lines)
+        if yolo_lines
+        else "\n".join(yolo_header_lines)
+    )
 
-    new_info = f" (discovered {len(discovered_new_classes)} new class(es): {', '.join(discovered_new_classes)})" if discovered_new_classes else ""
+    new_info = (
+        f" (discovered {len(discovered_new_classes)} new class(es): {', '.join(discovered_new_classes)})"
+        if discovered_new_classes
+        else ""
+    )
     status = f"Mode: {class_mode.capitalize()} | Recognized {len(regions)} region(s) -> {len(yolo_lines)} YOLO label(s){new_info}"
     return status, viewer_payload, render_recls_table(rows, class_mode), full_yolo_text

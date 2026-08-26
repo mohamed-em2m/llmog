@@ -11,7 +11,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Tuple
 import gradio as gr
 
 from detection_viewer import DetectionViewer
@@ -248,7 +248,7 @@ _CUSTOM_CANVAS_HTML = """
     <!-- Canvas Stage Viewport -->
     <div class="canvas-stage-wrapper" id="canvas-stage-wrapper">
         <canvas id="custom-annotation-canvas"></canvas>
-        
+
         <div id="canvas-empty-overlay" class="canvas-empty-state">
             <div class="empty-icon">🎨</div>
             <h3>Interactive Detection Canvas</h3>
@@ -366,52 +366,52 @@ _CUSTOM_CANVAS_JS = """
         imageSrc: null,
         imageWidth: 0,
         imageHeight: 0,
-        
+
         mode: 'bbox',
         color: '#ff3c3c',
         size: 3,
-        
+
         scale: 1.0,
         offsetX: 0,
         offsetY: 0,
         isPanning: false,
         panStartX: 0,
         panStartY: 0,
-        
+
         isDrawing: false,
         startX: 0,
         startY: 0,
         currentX: 0,
         currentY: 0,
-        
+
         currentStroke: [],
         regions: [],
         undoStack: [],
         redoStack: [],
-        
+
         container: null,
         canvas: null,
         ctx: null,
         wrapper: null,
         emptyOverlay: null,
         fileInput: null,
-        
+
         init: function() {
             this.container = document.getElementById('llmog-custom-canvas-app');
             if (!this.container) return;
-            
+
             this.canvas = document.getElementById('custom-annotation-canvas');
             if (!this.canvas) return;
             this.ctx = this.canvas.getContext('2d');
             this.wrapper = document.getElementById('canvas-stage-wrapper');
             this.emptyOverlay = document.getElementById('canvas-empty-overlay');
             this.fileInput = document.getElementById('canvas-file-input');
-            
+
             this.bindEvents();
             this.resizeCanvas();
             this.syncGradioPayload();
         },
-        
+
         bindEvents: function() {
             const self = this;
             window.addEventListener('resize', () => self.resizeCanvas());
@@ -422,12 +422,12 @@ _CUSTOM_CANVAS_JS = """
                 const el = document.getElementById('llmog-custom-canvas-app');
                 return !!(el && el.offsetParent !== null);
             };
-            
+
             const toolBbox = document.getElementById('tool-bbox');
             const toolBrush = document.getElementById('tool-brush');
             const toolCircle = document.getElementById('tool-circle');
             const toolEraser = document.getElementById('tool-eraser');
-            
+
             const setTool = (mode, btn) => {
                 self.mode = mode;
                 [toolBbox, toolBrush, toolCircle, toolEraser].forEach(b => b && b.classList.remove('active'));
@@ -447,15 +447,15 @@ _CUSTOM_CANVAS_JS = """
                 }
                 self.render();
             };
-            
+
             if (toolBbox) toolBbox.onclick = () => setTool('bbox', toolBbox);
             if (toolBrush) toolBrush.onclick = () => setTool('brush', toolBrush);
             if (toolCircle) toolCircle.onclick = () => setTool('circle', toolCircle);
             if (toolEraser) toolEraser.onclick = () => setTool('eraser', toolEraser);
-            
+
             const swatches = document.querySelectorAll('#palette-swatches .color-swatch');
             const customPicker = document.getElementById('custom-color-picker');
-            
+
             swatches.forEach(sw => {
                 sw.onclick = () => {
                     swatches.forEach(s => s.classList.remove('active'));
@@ -464,14 +464,14 @@ _CUSTOM_CANVAS_JS = """
                     if (customPicker) customPicker.value = self.color;
                 };
             });
-            
+
             if (customPicker) {
                 customPicker.oninput = (e) => {
                     self.color = e.target.value;
                     swatches.forEach(s => s.classList.remove('active'));
                 };
             }
-            
+
             const sizeSlider = document.getElementById('brush-size-slider');
             const sizeVal = document.getElementById('brush-size-val');
             if (sizeSlider) {
@@ -480,25 +480,25 @@ _CUSTOM_CANVAS_JS = """
                     if (sizeVal) sizeVal.textContent = self.size;
                 };
             }
-            
+
             const btnUndo = document.getElementById('btn-undo');
             const btnRedo = document.getElementById('btn-redo');
             const btnClearDrawings = document.getElementById('btn-clear-drawings');
             const btnClearAll = document.getElementById('btn-clear-all');
-            
+
             if (btnUndo) btnUndo.onclick = () => self.undo();
             if (btnRedo) btnRedo.onclick = () => self.redo();
             if (btnClearDrawings) btnClearDrawings.onclick = () => self.clearDrawings();
             if (btnClearAll) btnClearAll.onclick = () => self.clearAll();
-            
+
             const btnZoomIn = document.getElementById('btn-zoom-in');
             const btnZoomOut = document.getElementById('btn-zoom-out');
             const btnZoomFit = document.getElementById('btn-zoom-fit');
-            
+
             if (btnZoomIn) btnZoomIn.onclick = () => self.zoom(1.2);
             if (btnZoomOut) btnZoomOut.onclick = () => self.zoom(1 / 1.2);
             if (btnZoomFit) btnZoomFit.onclick = () => self.fitToScreen();
-            
+
             // Toolbar upload button — always visible
             const btnToolbarUpload = document.getElementById('btn-toolbar-upload');
             if (btnToolbarUpload) {
@@ -507,7 +507,7 @@ _CUSTOM_CANVAS_JS = """
 
             const btnEmptyUpload = document.getElementById('btn-empty-upload');
             const btnEmptySample = document.getElementById('btn-empty-sample');
-            
+
             if (btnEmptyUpload) {
                 btnEmptyUpload.onclick = () => self.triggerFileUpload();
             }
@@ -524,18 +524,18 @@ _CUSTOM_CANVAS_JS = """
                     self.fileInput.value = '';
                 };
             }
-            
+
             self.canvas.addEventListener('mousedown', (e) => self.onPointerDown(e));
             window.addEventListener('mousemove', (e) => self.onPointerMove(e));
             window.addEventListener('mouseup', (e) => self.onPointerUp(e));
-            
+
             self.canvas.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
                     const touch = e.touches[0];
                     self.onPointerDown({ clientX: touch.clientX, clientY: touch.clientY, button: 0, preventDefault: () => e.preventDefault() });
                 }
             }, { passive: false });
-            
+
             window.addEventListener('touchmove', (e) => {
                 if (self.isDrawing || self.isPanning) {
                     if (e.touches.length === 1) {
@@ -544,13 +544,13 @@ _CUSTOM_CANVAS_JS = """
                     }
                 }
             }, { passive: false });
-            
+
             window.addEventListener('touchend', (e) => {
                 if (self.isDrawing || self.isPanning) {
                     self.onPointerUp(e);
                 }
             });
-            
+
             self.wrapper.addEventListener('wheel', (e) => {
                 e.preventDefault();
                 const zoomFactor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
@@ -559,7 +559,7 @@ _CUSTOM_CANVAS_JS = """
                 const mouseY = e.clientY - rect.top;
                 self.zoomAt(zoomFactor, mouseX, mouseY);
             }, { passive: false });
-            
+
             ['dragenter', 'dragover'].forEach(name => {
                 self.wrapper.addEventListener(name, (e) => {
                     e.preventDefault();
@@ -580,7 +580,7 @@ _CUSTOM_CANVAS_JS = """
                     self.loadImageFromFile(files[0]);
                 }
             });
-            
+
             window.addEventListener('paste', (e) => {
                 if (!isTabVisible()) return;
                 const items = (e.clipboardData || e.originalEvent.clipboardData).items;
@@ -592,11 +592,11 @@ _CUSTOM_CANVAS_JS = """
                     }
                 }
             });
-            
+
             window.addEventListener('keydown', (e) => {
                 if (!isTabVisible()) return;
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                
+
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                     e.preventDefault();
                     if (e.shiftKey) self.redo();
@@ -615,7 +615,7 @@ _CUSTOM_CANVAS_JS = """
                 }
             });
         },
-        
+
         resizeCanvas: function() {
             if (!this.wrapper || !this.canvas) return;
             const w = this.wrapper.clientWidth;
@@ -625,7 +625,7 @@ _CUSTOM_CANVAS_JS = """
             if (this.image) this.clampOffsets();
             this.render();
         },
-        
+
         loadImageFromDataUrl: function(dataUrl) {
             const self = this;
             const img = new Image();
@@ -637,14 +637,14 @@ _CUSTOM_CANVAS_JS = """
                 self.regions = [];
                 self.undoStack = [];
                 self.redoStack = [];
-                
+
                 if (self.emptyOverlay) self.emptyOverlay.style.display = 'none';
                 self.fitToScreen();
                 self.syncGradioPayload();
             };
             img.src = dataUrl;
         },
-        
+
         loadImageFromFile: function(file) {
             const self = this;
             const reader = new FileReader();
@@ -653,7 +653,7 @@ _CUSTOM_CANVAS_JS = """
             };
             reader.readAsDataURL(file);
         },
-        
+
         triggerFileUpload: function() {
             // Create a fresh <input type="file"> every time.
             // This bypasses the Gradio innerHTML DOM issue where getElementById
@@ -681,14 +681,14 @@ _CUSTOM_CANVAS_JS = """
             }, { once: true });
             input.click();
         },
-        
+
         loadSampleImage: function() {
             const sampleBtn = document.getElementById('recls_sample_bridge_btn');
             if (sampleBtn) {
                 sampleBtn.click();
             }
         },
-        
+
         getFitScale: function() {
             const cw = this.canvas.width, ch = this.canvas.height;
             const iw = this.imageWidth || 1, ih = this.imageHeight || 1;
@@ -725,13 +725,13 @@ _CUSTOM_CANVAS_JS = """
             this.updateZoomIndicator();
             this.render();
         },
-        
+
         zoom: function(factor) {
             const cw = this.canvas.width / 2;
             const ch = this.canvas.height / 2;
             this.zoomAt(factor, cw, ch);
         },
-        
+
         zoomAt: function(factor, mouseX, mouseY) {
             const prevScale = this.scale;
             const fit = this.getFitScale();
@@ -744,12 +744,12 @@ _CUSTOM_CANVAS_JS = """
             this.updateZoomIndicator();
             this.render();
         },
-        
+
         updateZoomIndicator: function() {
             const ind = document.getElementById('zoom-level-text');
             if (ind) ind.textContent = `${Math.round(this.scale * 100)}%`;
         },
-        
+
         screenToImageCoords: function(screenX, screenY) {
             const imgX = (screenX - this.offsetX) / this.scale;
             const imgY = (screenY - this.offsetY) / this.scale;
@@ -758,46 +758,46 @@ _CUSTOM_CANVAS_JS = """
                 y: Math.max(0, Math.min(this.imageHeight, imgY))
             };
         },
-        
+
         onPointerDown: function(e) {
             if (!this.image) return;
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
-            
+
             if (e.button === 1 || e.spaceKey || (e.button === 0 && e.altKey)) {
                 this.isPanning = true;
                 this.panStartX = mouseX - this.offsetX;
                 this.panStartY = mouseY - this.offsetY;
                 return;
             }
-            
+
             if (e.button !== 0) return;
-            
+
             const pt = this.screenToImageCoords(mouseX, mouseY);
-            
+
             if (this.mode === 'eraser') {
                 this.eraseAt(pt.x, pt.y);
                 return;
             }
-            
+
             this.isDrawing = true;
             this.startX = pt.x;
             this.startY = pt.y;
             this.currentX = pt.x;
             this.currentY = pt.y;
-            
+
             if (this.mode === 'brush') {
                 this.currentStroke = [{ x: pt.x, y: pt.y }];
             }
         },
-        
+
         onPointerMove: function(e) {
             if (!this.image) return;
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
-            
+
             if (this.isPanning) {
                 this.offsetX = mouseX - this.panStartX;
                 this.offsetY = mouseY - this.panStartY;
@@ -805,36 +805,36 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
                 return;
             }
-            
+
             if (!this.isDrawing) return;
-            
+
             const pt = this.screenToImageCoords(mouseX, mouseY);
             this.currentX = pt.x;
             this.currentY = pt.y;
-            
+
             if (this.mode === 'brush') {
                 this.currentStroke.push({ x: pt.x, y: pt.y });
             }
             this.render();
         },
-        
+
         onPointerUp: function(e) {
             if (this.isPanning) {
                 this.isPanning = false;
                 return;
             }
-            
+
             if (!this.isDrawing) return;
             this.isDrawing = false;
-            
+
             this.saveStateForUndo();
-            
+
             if (this.mode === 'bbox') {
                 const x1 = Math.min(this.startX, this.currentX);
                 const y1 = Math.min(this.startY, this.currentY);
                 const x2 = Math.max(this.startX, this.currentX);
                 const y2 = Math.max(this.startY, this.currentY);
-                
+
                 if (x2 - x1 >= 6 && y2 - y1 >= 6) {
                     this.regions.push({
                         type: 'bbox',
@@ -851,7 +851,7 @@ _CUSTOM_CANVAS_JS = """
                 const y1 = Math.min(this.startY, this.currentY);
                 const x2 = Math.max(this.startX, this.currentX);
                 const y2 = Math.max(this.startY, this.currentY);
-                
+
                 if (x2 - x1 >= 6 && y2 - y1 >= 6) {
                     this.regions.push({
                         type: 'circle',
@@ -884,12 +884,12 @@ _CUSTOM_CANVAS_JS = """
                 });
                 this.currentStroke = [];
             }
-            
+
             this.updateRegionsList();
             this.syncGradioPayload();
             this.render();
         },
-        
+
         eraseAt: function(imgX, imgY) {
             let hitIndex = -1;
             for (let i = this.regions.length - 1; i >= 0; i--) {
@@ -907,7 +907,7 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
             }
         },
-        
+
         removeRegion: function(index) {
             if (index >= 0 && index < this.regions.length) {
                 this.saveStateForUndo();
@@ -917,13 +917,13 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
             }
         },
-        
+
         saveStateForUndo: function() {
             this.undoStack.push(JSON.parse(JSON.stringify(this.regions)));
             this.redoStack = [];
             if (this.undoStack.length > 30) this.undoStack.shift();
         },
-        
+
         undo: function() {
             if (this.undoStack.length > 0) {
                 this.redoStack.push(JSON.parse(JSON.stringify(this.regions)));
@@ -933,7 +933,7 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
             }
         },
-        
+
         redo: function() {
             if (this.redoStack.length > 0) {
                 this.undoStack.push(JSON.parse(JSON.stringify(this.regions)));
@@ -943,7 +943,7 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
             }
         },
-        
+
         clearDrawings: function() {
             if (this.regions.length > 0) {
                 this.saveStateForUndo();
@@ -953,7 +953,7 @@ _CUSTOM_CANVAS_JS = """
                 this.render();
             }
         },
-        
+
         clearAll: function() {
             this.image = null;
             this.imageSrc = null;
@@ -965,15 +965,15 @@ _CUSTOM_CANVAS_JS = """
             this.syncGradioPayload();
             this.render();
         },
-        
+
         updateRegionsList: function() {
             const countBadge = document.getElementById('regions-count-badge');
             if (countBadge) countBadge.textContent = `${this.regions.length} Region(s)`;
-            
+
             const container = document.getElementById('regions-chips-container');
             if (!container) return;
             container.innerHTML = '';
-            
+
             this.regions.forEach((r, idx) => {
                 const chip = document.createElement('div');
                 chip.className = 'canvas-region-chip';
@@ -992,28 +992,28 @@ _CUSTOM_CANVAS_JS = """
                 container.appendChild(chip);
             });
         },
-        
+
         render: function() {
             if (!this.ctx || !this.canvas) return;
             const ctx = this.ctx;
             const w = this.canvas.width;
             const h = this.canvas.height;
-            
+
             ctx.clearRect(0, 0, w, h);
             this.drawBackgroundPattern(ctx, w, h);
-            
+
             if (!this.image) return;
-            
+
             ctx.save();
             ctx.translate(this.offsetX, this.offsetY);
             ctx.scale(this.scale, this.scale);
-            
+
             ctx.drawImage(this.image, 0, 0, this.imageWidth, this.imageHeight);
-            
+
             this.regions.forEach((r, idx) => {
                 this.drawSingleRegion(ctx, r, idx + 1);
             });
-            
+
             if (this.isDrawing) {
                 if (this.mode === 'bbox') {
                     const x1 = Math.min(this.startX, this.currentX);
@@ -1052,55 +1052,55 @@ _CUSTOM_CANVAS_JS = """
                     ctx.restore();
                 }
             }
-            
+
             ctx.restore();
         },
-        
+
         drawSingleRegion: function(ctx, r, labelNumber, isLive = false) {
             ctx.save();
             const strokeW = Math.max(2, (r.size || 3) / this.scale);
-            
+
             if (r.type === 'bbox') {
                 const rx = r.x1;
                 const ry = r.y1;
                 const rw = r.x2 - r.x1;
                 const rh = r.y2 - r.y1;
-                
+
                 ctx.fillStyle = isLive ? 'rgba(255, 60, 60, 0.18)' : 'rgba(56, 189, 248, 0.12)';
                 ctx.fillRect(rx, ry, rw, rh);
-                
+
                 ctx.strokeStyle = '#000000';
                 ctx.lineWidth = strokeW + (2 / this.scale);
                 ctx.strokeRect(rx, ry, rw, rh);
-                
+
                 ctx.strokeStyle = r.color;
                 ctx.lineWidth = strokeW;
                 ctx.strokeRect(rx, ry, rw, rh);
-                
+
                 this.drawRegionBadge(ctx, rx, ry, `#${labelNumber}`, r.color);
             } else if (r.type === 'circle') {
                 const cx = (r.x1 + r.x2) / 2;
                 const cy = (r.y1 + r.y2) / 2;
                 const rx = (r.x2 - r.x1) / 2;
                 const ry = (r.y2 - r.y1) / 2;
-                
+
                 ctx.fillStyle = isLive ? 'rgba(255, 60, 60, 0.18)' : 'rgba(56, 189, 248, 0.12)';
                 ctx.beginPath();
                 ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
                 ctx.fill();
-                
+
                 ctx.strokeStyle = '#000000';
                 ctx.lineWidth = strokeW + (2 / this.scale);
                 ctx.beginPath();
                 ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
                 ctx.stroke();
-                
+
                 ctx.strokeStyle = r.color;
                 ctx.lineWidth = strokeW;
                 ctx.beginPath();
                 ctx.ellipse(cx, cy, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
                 ctx.stroke();
-                
+
                 this.drawRegionBadge(ctx, r.x1, r.y1, `#${labelNumber}`, r.color);
             } else if (r.type === 'stroke' && r.points && r.points.length > 0) {
                 ctx.strokeStyle = '#000000';
@@ -1113,7 +1113,7 @@ _CUSTOM_CANVAS_JS = """
                     ctx.lineTo(r.points[i].x, r.points[i].y);
                 }
                 ctx.stroke();
-                
+
                 ctx.strokeStyle = r.color;
                 ctx.lineWidth = r.size || 10;
                 ctx.beginPath();
@@ -1122,12 +1122,12 @@ _CUSTOM_CANVAS_JS = """
                     ctx.lineTo(r.points[i].x, r.points[i].y);
                 }
                 ctx.stroke();
-                
+
                 this.drawRegionBadge(ctx, r.x1, r.y1, `#${labelNumber}`, r.color);
             }
             ctx.restore();
         },
-        
+
         drawRegionBadge: function(ctx, x, y, text, color) {
             const fontSize = Math.max(12, Math.round(14 / this.scale));
             ctx.font = `bold ${fontSize}px "JetBrains Mono", monospace`;
@@ -1135,24 +1135,24 @@ _CUSTOM_CANVAS_JS = """
             const pad = 4 / this.scale;
             const badgeW = textWidth + pad * 2;
             const badgeH = fontSize + pad * 2;
-            
+
             const badgeY = Math.max(0, y - badgeH);
-            
+
             ctx.fillStyle = '#1A1145';
             ctx.fillRect(x, badgeY, badgeW, badgeH);
-            
+
             ctx.strokeStyle = '#F5C842';
             ctx.lineWidth = 1.5 / this.scale;
             ctx.strokeRect(x, badgeY, badgeW, badgeH);
-            
+
             ctx.fillStyle = '#FFF8EC';
             ctx.fillText(text, x + pad, badgeY + badgeH - pad * 1.5);
         },
-        
+
         drawBackgroundPattern: function(ctx, w, h) {
             ctx.fillStyle = '#FFF8EC';
             ctx.fillRect(0, 0, w, h);
-            
+
             ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
             const step = 24;
             for (let x = 0; x < w; x += step) {
@@ -1161,7 +1161,7 @@ _CUSTOM_CANVAS_JS = """
                 }
             }
         },
-        
+
         syncGradioPayload: function() {
             const payload = {
                 background: this.imageSrc || null,
@@ -1176,10 +1176,10 @@ _CUSTOM_CANVAS_JS = """
                 layers: [],
                 composite: null
             };
-            
+
             const jsonStr = JSON.stringify(payload);
             window.__llmog_custom_canvas_payload__ = jsonStr;
-            
+
             const hiddenTa = document.querySelector('#custom_draw_payload_box textarea');
             if (hiddenTa) {
                 hiddenTa.value = jsonStr;
@@ -1187,14 +1187,14 @@ _CUSTOM_CANVAS_JS = """
             }
         }
     };
-    
+
     window.getCustomDrawData = function() {
         if (window.CustomCanvasController) {
             window.CustomCanvasController.syncGradioPayload();
         }
         return window.__llmog_custom_canvas_payload__ || "{}";
     };
-    
+
     const boot = () => {
         const root = document.getElementById('llmog-custom-canvas-app');
         if (!root) { setTimeout(boot, 200); return; }

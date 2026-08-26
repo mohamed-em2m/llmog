@@ -20,47 +20,41 @@ try:
 except Exception:
     pass
 
-import gradio as gr
+import gradio as gr  # noqa: E402
 
-from interface.console_theme import theme
-from interface.state import (
-    custom_css,
+from interface.state import (  # noqa: E402
     CONSOLE_JS,
     handle_preset_change,
     toggle_custom_color_field,
     _cache_get as _hero_cache_get,
 )
-from interface.viewer_utils import pipeline_detections_to_annotations, build_viewer_payload as _build_hero_payload
-from interface.tab_server import (
+from interface.viewer_utils import (  # noqa: E402
+    pipeline_detections_to_annotations,
+    build_viewer_payload as _build_hero_payload,
+)
+from interface.tab_server import (  # noqa: E402
     _build_server_tab,
     start_server_wrapper,
     stop_server_wrapper,
     get_server_status_and_logs,
     on_server_backend_change,
 )
-from interface.tab_batch import (
+from interface.tab_batch import (  # noqa: E402
     _build_batch_tab,
     toggle_run_btn,
     run_batch_dispatcher,
     cancel_pipeline,
     navigate_batch_explorer,
-    on_explorer_image_change,
-    on_explorer_round_change,
-    on_explorer_prev,
-    on_explorer_next,
-    on_explorer_first,
-    on_explorer_last,
-    on_explorer_pos,
 )
-from interface.batch.components import (
+from interface.batch.components import (  # noqa: E402
     on_batch_preset_change,
     on_batch_strategy_change,
     handle_batch_upload,
 )
-from interface.tab_prompts import _build_prompts_tab
-from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events
-from interface.tab_draw import build_draw_tab, wire_draw_events
-from interface.tab_realtime_interactive import (
+from interface.tab_prompts import _build_prompts_tab  # noqa: E402
+from interface.tab_realtime import _build_realtime_tab, _wire_realtime_events  # noqa: E402
+from interface.tab_draw import build_draw_tab, wire_draw_events  # noqa: E402
+from interface.tab_realtime_interactive import (  # noqa: E402
     build_realtime_interactive_tab,
     wire_realtime_interactive_events,
 )
@@ -70,12 +64,24 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
     """Sync top hero preview to current explorer selection (instant feedback)."""
     try:
         batch_results = _hero_cache_get(batch_id)
-        if not batch_results or not selected_image or selected_image not in batch_results:
-            return None, None, '<div class="hero-empty">No results yet — run batch to see a large live preview here.</div>'
+        if (
+            not batch_results
+            or not selected_image
+            or selected_image not in batch_results
+        ):
+            return (
+                None,
+                None,
+                '<div class="hero-empty">No results yet — run batch to see a large live preview here.</div>',
+            )
         img_data = batch_results[selected_image]
         viewer_base = img_data.get("raw_original")
         if viewer_base is None:
-            return None, None, f'<div class="hero-meta">{selected_image} — waiting…</div>'
+            return (
+                None,
+                None,
+                f'<div class="hero-meta">{selected_image} — waiting…</div>',
+            )
         # Determine which detections to show (Final Best vs specific round)
         if not selected_round or selected_round == "Final Best":
             dets = img_data.get("detections") or []
@@ -90,7 +96,11 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             else:
                 # compute best score for info
                 try:
-                    score = max(r.get("score", -1) for r in img_data.get("rounds", [])) if img_data.get("rounds") else "-"
+                    score = (
+                        max(r.get("score", -1) for r in img_data.get("rounds", []))
+                        if img_data.get("rounds")
+                        else "-"
+                    )
                 except Exception:
                     score = "-"
         else:
@@ -102,7 +112,9 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             except Exception:
                 dets = img_data.get("detections") or []
                 score = "-"
-        anns = pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
+        anns = (
+            pipeline_detections_to_annotations(dets, viewer_base.size) if dets else []
+        )
         payload = _build_hero_payload(viewer_base, anns)
         # source image is raw_original (keep grid off for hero to avoid double grid)
         info = (
@@ -110,7 +122,7 @@ def _hero_view_for_selection(selected_image: str, selected_round: str, batch_id:
             f'<span class="hero-title">{selected_image}</span> '
             f'<span class="score-badge">Score: {score}/10</span> '
             f'<span class="hero-count">{len(dets)} detections</span>'
-            f'</div>'
+            f"</div>"
         )
         return viewer_base, payload, info
     except Exception:
@@ -253,7 +265,11 @@ def _wire_events(
     c_bat["input_images"].upload(
         fn=handle_batch_upload,
         inputs=[c_bat["input_images"], c_bat["upload_state"]],
-        outputs=[c_bat["upload_state"], c_bat["source_image_viewer"], c_bat["pipeline_status"]],
+        outputs=[
+            c_bat["upload_state"],
+            c_bat["source_image_viewer"],
+            c_bat["pipeline_status"],
+        ],
     )
 
     # ── Run / Cancel ──────────────────────────────────────────────────────
@@ -363,46 +379,60 @@ def _wire_events(
     ]
 
     c_bat["explorer_first_btn"].click(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("first", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "first", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_prev_btn"].click(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("prev", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "prev", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_next_btn"].click(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("next", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "next", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
     c_bat["explorer_last_btn"].click(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("last", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "last", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
 
     c_bat["explorer_image_select"].change(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("image_select", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "image_select", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
 
     c_bat["explorer_round_select"].change(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("round_select", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "round_select", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,
     )
 
     c_bat["show_grid_chk"].change(
-        fn=lambda img, rnd, bid, grid: navigate_batch_explorer("grid_toggle", img, rnd, bid, grid),
+        fn=lambda img, rnd, bid, grid: navigate_batch_explorer(
+            "grid_toggle", img, rnd, bid, grid
+        ),
         inputs=_nav_inputs,
         outputs=_explorer_all_outputs,
         queue=False,

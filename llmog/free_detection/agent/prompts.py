@@ -102,6 +102,7 @@ DEFAULT_AUTO_LABEL_TEMPLATE: str = (
 # Jinja2 render helper
 # ---------------------------------------------------------------------------
 
+
 def _jinja_render(template: str, **kwargs) -> str:
     """Render *template* with Jinja2, falling back to str.format on failure."""
     try:
@@ -118,6 +119,7 @@ def _jinja_render(template: str, **kwargs) -> str:
 # ---------------------------------------------------------------------------
 # Realtime prompt
 # ---------------------------------------------------------------------------
+
 
 def get_realtime_prompt(categories: list[str] | None = None) -> str:
     """Render the real-time free-detection prompt."""
@@ -165,6 +167,7 @@ def categories_prompt_text(categories: List[str] | None) -> str:
 # ---------------------------------------------------------------------------
 # Detector prompt
 # ---------------------------------------------------------------------------
+
 
 def render_detector_prompt(
     template: str,
@@ -218,7 +221,9 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
         )
         for prop in som_proposals:
             som_block += f"- Candidate #{prop['id']}: bbox_2d ≈ {prop['bbox_2d']}\n"
-        som_block += "\nYou may refer to these candidates or output standard bounding boxes."
+        som_block += (
+            "\nYou may refer to these candidates or output standard bounding boxes."
+        )
 
     # --- Render via DynaPrompt (if using the default template) ---
     cats_text = categories_prompt_text(categories)
@@ -249,6 +254,7 @@ A separate quality-control reviewer inspected your last attempt on this image.{a
 # ---------------------------------------------------------------------------
 # Judge prompt
 # ---------------------------------------------------------------------------
+
 
 def render_judge_prompt(
     template: str,
@@ -292,6 +298,7 @@ def render_judge_prompt(
 # Crop verification prompt
 # ---------------------------------------------------------------------------
 
+
 def render_crop_verify_prompt(label: str, template: Optional[str] = None) -> str:
     """Render the crop-verification YES/NO prompt for a given *label*.
 
@@ -321,6 +328,7 @@ def render_crop_verify_prompt(label: str, template: Optional[str] = None) -> str
 # ---------------------------------------------------------------------------
 # Auto-label defect classification prompt
 # ---------------------------------------------------------------------------
+
 
 def render_auto_label_prompt(
     known_class_names: List[str],
@@ -412,4 +420,3 @@ def render_auto_label_prompt(
     # Fallback: append the mode instruction to the rendered template
     rendered = _jinja_render(t, known_classes=known_str)
     return rendered + "\n\n" + mode_instruction
-

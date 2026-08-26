@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from PIL import Image
 
-from free_detection import ObjectDetectionPipeline, build_detection_graph, DetectionState
+from free_detection import ObjectDetectionPipeline, build_detection_graph
 from free_detection.detection_pipeline import RoundResult
 
 
@@ -28,13 +28,13 @@ def test_json_repair_parsing():
     assert res1[0]["bbox_2d"] == [10, 20, 100, 200]
 
     # 2. Text with thinking blocks and markdown fences
-    malformed2 = "<think>Searching...</think>```json\n[{label: \"car\", bbox_2d: [0, 0, 50, 50]}\n```"
+    malformed2 = '<think>Searching...</think>```json\n[{label: "car", bbox_2d: [0, 0, 50, 50]}\n```'
     res2 = parse_detections(malformed2)
     assert len(res2) == 1
     assert res2[0]["label"] == "car"
 
     # 3. Text wrapped inside <answer> tags with missing end bracket
-    malformed3 = "<answer>[{\"label\": \"dog\", \"bbox_2d\": [100, 100, 300, 300]}"
+    malformed3 = '<answer>[{"label": "dog", "bbox_2d": [100, 100, 300, 300]}'
     res3 = parse_detections(malformed3)
     assert len(res3) == 1
     assert res3[0]["label"] == "dog"
@@ -47,13 +47,6 @@ def test_agent_package_exports():
         DetectionState,
         RoundResult,
         build_detection_graph,
-        parse_detections,
-        validate_detections,
-        draw_grid,
-        render_detections,
-        pil_to_data_uri,
-        render_detector_prompt,
-        render_judge_prompt,
     )
     from free_detection.agent.nodes import (
         node_preprocess,
@@ -64,6 +57,7 @@ def test_agent_package_exports():
         route_judge_decision,
         node_finalize,
     )
+
     assert ObjectDetectionPipeline is not None
     assert DetectionState is not None
     assert RoundResult is not None
@@ -100,7 +94,7 @@ def test_pipeline_execution_single_round():
         judge_resp.choices = [
             MagicMock(
                 message=MagicMock(
-                    content='<score>9</score><feedback>Great bounding box!</feedback><actions>NONE</actions>'
+                    content="<score>9</score><feedback>Great bounding box!</feedback><actions>NONE</actions>"
                 )
             )
         ]
@@ -171,7 +165,7 @@ def test_pipeline_execution_multi_round():
             choices=[
                 MagicMock(
                     message=MagicMock(
-                        content='<score>5</score><feedback>Missed person</feedback><actions>ADD person at [100,100,500,500]</actions>'
+                        content="<score>5</score><feedback>Missed person</feedback><actions>ADD person at [100,100,500,500]</actions>"
                     )
                 )
             ]
@@ -191,7 +185,7 @@ def test_pipeline_execution_multi_round():
             choices=[
                 MagicMock(
                     message=MagicMock(
-                        content='<score>9</score><feedback>All objects found</feedback><actions>NONE</actions>'
+                        content="<score>9</score><feedback>All objects found</feedback><actions>NONE</actions>"
                     )
                 )
             ]
@@ -249,7 +243,7 @@ def test_pipeline_execution_tiled():
             choices=[
                 MagicMock(
                     message=MagicMock(
-                        content='<score>10</score><feedback>Flawless detection</feedback><actions>NONE</actions>'
+                        content="<score>10</score><feedback>Flawless detection</feedback><actions>NONE</actions>"
                     )
                 )
             ]

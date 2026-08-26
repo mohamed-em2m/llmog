@@ -434,7 +434,6 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-
 def build_parser() -> argparse.ArgumentParser:
     """Build the standalone argparse parser for the auto-annotation pipeline."""
     parser = argparse.ArgumentParser(
@@ -483,6 +482,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 
     # ── Resolve --class_definitions (file path or inline text) ─────────────
     import os as _os
+
     raw_defs = getattr(args, "class_definitions", "") or ""
     if raw_defs and _os.path.isfile(raw_defs):
         try:
@@ -550,4 +550,3 @@ def parse_args(argv=None) -> argparse.Namespace:
         args.class_mode = "hybrid"
 
     return args
-

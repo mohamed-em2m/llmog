@@ -25,7 +25,6 @@ from openai import OpenAI
 from free_detection.detection_pipeline import (
     ObjectDetectionPipeline,
     RoundResult,
-    draw_grid,
     DEFAULT_DETECTOR_TEMPLATE,
     DEFAULT_JUDGE_TEMPLATE,
 )
@@ -52,6 +51,7 @@ TASK_CHOICES = [TASK_FREE_ANNOTATION, TASK_RECLASSIFICATION]
 
 class PipelineCancelledException(Exception):
     """Raised when a user cancels the pipeline mid-run."""
+
     pass
 
 
@@ -126,7 +126,11 @@ def run_batch_detection_gui(
         data = results.get(stem) or {}
         img = data.get("raw_original")
         if img is None:
-            return None, None, f'<div class="hero-meta">Waiting for image: {stem}…</div>'
+            return (
+                None,
+                None,
+                f'<div class="hero-meta">Waiting for image: {stem}…</div>',
+            )
         dets = data.get("detections") or []
         if not dets and data.get("rounds"):
             try:
@@ -135,7 +139,11 @@ def run_batch_detection_gui(
             except Exception:
                 dets = []
         try:
-            from interface.viewer_utils import build_viewer_payload, pipeline_detections_to_annotations
+            from interface.viewer_utils import (
+                build_viewer_payload,
+                pipeline_detections_to_annotations,
+            )
+
             anns = pipeline_detections_to_annotations(dets, img.size) if dets else []
             payload = build_viewer_payload(img, anns)
         except Exception:
@@ -153,14 +161,16 @@ def run_batch_detection_gui(
             f'<span class="hero-title">{stem}</span> '
             f'<span class="score-badge">Score: {score}/10</span> '
             f'<span class="hero-count">{cnt} detections</span>'
-            f'</div>'
+            f"</div>"
         )
         return img, payload, info
 
     if not image_files:
-        yield _sth("Please upload at least one image to process.", state="error"), _render_progress_bar(
-            0
-        ), *_empty_yield
+        yield (
+            _sth("Please upload at least one image to process.", state="error"),
+            _render_progress_bar(0),
+            *_empty_yield,
+        )
         return
 
     mode_norm = (category_strategy or "strict").lower().strip()
@@ -174,9 +184,14 @@ def run_batch_detection_gui(
     else:
         categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
         if not categories:
-            yield _sth(f"Please list at least one category for {category_strategy.capitalize()} mode (or choose Free mode).", state="error"), _render_progress_bar(
-                0
-            ), *_empty_yield
+            yield (
+                _sth(
+                    f"Please list at least one category for {category_strategy.capitalize()} mode (or choose Free mode).",
+                    state="error",
+                ),
+                _render_progress_bar(0),
+                *_empty_yield,
+            )
             return
 
     # Inject the open-world domain focus as context for the detector/judge.
@@ -208,7 +223,12 @@ def run_batch_detection_gui(
         elif hasattr(f, "name") and f.name:
             p = Path(f.name)
         elif isinstance(f, dict):
-            p_val = f.get("path") or f.get("name") or f.get("orig_name") or f.get("origName")
+            p_val = (
+                f.get("path")
+                or f.get("name")
+                or f.get("orig_name")
+                or f.get("origName")
+            )
             if p_val:
                 p = Path(p_val)
 
@@ -222,67 +242,99 @@ def run_batch_detection_gui(
                 image_paths.append(p)
 
     if not image_paths:
-        yield _sth("Could not resolve the uploaded files — check the upload and retry.", state="error"), _render_progress_bar(
-            0
-        ), *_empty_yield
+        yield (
+            _sth(
+                "Could not resolve the uploaded files — check the upload and retry.",
+                state="error",
+            ),
+            _render_progress_bar(0),
+            *_empty_yield,
+        )
         return
 
     cleaned_paths: List[Path] = []
     for p in image_paths:
         if not p.exists():
-            yield _sth(f"Image file '{p.name}' not found on disk.", state="error"), _render_progress_bar(
-                0
-            ), *_empty_yield
+            yield (
+                _sth(f"Image file '{p.name}' not found on disk.", state="error"),
+                _render_progress_bar(0),
+                *_empty_yield,
+            )
             return
         if not p.is_file():
-            yield _sth(f"'{p.name}' is not a valid file.", state="error"), _render_progress_bar(
-                0
-            ), *_empty_yield
+            yield (
+                _sth(f"'{p.name}' is not a valid file.", state="error"),
+                _render_progress_bar(0),
+                *_empty_yield,
+            )
             return
         try:
             with Image.open(p) as im:
                 im.verify()
             cleaned_paths.append(p)
         except Exception as e:
-            yield _sth(f"File '{p.name}' is not a readable image ({e}).", state="error"), _render_progress_bar(
-                0
-            ), *_empty_yield
+            yield (
+                _sth(f"File '{p.name}' is not a readable image ({e}).", state="error"),
+                _render_progress_bar(0),
+                *_empty_yield,
+            )
             return
     image_paths = cleaned_paths
 
     concurrency = max(1, int(concurrency or DEFAULT_CONCURRENCY))
 
-    yield _sth("Initializing API clients…", state="running"), _render_progress_bar(
-        2, "Initializing…"
-    ), None, "", gr.update(choices=[]), "", render_status_table({}, []), None, None, _HERO_EMPTY_HTML
+    yield (
+        _sth("Initializing API clients…", state="running"),
+        _render_progress_bar(2, "Initializing…"),
+        None,
+        "",
+        gr.update(choices=[]),
+        "",
+        render_status_table({}, []),
+        None,
+        None,
+        _HERO_EMPTY_HTML,
+    )
 
     if use_external_api:
         api_url, api_key, model_name = ext_api_url, ext_api_key, ext_model_name
         if not api_key or api_key == "your-key":
             yield (
-                _sth(
-                    "External API selected but no key provided — set an API key in the Model / Endpoint tab.",
-                    state="error",
-                )
-            ), _render_progress_bar(0, "Error"), None, "", gr.update(
-                choices=[]
-            ), "", render_status_table(
-                {}, []
-            ), None, None, _HERO_EMPTY_HTML
+                (
+                    _sth(
+                        "External API selected but no key provided — set an API key in the Model / Endpoint tab.",
+                        state="error",
+                    )
+                ),
+                _render_progress_bar(0, "Error"),
+                None,
+                "",
+                gr.update(choices=[]),
+                "",
+                render_status_table({}, []),
+                None,
+                None,
+                _HERO_EMPTY_HTML,
+            )
             return
     else:
         with state.server_lock:
             if state.server_manager is None or not state.server_manager.is_healthy():
-                yield _sth(
-                    "Local server is not running — start it in the Model / Endpoint tab or switch to External API.",
-                    state="error",
-                ), _render_progress_bar(
-                    0, "Error"
-                ), None, "", gr.update(
-                    choices=[]
-                ), "", render_status_table(
-                    {}, []
-                ), None, None, _HERO_EMPTY_HTML
+                yield (
+                    _sth(
+                        "Local server is not running — start it in the Model / Endpoint tab or switch to External API.",
+                        state="error",
+                    ),
+                    _render_progress_bar(0, "Error"),
+                    None,
+                    "",
+                    gr.update(choices=[]),
+                    "",
+                    render_status_table({}, []),
+                    None,
+                    None,
+                    _HERO_EMPTY_HTML,
+                )
                 return
             port = state.server_manager.port
             model_name = state.server_manager.model
@@ -292,7 +344,10 @@ def run_batch_detection_gui(
     # Gemini free tier: 15 RPM => cap concurrency to avoid 429 bursts
     if "gemini" in (model_name or "").lower():
         if concurrency > 2:
-            logger.info("Gemini free tier detected – capping concurrency %d → 2 to respect 15 RPM", concurrency)
+            logger.info(
+                "Gemini free tier detected – capping concurrency %d → 2 to respect 15 RPM",
+                concurrency,
+            )
             concurrency = 2
 
     try:
@@ -304,9 +359,18 @@ def run_batch_detection_gui(
         )
         client = OpenAI(base_url=api_url, api_key=api_key, http_client=http_client)
     except Exception as e:
-        yield _sth(f"Failed to initialize API client: {e}", state="error"), _render_progress_bar(
-            0, "Error"
-        ), None, "", gr.update(choices=[]), "", render_status_table({}, []), None, None, _HERO_EMPTY_HTML
+        yield (
+            _sth(f"Failed to initialize API client: {e}", state="error"),
+            _render_progress_bar(0, "Error"),
+            None,
+            "",
+            gr.update(choices=[]),
+            "",
+            render_status_table({}, []),
+            None,
+            None,
+            _HERO_EMPTY_HTML,
+        )
         return
 
     batch_id = str(int(time.time()))
@@ -467,8 +531,10 @@ def run_batch_detection_gui(
                 batch_results[stem]["detections"] = detections
 
             if write_yolo_labels:
-                allow_dyn = (category_strategy != "strict")
-                lines, unmapped = detections_to_yolo(detections, categories, allow_dynamic_classes=allow_dyn)
+                allow_dyn = category_strategy != "strict"
+                lines, unmapped = detections_to_yolo(
+                    detections, categories, allow_dynamic_classes=allow_dyn
+                )
                 labels_dir = run_dir / "labels"
                 labels_dir.mkdir(parents=True, exist_ok=True)
                 if lines:
@@ -541,7 +607,9 @@ def run_batch_detection_gui(
     yield (
         _sth(
             f"Starting batch — {total_imgs} images · {concurrency} concurrent workers",
-            done=0, total=total_imgs, state="running",
+            done=0,
+            total=total_imgs,
+            state="running",
         ),
         _render_progress_bar(5, "Starting batch…"),
         None,
@@ -549,7 +617,9 @@ def run_batch_detection_gui(
         gr.update(choices=[]),
         "",
         render_status_table(image_status, stem_order),
-        None, None, _HERO_EMPTY_HTML,
+        None,
+        None,
+        _HERO_EMPTY_HTML,
     )
 
     finished_count = 0
@@ -568,10 +638,9 @@ def run_batch_detection_gui(
                 stem = msg[2]
                 last_active_stem = stem
                 image_status[stem]["state"] = "running"
-                running_n = sum(
-                    1 for s in image_status.values() if s["state"] == "running"
+                status_msg = (
+                    f"Processing queue ({finished_count}/{total_imgs} finished)"
                 )
-                status_msg = f"Processing queue ({finished_count}/{total_imgs} finished)"
 
             elif tag == "round":
                 stem, r_res, _r_img = msg[1], msg[2], msg[3]
@@ -629,7 +698,9 @@ def run_batch_detection_gui(
                 ok_n = finished_count - errored_count
                 summary = _sth(
                     f"Batch complete — {ok_n}/{total_imgs} images succeeded",
-                    done=max(ok_n, 0), total=total_imgs, failed=errored_count,
+                    done=max(ok_n, 0),
+                    total=total_imgs,
+                    failed=errored_count,
                     state=("done" if errored_count == 0 else "error"),
                 )
                 yield (
@@ -640,7 +711,9 @@ def run_batch_detection_gui(
                     gr.update(choices=stem_order, value=last_active_stem or None),
                     _tail(log_capture.getvalue()),
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 is_terminal = True
 
@@ -649,7 +722,10 @@ def run_batch_detection_gui(
                 _d, _r, _f = _counts()
                 cancel_hdr = _sth(
                     "Batch cancelled by user — completed results are kept.",
-                    done=_d, total=total_imgs, running=_r, failed=_f,
+                    done=_d,
+                    total=total_imgs,
+                    running=_r,
+                    failed=_f,
                     state="cancelled",
                 )
                 yield (
@@ -664,7 +740,9 @@ def run_batch_detection_gui(
                     ),
                     _tail(log_capture.getvalue()),
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 is_terminal = True
 
@@ -685,7 +763,9 @@ def run_batch_detection_gui(
                     _tail(log_capture.getvalue())
                     + f"\n[CRITICAL ERROR] {err_msg}\n{trace}",
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 is_terminal = True
 
@@ -694,7 +774,10 @@ def run_batch_detection_gui(
 
             # Faster hero updates: immediate on round/finish, else throttle ~6fps
             now = time.time()
-            if tag in ("finish_image", "round", "image_error", "start_image") or now - last_yield_time > 0.15:
+            if (
+                tag in ("finish_image", "round", "image_error", "start_image")
+                or now - last_yield_time > 0.15
+            ):
                 _d, _r, _f = _counts()
                 done_n = sum(
                     1
@@ -704,14 +787,23 @@ def run_batch_detection_gui(
                 pct = int((done_n / total_imgs) * 90) if total_imgs else 0
                 _hs, _hv, _hi = _hero_payload_for(last_active_stem, batch_results)
                 yield (
-                    _sth(status_msg, done=_d, total=total_imgs, running=_r, failed=_f, state="running"),
+                    _sth(
+                        status_msg,
+                        done=_d,
+                        total=total_imgs,
+                        running=_r,
+                        failed=_f,
+                        state="running",
+                    ),
                     _render_progress_bar(pct, status_msg),
                     None,
                     batch_id,
                     gr.update(choices=stem_order, value=last_active_stem or None),
                     _tail(log_capture.getvalue()),
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 last_yield_time = now
 
@@ -720,7 +812,13 @@ def run_batch_detection_gui(
                 _hs, _hv, _hi = _hero_payload_for(last_active_stem, batch_results)
                 _d, _r, _f = _counts()
                 yield (
-                    _sth("Worker exited unexpectedly — see logs below.", done=_d, total=total_imgs, failed=_f, state="error"),
+                    _sth(
+                        "Worker exited unexpectedly — see logs below.",
+                        done=_d,
+                        total=total_imgs,
+                        failed=_f,
+                        state="error",
+                    ),
                     _render_progress_bar(100, "Aborted"),
                     None,
                     batch_id,
@@ -731,7 +829,9 @@ def run_batch_detection_gui(
                     ),
                     _tail(log_capture.getvalue()),
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 break
 
@@ -741,21 +841,29 @@ def run_batch_detection_gui(
                 if s["state"] in ("done", "error", "cancelled")
             )
             pct = int((done_n / total_imgs) * 90) if total_imgs else 0
-            running_n = sum(1 for s in image_status.values() if s["state"] == "running")
 
             now = time.time()
             if now - last_yield_time > 0.33:
                 _pd, _pr, _pf = _counts()
                 _hs, _hv, _hi = _hero_payload_for(last_active_stem, batch_results)
                 yield (
-                    _sth("Processing queue…", done=_pd, total=total_imgs, running=_pr, failed=_pf, state="running"),
+                    _sth(
+                        "Processing queue…",
+                        done=_pd,
+                        total=total_imgs,
+                        running=_pr,
+                        failed=_pf,
+                        state="running",
+                    ),
                     _render_progress_bar(pct, "Processing..."),
                     None,
                     batch_id,
                     gr.update(choices=stem_order, value=last_active_stem or None),
                     _tail(log_capture.getvalue()),
                     render_status_table(image_status, stem_order),
-                    _hs, _hv, _hi,
+                    _hs,
+                    _hv,
+                    _hi,
                 )
                 last_yield_time = now
 

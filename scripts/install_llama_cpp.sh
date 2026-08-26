@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 export CUDA_VISIBLE_DEVICES=0,1  # Use only the first two GPUs
 sudo apt-get update
 sudo apt-get install libnvidia-compute-535

@@ -12,7 +12,10 @@ import gradio as gr
 from PIL import Image
 
 from interface.state import _cache_get
-from interface.viewer_utils import build_viewer_payload, pipeline_detections_to_annotations
+from interface.viewer_utils import (
+    build_viewer_payload,
+    pipeline_detections_to_annotations,
+)
 
 logger = logging.getLogger("detection_pipeline.explorer")
 
@@ -20,7 +23,9 @@ _EMPTY_SCORE = '<span class="score-badge">Score: -/10</span>'
 _EMPTY_POS = '<span class="xp-pos">–&hairsp;/&hairsp;–</span>'
 
 
-def _round_choices(batch_results: Optional[dict], image_key: Optional[str]) -> list[str]:
+def _round_choices(
+    batch_results: Optional[dict], image_key: Optional[str]
+) -> list[str]:
     """Dropdown choices for the round selector: 'Final Best' + each round number."""
     if not batch_results or not image_key or image_key not in batch_results:
         return []
@@ -37,7 +42,9 @@ def _pos_badge(current: Optional[str], batch_results: Optional[dict]) -> str:
     return f'<span class="xp-pos">{idx + 1}&hairsp;/&hairsp;{len(choices)}</span>'
 
 
-def _step_image_key(current: Optional[str], batch_results: Optional[dict], direction: int) -> str:
+def _step_image_key(
+    current: Optional[str], batch_results: Optional[dict], direction: int
+) -> str:
     """Return the image key ``direction`` steps away from ``current`` (clamped, not wrapped)."""
     choices = list(batch_results.keys()) if batch_results else []
     if not choices:
@@ -45,7 +52,11 @@ def _step_image_key(current: Optional[str], batch_results: Optional[dict], direc
     if not current or current not in choices:
         return choices[0]
     idx = choices.index(current)
-    new_idx = max(0, idx + direction) if direction < 0 else min(len(choices) - 1, idx + direction)
+    new_idx = (
+        max(0, idx + direction)
+        if direction < 0
+        else min(len(choices) - 1, idx + direction)
+    )
     return choices[new_idx]
 
 
@@ -101,12 +112,22 @@ def _round_result(img_data: dict, selected_round: Optional[str]) -> Tuple:
     viewer_base: Optional[Image.Image] = img_data.get("raw_original")
 
     if not selected_round or selected_round == "Final Best":
-        best_score, best_round_num, best_feedback, best_raw, best_err = -1, -1, "No detections found.", "", ""
+        best_score, best_round_num, best_feedback, best_raw, best_err = (
+            -1,
+            -1,
+            "No detections found.",
+            "",
+            "",
+        )
         best_detections = img_data.get("detections") or []
         for r in img_data.get("rounds", []):
             if r.get("score", -1) > best_score:
                 best_score, best_round_num = r["score"], r["round"]
-                best_feedback, best_raw, best_err = r.get("feedback", ""), r.get("raw_text", ""), r.get("parse_error", "")
+                best_feedback, best_raw, best_err = (
+                    r.get("feedback", ""),
+                    r.get("raw_text", ""),
+                    r.get("parse_error", ""),
+                )
 
         score_html = (
             f'<span class="score-badge">Best Score: {best_score}/10 (Round {best_round_num})</span>'
@@ -119,7 +140,9 @@ def _round_result(img_data: dict, selected_round: Optional[str]) -> Tuple:
             best_feedback,
             best_raw,
             best_err or "None",
-            json.dumps(img_data.get("detections", []), indent=2) if img_data.get("detections") else "[]",
+            json.dumps(img_data.get("detections", []), indent=2)
+            if img_data.get("detections")
+            else "[]",
         )
 
     try:
@@ -133,7 +156,9 @@ def _round_result(img_data: dict, selected_round: Optional[str]) -> Tuple:
                 r.get("feedback", ""),
                 r.get("raw_text", ""),
                 r.get("parse_error") or "None",
-                json.dumps(r.get("detections", []), indent=2) if r.get("detections") else "[]",
+                json.dumps(r.get("detections", []), indent=2)
+                if r.get("detections")
+                else "[]",
             )
     except Exception as e:
         logger.error(f"Error loading round details: {e}")
@@ -154,11 +179,14 @@ def _load_round_data(
 
     img_data = batch_results[selected_image]
     src_img = _lazy_grid(img_data, show_grid) or img_data.get("raw_original")
-    payload, score_html, feedback, raw, err, dets_json = _round_result(img_data, selected_round)
+    payload, score_html, feedback, raw, err, dets_json = _round_result(
+        img_data, selected_round
+    )
     return (src_img, payload, score_html, feedback, raw, err, dets_json)
 
 
 # ── Unified Atomic Navigation ───────────────────────────────────────────────
+
 
 def navigate_batch_explorer(
     action: str,
@@ -221,13 +249,25 @@ def navigate_batch_explorer(
         target_image = _step_image_key(current_image, batch_results, +1)
         target_round = "Final Best"
     elif action == "image_select":
-        target_image = current_image if (current_image and current_image in choices) else choices[0]
+        target_image = (
+            current_image
+            if (current_image and current_image in choices)
+            else choices[0]
+        )
         target_round = "Final Best"
     elif action in ("round_select", "grid_toggle"):
-        target_image = current_image if (current_image and current_image in choices) else choices[0]
+        target_image = (
+            current_image
+            if (current_image and current_image in choices)
+            else choices[0]
+        )
         target_round = current_round or "Final Best"
     else:
-        target_image = current_image if (current_image and current_image in choices) else choices[0]
+        target_image = (
+            current_image
+            if (current_image and current_image in choices)
+            else choices[0]
+        )
         target_round = "Final Best"
 
     # Compute choices & badge
@@ -260,11 +300,18 @@ def navigate_batch_explorer(
 
 # ── Backward-Compatible Wrappers ───────────────────────────────────────────
 
-def on_explorer_image_change(selected_image: str, batch_id: str, show_grid: bool = True):
-    return navigate_batch_explorer("image_select", selected_image, "Final Best", batch_id, show_grid)
+
+def on_explorer_image_change(
+    selected_image: str, batch_id: str, show_grid: bool = True
+):
+    return navigate_batch_explorer(
+        "image_select", selected_image, "Final Best", batch_id, show_grid
+    )
 
 
-def on_explorer_round_change(selected_image: str, selected_round: str, batch_id: str, show_grid: bool):
+def on_explorer_round_change(
+    selected_image: str, selected_round: str, batch_id: str, show_grid: bool
+):
     return _load_round_data(selected_image, selected_round, batch_id, show_grid)
 
 

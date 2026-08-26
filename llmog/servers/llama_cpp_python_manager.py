@@ -229,7 +229,12 @@ class LlamaCppPythonManager:
                 pass
             else:
                 cmd.extend(
-                    ["--type_k", str(self.kv_cache_type), "--type_v", str(self.kv_cache_type)]
+                    [
+                        "--type_k",
+                        str(self.kv_cache_type),
+                        "--type_v",
+                        str(self.kv_cache_type),
+                    ]
                 )
 
         # flash_attn is a bool ModelSettings field -> requires an explicit value.

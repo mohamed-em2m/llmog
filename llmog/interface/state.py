@@ -2,7 +2,6 @@
 Shared state, cache management, constants, and assets for the Gradio Interface.
 """
 
-import os
 import time
 import html
 import zipfile
@@ -12,7 +11,6 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import gradio as gr
 
-from interface.console_theme import theme
 from servers import LlamaServerManager
 
 # ---------------------------------------------------------------------------
@@ -50,6 +48,7 @@ _STATUS_PILL = {
 LOG_TAIL_BYTES = 8 * 1024
 MAX_CACHED_BATCHES = 3
 
+
 # ---------------------------------------------------------------------------
 # Global Server & Pipeline State Container
 # ---------------------------------------------------------------------------
@@ -61,6 +60,7 @@ class AppState:
         self.batch_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         self.batch_cache_lock = threading.Lock()
 
+
 state = AppState()
 
 # Backward-compatibility properties/aliases pointing directly to `state`
@@ -68,6 +68,7 @@ server_lock = state.server_lock
 pipeline_cancel_event = state.pipeline_cancel_event
 BATCH_CACHE = state.batch_cache
 BATCH_CACHE_LOCK = state.batch_cache_lock
+
 
 # ---------------------------------------------------------------------------
 # Cache Helpers
@@ -91,6 +92,7 @@ def _cache_get(batch_id: str) -> Dict[str, Any]:
 def _cache_drop(batch_id: str) -> None:
     with state.batch_cache_lock:
         state.batch_cache.pop(batch_id, None)
+
 
 # ---------------------------------------------------------------------------
 # Helper Utility Functions

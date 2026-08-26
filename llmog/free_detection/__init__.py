@@ -18,8 +18,6 @@ import argparse
 import json
 import logging
 import sys
-from typing import Optional
-
 from openai import OpenAI
 
 from free_detection.detection_pipeline import ObjectDetectionPipeline
@@ -404,16 +402,16 @@ def main(args=None) -> None:
             continue
 
         image_out_dir = out_base / p.stem
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Processing: {p.name}  →  {image_out_dir}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         def on_round(round_result, _annotated):
             print(
                 f"  Round {round_result.round}: "
                 f"score {round_result.score}/10, "
                 f"{len(round_result.detections)} detection(s)"
-                + (f"  [parse error]" if round_result.parse_error else "")
+                + ("  [parse error]" if round_result.parse_error else "")
             )
 
         try:

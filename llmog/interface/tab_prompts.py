@@ -3,7 +3,10 @@ Prompts configuration tab UI.
 """
 
 import gradio as gr
-from free_detection.detection_pipeline import DEFAULT_DETECTOR_TEMPLATE, DEFAULT_JUDGE_TEMPLATE
+from free_detection.detection_pipeline import (
+    DEFAULT_DETECTOR_TEMPLATE,
+    DEFAULT_JUDGE_TEMPLATE,
+)
 
 
 def _build_prompts_tab():
@@ -25,7 +28,9 @@ def _build_prompts_tab():
     )
 
     with gr.Accordion("Prompt Templates — Detector & Judge (dropdown)", open=False):
-        with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        with gr.Row(
+            equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]
+        ):
             with gr.Column(scale=1, min_width=420):
                 gr.HTML('<p class="section-label">Detector Prompt</p>')
                 custom_det_prompt = gr.Textbox(
@@ -34,7 +39,9 @@ def _build_prompts_tab():
                     value=DEFAULT_DETECTOR_TEMPLATE,
                 )
                 reset_det_btn = gr.Button(
-                    "↩  Reset Detector Prompt to Default", size="sm", variant="secondary"
+                    "↩  Reset Detector Prompt to Default",
+                    size="sm",
+                    variant="secondary",
                 )
             with gr.Column(scale=1, min_width=420):
                 gr.HTML('<p class="section-label">Judge Prompt</p>')
@@ -59,7 +66,9 @@ def _build_prompts_tab():
         )
 
     # Back-compat: hidden checkbox consumed by Batch wiring (always-on custom prompts)
-    customize_prompts_chk = gr.Checkbox(label="Enable Custom Prompt Templates", value=True, visible=False)
+    customize_prompts_chk = gr.Checkbox(
+        label="Enable Custom Prompt Templates", value=True, visible=False
+    )
 
     return dict(
         customize_prompts_chk=customize_prompts_chk,

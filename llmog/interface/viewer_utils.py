@@ -7,7 +7,7 @@ fast, allocation-light path and no tab re-implements box drawing in Python.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 from PIL import Image
 
 # Mirror palette defined in detection_viewer/__init__.py
@@ -22,8 +22,10 @@ _VIEWER_PALETTE = [
     "#8BC34A",
 ]
 
+
 def _color(idx: int) -> str:
     return _VIEWER_PALETTE[idx % len(_VIEWER_PALETTE)]
+
 
 def pipeline_detections_to_annotations(
     detections: List[Dict[str, Any]],
@@ -69,7 +71,7 @@ def pipeline_detections_to_annotations(
             continue
         ann: Dict[str, Any] = {
             "bbox": {"x": x, "y": y, "width": bw, "height": bh},
-            "label": str(det.get("label") or f"Detection {i+1}"),
+            "label": str(det.get("label") or f"Detection {i + 1}"),
             "color": det.get("color") or palette[i % plen],
         }
         # score may be 0-10 (judge) or 0-1 or 0-100; normalise to 0-1 for viewer
@@ -89,6 +91,7 @@ def pipeline_detections_to_annotations(
         out.append(ann)
     return out
 
+
 def region_results_to_annotations(
     regions: List[Dict[str, int]],
     labels: List[str],
@@ -105,29 +108,42 @@ def region_results_to_annotations(
     out: List[Dict[str, Any]] = []
     for i, reg in enumerate(regions):
         try:
-            x1 = int(reg["x1"]); y1 = int(reg["y1"]); x2 = int(reg["x2"]); y2 = int(reg["y2"])
+            x1 = int(reg["x1"])
+            y1 = int(reg["y1"])
+            x2 = int(reg["x2"])
+            y2 = int(reg["y2"])
         except Exception:
             continue
-        if x2 < x1: x1, x2 = x2, x1
-        if y2 < y1: y1, y2 = y2, y1
-        w = x2 - x1; h = y2 - y1
+        if x2 < x1:
+            x1, x2 = x2, x1
+        if y2 < y1:
+            y1, y2 = y2, y1
+        w = x2 - x1
+        h = y2 - y1
         if w <= 0 or h <= 0:
             continue
-        label = labels[i] if i < len(labels) else f"Region {i+1}"
+        label = labels[i] if i < len(labels) else f"Region {i + 1}"
         ann: Dict[str, Any] = {
-            "bbox": {"x": float(x1), "y": float(y1), "width": float(w), "height": float(h)},
+            "bbox": {
+                "x": float(x1),
+                "y": float(y1),
+                "width": float(w),
+                "height": float(h),
+            },
             "label": str(label),
             "color": palette[i % plen],
         }
         if confidences and i < len(confidences):
             try:
                 sc = float(confidences[i])
-                if sc > 1: sc = sc / 100.0
+                if sc > 1:
+                    sc = sc / 100.0
                 ann["score"] = max(0.0, min(1.0, sc))
             except Exception:
                 pass
         out.append(ann)
     return out
+
 
 def realtime_boxes_to_annotations(
     boxes: List[Any],
@@ -148,11 +164,13 @@ def realtime_boxes_to_annotations(
             ymin, xmin, ymax, xmax = float(b[0]), float(b[1]), float(b[2]), float(b[3])
         except Exception:
             continue
-        x = float(xmin); y = float(ymin)
-        w = float(xmax - xmin); h = float(ymax - ymin)
+        x = float(xmin)
+        y = float(ymin)
+        w = float(xmax - xmin)
+        h = float(ymax - ymin)
         if w <= 0 or h <= 0:
             continue
-        label = str(b[4]) if len(b) >= 5 and b[4] else f"obj {i+1}"
+        label = str(b[4]) if len(b) >= 5 and b[4] else f"obj {i + 1}"
         if len(b) >= 6 and b[5] is not None:
             label = f"{label} #{b[5]}"
         ann: Dict[str, Any] = {
@@ -162,6 +180,7 @@ def realtime_boxes_to_annotations(
         }
         out.append(ann)
     return out
+
 
 def build_viewer_payload(
     image: Image.Image | Any,
@@ -176,6 +195,7 @@ def build_viewer_payload(
     # Ensure annotations is list (not None)
     return (image, annotations or [])
 
+
 def detections_to_viewer_payload(
     image: Image.Image,
     detections: List[Dict[str, Any]],
@@ -188,6 +208,7 @@ def detections_to_viewer_payload(
 
 
 # ── Shared preprocessing config builder (deduplicates runner + realtime) ──
+
 
 def build_prep_config(
     prep_enabled: bool,
@@ -259,7 +280,9 @@ def build_prep_config(
         "denoise_method": prep_denoise_method or "none",
         "sharpen": bool(prep_sharpen),
         "white_balance": bool(prep_white_balance),
-        "grid_style": "standard" if prep_grid_style == "Standard Red" else (prep_grid_style or "standard"),
+        "grid_style": "standard"
+        if prep_grid_style == "Standard Red"
+        else (prep_grid_style or "standard"),
         "som_enabled": bool(prep_som_enabled),
         "tiling_enabled": bool(prep_tiling_enabled),
         "tile_size": int(prep_tile_size or 512),
@@ -269,9 +292,15 @@ def build_prep_config(
         "grid_step": int(prep_grid_step or 250),
         "grid_line_width": int(prep_grid_line_width or 1),
         "grid_font_size": int(prep_grid_font_size or 0),
-        "grid_line_color": prep_grid_line_color if prep_grid_line_color != "custom" else prep_grid_line_color_custom,
-        "grid_text_color": prep_grid_text_color if prep_grid_text_color != "custom" else prep_grid_text_color_custom,
-        "grid_backing_color": prep_grid_backing_color if prep_grid_backing_color != "custom" else prep_grid_backing_color_custom,
+        "grid_line_color": prep_grid_line_color
+        if prep_grid_line_color != "custom"
+        else prep_grid_line_color_custom,
+        "grid_text_color": prep_grid_text_color
+        if prep_grid_text_color != "custom"
+        else prep_grid_text_color_custom,
+        "grid_backing_color": prep_grid_backing_color
+        if prep_grid_backing_color != "custom"
+        else prep_grid_backing_color_custom,
         "send_pixel_bounds": bool(prep_send_pixel_bounds),
         "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
         "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,

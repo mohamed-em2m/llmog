@@ -15,7 +15,7 @@ import numpy as np
 import cv2
 import logging
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageColor
-from typing import Tuple, Dict, Any, List, Optional
+from typing import Tuple, Dict, Any, Optional
 
 logger = logging.getLogger("detection_pipeline.preprocessing")
 
@@ -53,17 +53,20 @@ def preprocess_vlm_conditioning(
     # 2. CLAHE (Contrast-Limited Adaptive Histogram Equalization)
     if clahe_enabled:
         lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
+        l_chan, a_chan, b_chan = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=(8, 8))
-        l_enhanced = clahe.apply(l)
-        lab_enhanced = cv2.merge((l_enhanced, a, b))
+        l_enhanced = clahe.apply(l_chan)
+        lab_enhanced = cv2.merge((l_enhanced, a_chan, b_chan))
         img_np = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
 
     # 3. Bilateral Filter Denoising (edge-preserving)
     if denoise_method == "bilateral":
         bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         denoised = cv2.bilateralFilter(
-            bgr, d=denoise_d, sigmaColor=denoise_sigma_color, sigmaSpace=denoise_sigma_space
+            bgr,
+            d=denoise_d,
+            sigmaColor=denoise_sigma_color,
+            sigmaSpace=denoise_sigma_space,
         )
         img_np = cv2.cvtColor(denoised, cv2.COLOR_BGR2RGB)
     elif denoise_method == "nlm":
@@ -160,7 +163,11 @@ def triage_frame_check(
     lap_var = compute_blur_laplacian(frame_bgr)
     metrics["laplacian_var"] = lap_var
     if enable_blur_reject and lap_var < min_laplacian_var:
-        return False, f"Blurry frame rejected (Laplacian var {lap_var:.1f} < {min_laplacian_var})", metrics
+        return (
+            False,
+            f"Blurry frame rejected (Laplacian var {lap_var:.1f} < {min_laplacian_var})",
+            metrics,
+        )
 
     trig_reasons = []
 
@@ -190,7 +197,11 @@ def triage_frame_check(
 
     # If no specific triage flags were triggered and ref diff was enabled, skip
     if enable_ref_triage or enable_edge_triage or enable_entropy_triage:
-        return False, "No structural/texture anomaly detected by triage heuristics", metrics
+        return (
+            False,
+            "No structural/texture anomaly detected by triage heuristics",
+            metrics,
+        )
 
     return True, "Default pass", metrics
 
@@ -339,10 +350,6 @@ def preprocess_resolution(
     return image, prep_info
 
 
-from typing import Any
-from PIL import Image
-
-
 def preprocess_custom_resize(
     image: Image.Image,
     target_width: int = 1024,
@@ -408,10 +415,10 @@ def preprocess_contrast(
     # Apply contrast enhancement
     if method == "clahe":
         lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
-        l, a, b = cv2.split(lab)
+        l_chan, a_chan, b_chan = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
-        l_enhanced = clahe.apply(l)
-        lab_enhanced = cv2.merge((l_enhanced, a, b))
+        l_enhanced = clahe.apply(l_chan)
+        lab_enhanced = cv2.merge((l_enhanced, a_chan, b_chan))
         img_np = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2RGB)
     elif method == "autocontrast":
         # Handled easily by PIL

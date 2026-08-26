@@ -86,7 +86,9 @@ class DetectionViewer(gr.HTML):
     def __init__(
         self,
         value: tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]]]
-        | tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]]
+        | tuple[
+            str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]
+        ]
         | None = None,
         *,
         label: str | None = None,
@@ -135,7 +137,11 @@ class DetectionViewer(gr.HTML):
             )
         except TypeError:
             # Fallback for Gradio 4: Bauhaus soft placeholder
-            fallback_kwargs = {k: v for k, v in kwargs.items() if k in ("elem_id", "elem_classes", "visible", "render", "key")}
+            fallback_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k in ("elem_id", "elem_classes", "visible", "render", "key")
+            }
             placeholder = (
                 f"<div style='border:1px solid #E9E0CC; background:#FFD6E0; color:#1A1145; padding:14px; "
                 f"border-radius:16px; font-family:Inter, sans-serif; font-weight:700;'>"
@@ -157,7 +163,9 @@ class DetectionViewer(gr.HTML):
     def _process(
         self,
         value: tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]]]
-        | tuple[str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]]
+        | tuple[
+            str | Path | Image.Image | np.ndarray, list[dict[str, Any]], dict[str, Any]
+        ]
         | None,
     ) -> str | None:
         if value is None:

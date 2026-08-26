@@ -16,7 +16,9 @@ import warnings
 # This is a Gradio internal (gradio/routes.py:1379) not our code; fixed in Gradio 5.8+
 try:
     warnings.filterwarnings(
-        "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=DeprecationWarning
+        "ignore",
+        message=".*HTTP_422_UNPROCESSABLE_ENTITY.*",
+        category=DeprecationWarning,
     )
     warnings.filterwarnings(
         "ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*", category=UserWarning
@@ -71,16 +73,20 @@ def main():
     demo = build_app()
     if args.no_queue:
         demo.launch(
-            server_name=args.host, server_port=args.port, share=not args.not_share,
-            theme=theme, css=custom_css,
+            server_name=args.host,
+            server_port=args.port,
+            share=not args.not_share,
+            theme=theme,
+            css=custom_css,
         )
     else:
         demo.queue().launch(
-            server_name=args.host, server_port=args.port, share=not args.not_share,
-            theme=theme, css=custom_css,
+            server_name=args.host,
+            server_port=args.port,
+            share=not args.not_share,
+            theme=theme,
+            css=custom_css,
         )
-
-
 
 
 if __name__ == "__main__":

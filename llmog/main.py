@@ -406,9 +406,7 @@ def _coerce_serving_extra(raw: Optional[List[str]]) -> dict:
     out: dict = {}
     for token in raw:
         if "=" not in token:
-            raise ValueError(
-                f"--serving_extra must be 'key=value', got: {token!r}"
-            )
+            raise ValueError(f"--serving_extra must be 'key=value', got: {token!r}")
         key, _, value = token.partition("=")
         key = key.strip()
         if not key:

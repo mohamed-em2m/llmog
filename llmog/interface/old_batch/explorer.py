@@ -12,7 +12,10 @@ import gradio as gr
 from PIL import Image
 
 from interface.state import _cache_get
-from interface.viewer_utils import build_viewer_payload, pipeline_detections_to_annotations
+from interface.viewer_utils import (
+    build_viewer_payload,
+    pipeline_detections_to_annotations,
+)
 
 logger = logging.getLogger("detection_pipeline.explorer")
 

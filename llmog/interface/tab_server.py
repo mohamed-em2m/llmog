@@ -11,11 +11,9 @@ from servers import LlamaServerManager, LlamaCppPythonManager, VllmServerManager
 from servers.llama_server_manager import num_gpus as _num_gpus
 from interface.state import (
     state,
-    LOG_TAIL_BYTES,
     MODEL_PRESETS,
     panel_header,
     _section_title,
-    handle_preset_change,
 )
 
 logger = logging.getLogger("detection_pipeline")
@@ -274,9 +272,9 @@ def on_server_backend_change(backend: str):
     """
     is_llama = backend in ("llama_cpp", "llama_cpp_python")
     return (
-        gr.update(visible=is_llama),          # llama_advanced_group
+        gr.update(visible=is_llama),  # llama_advanced_group
         gr.update(visible=backend == "vllm"),  # vllm_advanced_group
-        gr.update(interactive=is_llama),       # server_mtp_chk
+        gr.update(interactive=is_llama),  # server_mtp_chk
     )
 
 
@@ -325,13 +323,17 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
     # ── Status hero — always visible, Bauhaus card ──
     with gr.Group(elem_classes=["config-card"]):
         gr.HTML('<div class="config-card-title">📡 Server Status — live</div>')
-        gr.HTML('<p style="color:#6B6B6B;font-size:12px;margin:4px 0 0 0;">Start a local VLM or connect to an external API. All tabs respect this Endpoint Mode.</p>')
+        gr.HTML(
+            '<p style="color:#6B6B6B;font-size:12px;margin:4px 0 0 0;">Start a local VLM or connect to an external API. All tabs respect this Endpoint Mode.</p>'
+        )
 
     with gr.Row(equal_height=False, elem_classes=["draw-tab-row", "twin-screens-row"]):
         # ── Left: Quick Start + Advanced (progressive disclosure) ──
         with gr.Column(scale=1, min_width=420):
             gr.HTML('<p class="section-label">🖥️ Local Server — Quick Start</p>')
-            with gr.Accordion("⚙️ Server Options — Model, Runtime & Advanced", open=True):
+            with gr.Accordion(
+                "⚙️ Server Options — Model, Runtime & Advanced", open=True
+            ):
                 with gr.Group(visible=True) as local_server_group:
                     gr.HTML(_section_title("🦙", "Local Model Selection"))
                     server_preset = gr.Dropdown(
@@ -382,7 +384,9 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                         # shown/hidden by server_backend.change (less noise).
                         with gr.Group(visible=True) as llama_advanced_group:
                             gr.HTML(_section_title("🖧", "Network"))
-                            server_host_input = gr.Textbox(label="Host Binding", value="0.0.0.0")
+                            server_host_input = gr.Textbox(
+                                label="Host Binding", value="0.0.0.0"
+                            )
                             gr.HTML(_section_title("🎛️", "Compute"))
                             server_ctx_input = gr.Number(
                                 label="Context Size per Slot",
@@ -471,7 +475,8 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                         '<p style="color:#7d8590;font-size:0.85rem;margin:0;">Used by <b>Batch</b>, <b>Draw & Recognize</b> and <b>Realtime</b> tabs when Endpoint Mode is External.</p></div>'
                     )
                     ext_api_url = gr.Textbox(
-                        label="Base URL", value="https://api.openai.com/v1",
+                        label="Base URL",
+                        value="https://api.openai.com/v1",
                         placeholder="https://api.openai.com/v1",
                     )
                     ext_api_key = gr.Textbox(
@@ -483,7 +488,9 @@ def _build_server_tab(server_status_badge: gr.HTML) -> Dict[str, Any]:
                     ext_model_name = gr.Textbox(label="Model Name", value="gpt-4o")
 
             with gr.Row(elem_classes=["btn-group"]):
-                start_server_btn = gr.Button("▶  Start Server", variant="primary", scale=2)
+                start_server_btn = gr.Button(
+                    "▶  Start Server", variant="primary", scale=2
+                )
                 stop_server_btn = gr.Button(
                     "⏹  Stop Server", variant="secondary", scale=1
                 )

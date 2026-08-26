@@ -45,7 +45,12 @@ def _extract_retry_delay(exc: Exception) -> float | None:
 
 def _is_quota_error(exc: Exception) -> bool:
     msg = str(exc).lower()
-    return "429" in msg or "quota" in msg or "resource_exhausted" in msg or "rate limit" in msg
+    return (
+        "429" in msg
+        or "quota" in msg
+        or "resource_exhausted" in msg
+        or "rate limit" in msg
+    )
 
 
 def _call_with_retries(
@@ -74,7 +79,9 @@ def _call_with_retries(
         if wait_needed > 0 and attempt == 1:
             # Only sleep on first attempt if we are too close to last call
             # Subsequent retries already have backoff, so don't double-sleep
-            logger.debug("Gemini rate-limit: sleeping %.2fs before %s", wait_needed, what)
+            logger.debug(
+                "Gemini rate-limit: sleeping %.2fs before %s", wait_needed, what
+            )
             time.sleep(wait_needed + random.uniform(0, 0.3))
 
         try:
@@ -111,7 +118,9 @@ def _call_with_retries(
                     exc,
                 )
             else:
-                logger.warning("%s failed (attempt %d/%d): %s", what, attempt, retries, exc)
+                logger.warning(
+                    "%s failed (attempt %d/%d): %s", what, attempt, retries, exc
+                )
                 delay = base_delay * attempt + random.uniform(0, 0.5)
 
             if attempt < retries:

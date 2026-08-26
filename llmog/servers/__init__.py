@@ -10,7 +10,7 @@ from .llama_cpp_python_manager import LlamaCppPythonManager
 from .vllm_server_manager import VllmServerManager
 
 servers_factory = {
-    "llama_cpp": LlamaServerManager,            # native llama.cpp llama-server binary
+    "llama_cpp": LlamaServerManager,  # native llama.cpp llama-server binary
     "llama_cpp_python": LlamaCppPythonManager,  # llama-cpp-python's built-in server
     "vllm": VllmServerManager,
 }

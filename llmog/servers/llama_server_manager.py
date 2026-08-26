@@ -1,9 +1,8 @@
-import os
 import subprocess
 import threading
 import time
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 def _detect_gpu_count() -> int:
     """Return the number of NVIDIA GPUs detected; falls back to 1 on any error."""

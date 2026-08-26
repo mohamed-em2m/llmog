@@ -50,7 +50,7 @@ def render_status_header(
         '<div class="bsh-left"><span class="bsh-dot"></span>'
         f'<span class="bsh-text">{msg}</span></div>'
         f'<div class="bsh-metrics">{"".join(chips)}</div>'
-        '</div>'
+        "</div>"
     )
 
 
@@ -138,4 +138,3 @@ def detections_to_yolo(
         h = max(0.0, min(1.0, h))
         lines.append(f"{cls_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}")
     return lines, unmapped
-

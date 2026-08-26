@@ -11,13 +11,11 @@ from detection_viewer import DetectionViewer
 
 from interface.state import (
     DEFAULT_CONCURRENCY,
-    panel_header,
     _render_progress_bar,
     _section_title,
 )
-from interface.batch.runner import TASK_CHOICES, TASK_FREE_ANNOTATION
 from interface.batch.helpers import render_status_table, render_status_header
-from interface.batch.reclassification import _RECLS_EMPTY_TABLE, CATEGORY_PRESETS
+from interface.batch.reclassification import CATEGORY_PRESETS
 
 
 def toggle_run_btn(is_running: bool):
@@ -36,7 +34,7 @@ def toggle_external_api(use_external: bool):
         gr.update(interactive=not use_external),  # server_port_input
         gr.update(interactive=not use_external),  # server_thinking_chk
         gr.update(interactive=not use_external),  # server_mtp_chk
-        gr.update(visible=use_external),          # ext_api_group
+        gr.update(visible=use_external),  # ext_api_group
     )
 
 
@@ -104,12 +102,25 @@ def handle_batch_upload(new_files, cur_state):
     if new_files is None:
         count = len(cur_state) if isinstance(cur_state, list) else 0
         if count == 0:
-            return cur_state if isinstance(cur_state, list) else [], None, render_status_header(
-                "Idle — upload images, open sections below if needed, then Run.", state="idle"
+            return (
+                cur_state if isinstance(cur_state, list) else [],
+                None,
+                render_status_header(
+                    "Idle — upload images, open sections below if needed, then Run.",
+                    state="idle",
+                ),
             )
         first = cur_state[0] if cur_state else None
-        preview = getattr(first, "name", None) or (first.get("path") if isinstance(first, dict) else None)
-        return cur_state, preview, render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle")
+        preview = getattr(first, "name", None) or (
+            first.get("path") if isinstance(first, dict) else None
+        )
+        return (
+            cur_state,
+            preview,
+            render_status_header(
+                f"📥 {count} image(s) queued — ready to Run.", state="idle"
+            ),
+        )
     if isinstance(new_files, (list, tuple)):
         to_add = [f for f in new_files if f is not None]
     else:
@@ -118,25 +129,38 @@ def handle_batch_upload(new_files, cur_state):
     seen = set()
     for f in base:
         try:
-            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+            key = getattr(f, "name", None) or (
+                f.get("path") if isinstance(f, dict) else str(f)
+            )
             seen.add(key)
         except Exception:
             seen.add(str(f))
     updated = list(base)
     for f in to_add:
         try:
-            key = getattr(f, "name", None) or (f.get("path") if isinstance(f, dict) else str(f))
+            key = getattr(f, "name", None) or (
+                f.get("path") if isinstance(f, dict) else str(f)
+            )
         except Exception:
             key = str(f)
         if key not in seen:
             updated.append(f)
             seen.add(key)
     count = len(updated)
-    header = render_status_header(f"📥 {count} image(s) queued — ready to Run.", state="idle") if count else render_status_header(
-        "Idle — upload images, open sections below if needed, then Run.", state="idle"
+    header = (
+        render_status_header(
+            f"📥 {count} image(s) queued — ready to Run.", state="idle"
+        )
+        if count
+        else render_status_header(
+            "Idle — upload images, open sections below if needed, then Run.",
+            state="idle",
+        )
     )
     first = updated[0] if updated else None
-    preview = getattr(first, "name", None) or (first.get("path") if isinstance(first, dict) else None)
+    preview = getattr(first, "name", None) or (
+        first.get("path") if isinstance(first, dict) else None
+    )
     return updated, preview, header
 
 
@@ -145,7 +169,9 @@ def build_batch_tab() -> Dict[str, Any]:
 
     with gr.Column():
         # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
-        with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
+        with gr.Row(
+            equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]
+        ):
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
                 source_image_viewer = gr.Image(
                     label="Source Image (Reference)",
@@ -166,12 +192,20 @@ def build_batch_tab() -> Dict[str, Any]:
         with gr.Group(elem_classes=["batch-explorer-bar", "explorer-nav-top"]):
             with gr.Row(equal_height=True, elem_classes=["explorer-transport"]):
                 explorer_first_btn = gr.Button(
-                    "⏮", scale=0, size="sm", variant="secondary",
-                    elem_classes=["xp-btn", "xp-dim"], min_width=28,
+                    "⏮",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn", "xp-dim"],
+                    min_width=28,
                 )
                 explorer_prev_btn = gr.Button(
-                    "◀", scale=0, size="sm", variant="secondary",
-                    elem_classes=["xp-btn"], min_width=28,
+                    "◀",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn"],
+                    min_width=28,
                 )
                 explorer_image_select = gr.Dropdown(
                     label="Image",
@@ -187,12 +221,20 @@ def build_batch_tab() -> Dict[str, Any]:
                     elem_classes=["xp-pos-wrap"],
                 )
                 explorer_next_btn = gr.Button(
-                    "▶", scale=0, size="sm", variant="secondary",
-                    elem_classes=["xp-btn"], min_width=28,
+                    "▶",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn"],
+                    min_width=28,
                 )
                 explorer_last_btn = gr.Button(
-                    "⏭", scale=0, size="sm", variant="secondary",
-                    elem_classes=["xp-btn", "xp-dim"], min_width=28,
+                    "⏭",
+                    scale=0,
+                    size="sm",
+                    variant="secondary",
+                    elem_classes=["xp-btn", "xp-dim"],
+                    min_width=28,
                 )
                 explorer_round_select = gr.Dropdown(
                     label="Round",
@@ -249,7 +291,9 @@ def build_batch_tab() -> Dict[str, Any]:
             progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
 
         # ── DROPDOWN 1: Input & Categories — focused ──
-        with gr.Accordion("📥 Input & Categories — Strategy, Presets & Definitions", open=False):
+        with gr.Accordion(
+            "📥 Input & Categories — Strategy, Presets & Definitions", open=False
+        ):
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     category_strategy = gr.Radio(
@@ -286,7 +330,9 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 2: Pipeline Parameters — focused ──
-        with gr.Accordion("⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False) as rounds_accordion:
+        with gr.Accordion(
+            "⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False
+        ) as rounds_accordion:
             with gr.Row(equal_height=False):
                 with gr.Column(scale=1):
                     rounds_slider = gr.Slider(
@@ -332,14 +378,18 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 3: Preprocessing — focused ──
-        with gr.Accordion("🎨 Image Preprocessing & Augmentation", open=False) as prep_accordion:
+        with gr.Accordion(
+            "🎨 Image Preprocessing & Augmentation", open=False
+        ) as prep_accordion:
             prep_enabled_chk = gr.Checkbox(
                 label="Enable Preprocessing",
                 value=False,
                 info="Master toggle for all preprocessing steps below.",
             )
 
-            with gr.Group(visible=True, elem_classes=["prep-options-group"]) as prep_options_group:
+            with gr.Group(
+                visible=True, elem_classes=["prep-options-group"]
+            ) as prep_options_group:
                 gr.HTML(_section_title("📐", "Resolution & Padding"))
                 prep_short_edge_slider = gr.Slider(
                     label="Target Short Edge (px)",
@@ -561,7 +611,9 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
         # ── DROPDOWN 4: Explorer & Diagnostics — focused ──
-        with gr.Accordion("🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False):
+        with gr.Accordion(
+            "🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False
+        ):
             hero_info = gr.HTML(
                 value='<div class="hero-empty">Results will appear here after Run.</div>',
                 elem_classes=["hero-info"],

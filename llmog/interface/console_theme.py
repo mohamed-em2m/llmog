@@ -26,9 +26,9 @@ Rounded: cards 16-20px, pills 999px, soft shadows — NOT brutal 3px/0-radius/ha
 import gradio as gr
 
 theme = gr.themes.Base(
-    primary_hue=gr.themes.colors.amber,   # closest to #F5C842 yellow
+    primary_hue=gr.themes.colors.amber,  # closest to #F5C842 yellow
     secondary_hue=gr.themes.colors.blue,  # #2D4EAA blue
-    neutral_hue=gr.themes.colors.stone,   # warm cream neutral
+    neutral_hue=gr.themes.colors.stone,  # warm cream neutral
     font=[
         gr.themes.GoogleFont("Inter"),
         gr.themes.GoogleFont("DM Sans"),

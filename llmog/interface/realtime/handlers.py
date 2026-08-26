@@ -3,9 +3,8 @@ Stream handlers for live webcam frames and video file processing.
 """
 
 import time
-from typing import List, Tuple, Any, Optional
+from typing import List, Tuple, Any
 import gradio as gr
-from PIL import Image
 import numpy as np
 
 try:
@@ -143,7 +142,9 @@ def process_single_frame(
             # copy only when we will submit (saves 1× frame copy on skipped ticks)
             session._last_submitted_frame = frame.copy()
             mode_norm = (category_strategy or "strict").lower().strip()
-            categories = [c.strip() for c in (categories_str or "").split(",") if c.strip()]
+            categories = [
+                c.strip() for c in (categories_str or "").split(",") if c.strip()
+            ]
             if not categories:
                 if "free" in mode_norm:
                     categories = ["*"]
@@ -219,7 +220,11 @@ def process_single_frame(
     viewer_payload = build_viewer_payload(frame, anns) if viewer_visible else None
     boxes_json = {"boxes": tracked_boxes, "frame_w": frame_w, "frame_h": frame_h}
     if not hud or "DETECTED" not in hud:
-        hud = f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>' if anns else hud
+        hud = (
+            f'<div class="neo-retro-hud-stat">FPS: -- | DETECTED: {len(anns)}</div>'
+            if anns
+            else hud
+        )
     return (
         viewer_payload,
         boxes_json,
@@ -280,7 +285,9 @@ def process_video_frames(
     """
     # Gradio Video may return dict with 'video' key or filepath string
     if isinstance(video_path, dict):
-        video_path = video_path.get("video") or video_path.get("path") or video_path.get("name")
+        video_path = (
+            video_path.get("video") or video_path.get("path") or video_path.get("name")
+        )
     if not video_path:
         return [], None, "No video file uploaded."
     if cv2 is None:
@@ -380,10 +387,14 @@ def process_video_frames(
                 prep_config,
                 pipeline_params,
             )
-            tracked_boxes = tracker.update_with_detections(
-                cv2.cvtColor(f, cv2.COLOR_RGB2BGR) if cv2 is not None else f,
-                boxes,
-            ) if boxes else []
+            tracked_boxes = (
+                tracker.update_with_detections(
+                    cv2.cvtColor(f, cv2.COLOR_RGB2BGR) if cv2 is not None else f,
+                    boxes,
+                )
+                if boxes
+                else []
+            )
             last_boxes = tracked_boxes if tracked_boxes else boxes
             last_raw = f
         except Exception:
@@ -397,11 +408,15 @@ def process_video_frames(
             gal = draw_boxes_opencv(f, last_boxes)
             if max(gal.shape[0], gal.shape[1]) > 960:
                 scale = 960.0 / max(gal.shape[0], gal.shape[1])
-                gal = cv2.resize(
-                    gal,
-                    (int(gal.shape[1] * scale), int(gal.shape[0] * scale)),
-                    interpolation=cv2.INTER_AREA,
-                ) if cv2 is not None else gal
+                gal = (
+                    cv2.resize(
+                        gal,
+                        (int(gal.shape[1] * scale), int(gal.shape[0] * scale)),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                    if cv2 is not None
+                    else gal
+                )
             gallery_frames.append(gal)
         except Exception:
             gallery_frames.append(f)
