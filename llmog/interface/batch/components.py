@@ -1,21 +1,19 @@
-"""
-Batch tab Gradio layout components and UI builders.
-"""
+"""Batch tab Gradio layout components and UI builders."""
 
 from __future__ import annotations
 
-from typing import Dict, Any
+import os
+from typing import Any, Dict
 import gradio as gr
 
 from detection_viewer import DetectionViewer
-
+from interface.batch.helpers import render_status_header, render_status_table
+from interface.batch.reclassification import CATEGORY_PRESETS
 from interface.state import (
     DEFAULT_CONCURRENCY,
     _render_progress_bar,
     _section_title,
 )
-from interface.batch.helpers import render_status_table, render_status_header
-from interface.batch.reclassification import CATEGORY_PRESETS
 
 
 def toggle_run_btn(is_running: bool):
@@ -93,11 +91,19 @@ def on_batch_strategy_change(strategy: str):
         )
 
 
-def handle_batch_upload(new_files, cur_state):
-    """Accumulate UploadButton files into persistent State — fixes transient UploadButton bug (Gradio 6.19).
+def _extract_file_path(f: Any) -> str:
+    """Safely extract system path from Gradio Upload file objects."""
+    if hasattr(f, "name"):
+        return f.name
+    if isinstance(f, dict):
+        return f.get("path") or f.get("name", "")
+    return str(f)
 
-    Returns ``(upload_state, preview_path, status_header)`` so the source
-    viewer shows the first queued image immediately.
+
+def handle_batch_upload(new_files, cur_state):
+    """Accumulate UploadButton files into persistent State — fixes transient UploadButton bug.
+
+    Returns ``(upload_state, preview_path, status_header)``.
     """
     if new_files is None:
         count = len(cur_state) if isinstance(cur_state, list) else 0
@@ -111,9 +117,7 @@ def handle_batch_upload(new_files, cur_state):
                 ),
             )
         first = cur_state[0] if cur_state else None
-        preview = getattr(first, "name", None) or (
-            first.get("path") if isinstance(first, dict) else None
-        )
+        preview = _extract_file_path(first) if first else None
         return (
             cur_state,
             preview,
@@ -121,31 +125,22 @@ def handle_batch_upload(new_files, cur_state):
                 f"📥 {count} image(s) queued — ready to Run.", state="idle"
             ),
         )
-    if isinstance(new_files, (list, tuple)):
-        to_add = [f for f in new_files if f is not None]
-    else:
-        to_add = [new_files] if new_files is not None else []
+
+    to_add = (
+        [f for f in new_files if f is not None]
+        if isinstance(new_files, (list, tuple))
+        else [new_files]
+    )
     base = list(cur_state) if isinstance(cur_state, list) else []
-    seen = set()
-    for f in base:
-        try:
-            key = getattr(f, "name", None) or (
-                f.get("path") if isinstance(f, dict) else str(f)
-            )
-            seen.add(key)
-        except Exception:
-            seen.add(str(f))
+
+    seen = {_extract_file_path(f) for f in base}
     updated = list(base)
     for f in to_add:
-        try:
-            key = getattr(f, "name", None) or (
-                f.get("path") if isinstance(f, dict) else str(f)
-            )
-        except Exception:
-            key = str(f)
-        if key not in seen:
+        key = _extract_file_path(f)
+        if key and key not in seen:
             updated.append(f)
             seen.add(key)
+
     count = len(updated)
     header = (
         render_status_header(
@@ -158,17 +153,80 @@ def handle_batch_upload(new_files, cur_state):
         )
     )
     first = updated[0] if updated else None
-    preview = getattr(first, "name", None) or (
-        first.get("path") if isinstance(first, dict) else None
-    )
+    preview = _extract_file_path(first) if first else None
     return updated, preview, header
 
 
+def handle_remove_current_image(file_list, cur_idx):
+    """Removes the currently selected image from the queue and selects the nearest image."""
+    if not file_list:
+        return (
+            [],
+            None,
+            gr.update(choices=[], value=None),
+            '<span class="xp-pos">–&hairsp;/&hairsp;–</span>',
+            0,
+            render_status_header("Idle — queue is empty.", state="idle"),
+        )
+
+    updated = list(file_list)
+    cur_idx = max(0, min(int(cur_idx or 0), len(updated) - 1))
+    updated.pop(cur_idx)
+
+    if not updated:
+        return (
+            [],
+            None,
+            gr.update(choices=[], value=None),
+            '<span class="xp-pos">–&hairsp;/&hairsp;–</span>',
+            0,
+            render_status_header("Idle — queue is empty.", state="idle"),
+        )
+
+    next_idx = min(cur_idx, len(updated) - 1)
+    paths = [_extract_file_path(f) for f in updated]
+    choices = [f"{i + 1}: {os.path.basename(p)}" for i, p in enumerate(paths)]
+    preview = paths[next_idx]
+    pos_html = (
+        f'<span class="xp-pos">{next_idx + 1}&hairsp;/&hairsp;{len(paths)}</span>'
+    )
+    header = render_status_header(
+        f"📥 {len(paths)} image(s) queued — ready to Run.", state="idle"
+    )
+
+    return (
+        updated,
+        preview,
+        gr.update(choices=choices, value=choices[next_idx]),
+        pos_html,
+        next_idx,
+        header,
+    )
+
+
+def handle_clear_all_images():
+    """Wipes the entire image queue and resets viewers."""
+    return (
+        [],  # upload_state
+        None,  # source_image_viewer
+        gr.update(choices=[], value=None),  # explorer_image_select
+        '<span class="xp-pos">–&hairsp;/&hairsp;–</span>',  # explorer_pos_display
+        0,  # selected_img_idx_state
+        render_status_header("Idle — queue cleared.", state="idle"),  # pipeline_status
+    )
+
+
 def build_batch_tab() -> Dict[str, Any]:
-    """Batch tab — twin symmetric screens, separate focused dropdowns for each concern."""
+    """Batch tab — twin symmetric screens with stabilized state tracking."""
+
+    # ── Dedicated State Containers (Prevents flickering & blank overrides) ──
+    upload_state = gr.State([])  # Holds uploaded raw file objects/paths
+    batch_results_state = gr.State({})  # Holds full output dict per image
+    selected_img_idx_state = gr.State(0)  # Pin current active image index
+    selected_round_state = gr.State(0)  # Pin current active round index
 
     with gr.Column():
-        # ── TWIN SCREENS: Input (left) | Output (right) — same line, same size (520px) ──
+        # ── TWIN SCREENS: Input (left) | Output (right) — same size (520px) ──
         with gr.Row(
             equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]
         ):
@@ -177,18 +235,16 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Source Image (Reference)",
                     type="pil",
                     height=520,
+                    interactive=False,
                 )
-                hero_source_image = source_image_viewer
             with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
                 best_annotated_viewer = DetectionViewer(
                     label="Detections (Interactive)",
                     panel_title="Detections",
                     list_height=520,
                 )
-                hero_viewer = best_annotated_viewer
 
         # ── Explorer transport bar — single horizontal strip ──
-        # [⏮][◀]  Image …………  (3/10)  [▶][⏭]  Round ……  Score  Grid
         with gr.Group(elem_classes=["batch-explorer-bar", "explorer-nav-top"]):
             with gr.Row(equal_height=True, elem_classes=["explorer-transport"]):
                 explorer_first_btn = gr.Button(
@@ -211,6 +267,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Image",
                     show_label=False,
                     choices=[],
+                    value=None,
                     interactive=True,
                     scale=6,
                     min_width=140,
@@ -240,6 +297,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     label="Round",
                     show_label=False,
                     choices=[],
+                    value=None,
                     interactive=True,
                     scale=2,
                     min_width=96,
@@ -255,8 +313,7 @@ def build_batch_tab() -> Dict[str, Any]:
                     elem_classes=["xp-grid-chk"],
                 )
 
-        # ── Compact upload button + Run (always visible) — State-backed to survive Gradio transient UploadButton ──
-        upload_state = gr.State([])
+        # ── Compact upload, removal + Run controls ──
         with gr.Row(elem_classes=["btn-group", "upload-run-row"]):
             input_images = gr.UploadButton(
                 "📁 Upload Images",
@@ -264,8 +321,20 @@ def build_batch_tab() -> Dict[str, Any]:
                 file_count="multiple",
                 variant="secondary",
                 size="sm",
-                scale=1,
+                scale=2,
                 elem_id="batch-upload-btn",
+            )
+            remove_current_btn = gr.Button(
+                "🗑️ Remove",
+                variant="secondary",
+                size="sm",
+                scale=1,
+            )
+            clear_all_btn = gr.Button(
+                "🧹 Clear All",
+                variant="secondary",
+                size="sm",
+                scale=1,
             )
             run_btn = gr.Button(
                 "▶  Run Batch",
@@ -290,7 +359,7 @@ def build_batch_tab() -> Dict[str, Any]:
             )
             progress_html = gr.HTML(value=_render_progress_bar(0, "Idle"))
 
-        # ── DROPDOWN 1: Input & Categories — focused ──
+        # ── ACCORDION 1: Input & Categories ──
         with gr.Accordion(
             "📥 Input & Categories — Strategy, Presets & Definitions", open=False
         ):
@@ -329,7 +398,7 @@ def build_batch_tab() -> Dict[str, Any]:
                         info="Optional domain guidance.",
                     )
 
-        # ── DROPDOWN 2: Pipeline Parameters — focused ──
+        # ── ACCORDION 2: Pipeline Parameters ──
         with gr.Accordion(
             "⚙️ Pipeline Parameters — Rounds, Thresholds & Concurrency", open=False
         ) as rounds_accordion:
@@ -377,7 +446,7 @@ def build_batch_tab() -> Dict[str, Any]:
                         value=DEFAULT_CONCURRENCY,
                     )
 
-        # ── DROPDOWN 3: Preprocessing — focused ──
+        # ── ACCORDION 3: Preprocessing ──
         with gr.Accordion(
             "🎨 Image Preprocessing & Augmentation", open=False
         ) as prep_accordion:
@@ -610,7 +679,7 @@ def build_batch_tab() -> Dict[str, Any]:
                         info="Default: 2048×2048",
                     )
 
-        # ── DROPDOWN 4: Explorer & Diagnostics — focused ──
+        # ── ACCORDION 4: Explorer & Diagnostics ──
         with gr.Accordion(
             "🔍 Explorer & Diagnostics — Image, Rounds & Results", open=False
         ):
@@ -664,10 +733,14 @@ def build_batch_tab() -> Dict[str, Any]:
                     )
 
     return dict(
+        # Structure & Accordions
         explorer_tabs=explorer_tabs,
         rounds_accordion=rounds_accordion,
         prep_accordion=prep_accordion,
+        # Inputs & Config
         input_images=input_images,
+        remove_current_btn=remove_current_btn,
+        clear_all_btn=clear_all_btn,
         category_strategy=category_strategy,
         category_preset_dropdown=category_preset_dropdown,
         categories_input=categories_input,
@@ -676,6 +749,8 @@ def build_batch_tab() -> Dict[str, Any]:
         score_threshold_slider=score_threshold_slider,
         det_temp_slider=det_temp_slider,
         jdg_temp_slider=jdg_temp_slider,
+        concurrency_slider=concurrency_slider,
+        # Preprocessing
         prep_enabled_chk=prep_enabled_chk,
         prep_options_group=prep_options_group,
         prep_short_edge_slider=prep_short_edge_slider,
@@ -709,16 +784,20 @@ def build_batch_tab() -> Dict[str, Any]:
         prep_pixel_bounds_row=prep_pixel_bounds_row,
         prep_min_pixels_num=prep_min_pixels_num,
         prep_max_pixels_num=prep_max_pixels_num,
-        concurrency_slider=concurrency_slider,
+        # Execution & Progress
         run_btn=run_btn,
         stop_run_btn=stop_run_btn,
         pipeline_status=pipeline_status,
         progress_html=progress_html,
         batch_status_table=batch_status_table,
         download_results_box=download_results_box,
-        hero_viewer=hero_viewer,
-        hero_source_image=hero_source_image,
+        # Display Viewers
+        source_image_viewer=source_image_viewer,
+        best_annotated_viewer=best_annotated_viewer,
+        hero_viewer=best_annotated_viewer,
+        hero_source_image=source_image_viewer,
         hero_info=hero_info,
+        # Explorer Controls
         explorer_image_select=explorer_image_select,
         explorer_first_btn=explorer_first_btn,
         explorer_prev_btn=explorer_prev_btn,
@@ -728,12 +807,14 @@ def build_batch_tab() -> Dict[str, Any]:
         explorer_round_select=explorer_round_select,
         round_score_display=round_score_display,
         show_grid_chk=show_grid_chk,
-        source_image_viewer=source_image_viewer,
-        best_annotated_viewer=best_annotated_viewer,
         round_feedback_display=round_feedback_display,
         round_parse_error_display=round_parse_error_display,
         round_raw_response_display=round_raw_response_display,
         detections_json_box=detections_json_box,
         pipeline_logs_viewer=pipeline_logs_viewer,
+        # Stabilized State Handles
         upload_state=upload_state,
+        batch_results_state=batch_results_state,
+        selected_img_idx_state=selected_img_idx_state,
+        selected_round_state=selected_round_state,
     )

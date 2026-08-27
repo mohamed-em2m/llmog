@@ -280,9 +280,11 @@ def build_prep_config(
         "denoise_method": prep_denoise_method or "none",
         "sharpen": bool(prep_sharpen),
         "white_balance": bool(prep_white_balance),
-        "grid_style": "standard"
-        if prep_grid_style == "Standard Red"
-        else (prep_grid_style or "standard"),
+        "grid_style": (
+            "standard"
+            if prep_grid_style == "Standard Red"
+            else (prep_grid_style or "standard")
+        ),
         "som_enabled": bool(prep_som_enabled),
         "tiling_enabled": bool(prep_tiling_enabled),
         "tile_size": int(prep_tile_size or 512),
@@ -292,15 +294,21 @@ def build_prep_config(
         "grid_step": int(prep_grid_step or 250),
         "grid_line_width": int(prep_grid_line_width or 1),
         "grid_font_size": int(prep_grid_font_size or 0),
-        "grid_line_color": prep_grid_line_color
-        if prep_grid_line_color != "custom"
-        else prep_grid_line_color_custom,
-        "grid_text_color": prep_grid_text_color
-        if prep_grid_text_color != "custom"
-        else prep_grid_text_color_custom,
-        "grid_backing_color": prep_grid_backing_color
-        if prep_grid_backing_color != "custom"
-        else prep_grid_backing_color_custom,
+        "grid_line_color": (
+            prep_grid_line_color
+            if prep_grid_line_color != "custom"
+            else prep_grid_line_color_custom
+        ),
+        "grid_text_color": (
+            prep_grid_text_color
+            if prep_grid_text_color != "custom"
+            else prep_grid_text_color_custom
+        ),
+        "grid_backing_color": (
+            prep_grid_backing_color
+            if prep_grid_backing_color != "custom"
+            else prep_grid_backing_color_custom
+        ),
         "send_pixel_bounds": bool(prep_send_pixel_bounds),
         "min_pixels": int(prep_min_pixels) if prep_min_pixels is not None else None,
         "max_pixels": int(prep_max_pixels) if prep_max_pixels is not None else None,

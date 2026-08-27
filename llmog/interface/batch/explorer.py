@@ -16,6 +16,7 @@ from interface.viewer_utils import (
     build_viewer_payload,
     pipeline_detections_to_annotations,
 )
+from free_detection.agent.visuals import draw_grid as _draw_grid_lazy
 
 logger = logging.getLogger("detection_pipeline.explorer")
 
@@ -87,8 +88,6 @@ def _lazy_grid(img_data: dict, show_grid: bool) -> Optional[Image.Image]:
     if raw is None:
         return None
     try:
-        from free_detection.agent.visuals import draw_grid as _draw_grid_lazy
-
         cfg = img_data.get("_grid_config") or {}
         grid_img = _draw_grid_lazy(
             raw,
@@ -112,22 +111,23 @@ def _round_result(img_data: dict, selected_round: Optional[str]) -> Tuple:
     viewer_base: Optional[Image.Image] = img_data.get("raw_original")
 
     if not selected_round or selected_round == "Final Best":
-        best_score, best_round_num, best_feedback, best_raw, best_err = (
-            -1,
-            -1,
-            "No detections found.",
-            "",
-            "",
-        )
+        best_score, best_round_num = -1, -1
+        best_feedback, best_raw, best_err = "No detections found.", "", ""
+        # Fallback if there are no rounds at all — use whatever top-level
+        # detections exist so the viewer isn't empty.
         best_detections = img_data.get("detections") or []
+
         for r in img_data.get("rounds", []):
             if r.get("score", -1) > best_score:
                 best_score, best_round_num = r["score"], r["round"]
-                best_feedback, best_raw, best_err = (
-                    r.get("feedback", ""),
-                    r.get("raw_text", ""),
-                    r.get("parse_error", ""),
-                )
+                best_feedback = r.get("feedback", "")
+                best_raw = r.get("raw_text", "")
+                best_err = r.get("parse_error", "")
+                # Keep detections in lockstep with the round that actually
+                # produced this score — previously this stayed pinned to
+                # img_data["detections"] regardless of which round won,
+                # so the badge and the drawn/annotated image could disagree.
+                best_detections = r.get("detections") or []
 
         score_html = (
             f'<span class="score-badge">Best Score: {best_score}/10 (Round {best_round_num})</span>'
@@ -140,25 +140,29 @@ def _round_result(img_data: dict, selected_round: Optional[str]) -> Tuple:
             best_feedback,
             best_raw,
             best_err or "None",
-            json.dumps(img_data.get("detections", []), indent=2)
-            if img_data.get("detections")
-            else "[]",
+            json.dumps(best_detections, indent=2) if best_detections else "[]",
         )
 
     try:
-        round_idx = int(selected_round) - 1
+        target_round_num = int(selected_round)
         rounds = img_data.get("rounds", [])
-        if 0 <= round_idx < len(rounds):
-            r = rounds[round_idx]
+        # Look the round up by its actual "round" number rather than by
+        # list position — position and round number can diverge if a round
+        # was skipped, retried, or appended out of order, which previously
+        # made the dropdown silently show the wrong round's data.
+        r = next((rr for rr in rounds if rr.get("round") == target_round_num), None)
+        if r is not None:
             return (
                 _viewer_payload_for(viewer_base, r.get("detections") or []),
                 f'<span class="score-badge">Score: {r.get("score", "-")}/10</span>',
                 r.get("feedback", ""),
                 r.get("raw_text", ""),
                 r.get("parse_error") or "None",
-                json.dumps(r.get("detections", []), indent=2)
-                if r.get("detections")
-                else "[]",
+                (
+                    json.dumps(r.get("detections", []), indent=2)
+                    if r.get("detections")
+                    else "[]"
+                ),
             )
     except Exception as e:
         logger.error(f"Error loading round details: {e}")
