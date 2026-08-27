@@ -3,7 +3,7 @@ Draw & Recognize Reclassification Tab module.
 Implements a high-performance Custom HTML5 Canvas Frontend paired with Gradio's Backend,
 providing dedicated bounding box (rectangle), freehand brush stroke, circle, and eraser tools,
 zoom/pan controls, drag-and-drop / clipboard image loading, undo/redo history,
-and multi-mode VLM region recognition (Strict, Hybrid, Free) with YOLO dataset labeling.
+instant Auto-Recognize mode, and multi-mode VLM region recognition (Strict, Hybrid, Free) with YOLO labeling.
 """
 
 from __future__ import annotations
@@ -170,85 +170,59 @@ def _on_class_mode_change(mode: str) -> Tuple[gr.update, gr.update, gr.update]:
         )
 
 
-# ── Custom Canvas Frontend HTML Template ───────────────────────────────────────
-_CUSTOM_CANVAS_HTML = """
-<div id="llmog-custom-canvas-app" class="custom-canvas-container">
-    <!-- Top Interactive Toolbar -->
-    <div class="canvas-toolbar">
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Tools</span>
-            <button type="button" class="canvas-tool-btn active" id="tool-bbox" title="Bounding Box (Drag rectangle) [B]">
-                <span class="tool-icon">🔲</span> Box
-            </button>
-            <button type="button" class="canvas-tool-btn" id="tool-brush" title="Freehand Brush [P]">
-                <span class="tool-icon">🖌️</span> Brush
-            </button>
-            <button type="button" class="canvas-tool-btn" id="tool-circle" title="Circle / Ellipse [C]">
-                <span class="tool-icon">⭕</span> Circle
-            </button>
-            <button type="button" class="canvas-tool-btn" id="tool-eraser" title="Eraser / Delete [E]">
-                <span class="tool-icon">🧽</span> Eraser
-            </button>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Color</span>
-            <div class="color-palette-bar" id="palette-swatches">
-                <button type="button" class="color-swatch active" style="background:#ff3c3c" data-color="#ff3c3c"></button>
-                <button type="button" class="color-swatch" style="background:#0096ff" data-color="#0096ff"></button>
-                <button type="button" class="color-swatch" style="background:#00d250" data-color="#00d250"></button>
-                <button type="button" class="color-swatch" style="background:#ffd214" data-color="#ffd214"></button>
-                <button type="button" class="color-swatch" style="background:#ffa014" data-color="#ffa014"></button>
-                <button type="button" class="color-swatch" style="background:#963cff" data-color="#963cff"></button>
-                <button type="button" class="color-swatch" style="background:#00d7d7" data-color="#00d7d7"></button>
-                <button type="button" class="color-swatch" style="background:#ffffff" data-color="#ffffff"></button>
-            </div>
-            <input type="color" id="custom-color-picker" value="#ff3c3c" title="Custom color" class="color-picker-input">
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Size: <b id="brush-size-val">3</b>px</span>
-            <input type="range" id="brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Actions</span>
-            <button type="button" class="canvas-tool-btn" id="btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
-            <button type="button" class="canvas-tool-btn" id="btn-redo" title="Redo [Ctrl+Y]">🔁 Redo</button>
-            <button type="button" class="canvas-tool-btn" id="btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
-            <button type="button" class="canvas-tool-btn danger" id="btn-clear-all" title="Clear image & drawings completely">🧹 Reset All</button>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Zoom</span>
-            <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-in" title="Zoom in">➕</button>
-            <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-out" title="Zoom out">➖</button>
-            <button type="button" class="canvas-tool-btn" id="btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
-            <span id="zoom-level-text" class="zoom-indicator">100%</span>
-        </div>
-
-        <div class="canvas-toolbar-divider"></div>
-
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Image</span>
-            <button type="button" class="canvas-tool-btn upload-btn" id="btn-toolbar-upload" title="Upload an image from your computer">
-                📁 Upload Image
-            </button>
+# ── Canvas Stage HTML — ribbon now only shows title/mode status ────────────────
+# Upload / Recognize actions live in the toolbar's "Image" group (single source
+# of truth) instead of being duplicated here.
+_CANVAS_STAGE_HTML = """
+<style>
+/* Pin the canvas stage to the same height as the results viewer (520px,
+   see DetectionViewer(list_height=520) in build_draw_tab) so input and
+   output panels always match, and keep it fixed regardless of what's
+   loaded into it — no element inside is allowed to grow the wrapper. */
+#llmog-custom-canvas-app .canvas-stage-wrapper {
+    position: relative;
+    width: 100%;
+    height: 520px;
+    min-height: 520px;
+    max-height: 520px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+#llmog-custom-canvas-app #custom-annotation-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+#llmog-custom-canvas-app .canvas-empty-state {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    box-sizing: border-box;
+}
+#llmog-custom-canvas-app .canvas-status-bar {
+    flex-wrap: wrap;
+    max-height: 110px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+#llmog-custom-canvas-app .regions-list-chips {
+    max-height: 70px;
+    overflow-y: auto;
+    flex-wrap: wrap;
+}
+</style>
+<div id="llmog-custom-canvas-app" class="custom-canvas-container canvas-stage-card">
+    <!-- Top Status Ribbon (read-only indicator, no duplicate action buttons) -->
+    <div class="canvas-top-ribbon">
+        <div class="ribbon-left">
+            <span class="ribbon-title">🎨 Interactive Annotation Canvas</span>
+            <span class="mode-badge-pill manual" id="draw-mode-indicator-pill">✋ Manual Mode</span>
         </div>
     </div>
 
     <!-- Canvas Stage Viewport -->
     <div class="canvas-stage-wrapper" id="canvas-stage-wrapper">
         <canvas id="custom-annotation-canvas"></canvas>
-
         <div id="canvas-empty-overlay" class="canvas-empty-state">
             <div class="empty-icon">🎨</div>
             <h3>Interactive Detection Canvas</h3>
@@ -259,7 +233,6 @@ _CUSTOM_CANVAS_HTML = """
             </div>
             <span class="drag-hint">or drag &amp; drop an image here / paste from clipboard (Ctrl+V)</span>
         </div>
-
         <input type="file" id="canvas-file-input" accept="image/*" style="display:none">
     </div>
 
@@ -267,45 +240,41 @@ _CUSTOM_CANVAS_HTML = """
     <div class="canvas-status-bar">
         <div class="status-left">
             <span class="regions-count-badge" id="regions-count-badge">0 Region(s)</span>
-            <span class="canvas-hint-text">💡 Tip: Select <b>Box</b> to drag bounding boxes, or <b>Brush</b> for arbitrary strokes. Mouse wheel zooms.</span>
-        </div>
-        <div class="regions-list-chips" id="regions-chips-container">
-            <!-- Dynamically populated region chips -->
-        </div>
-    </div>
-</div>
-"""
-
-# ── Split fragments for twin-level layout — stage + toolbar separate (tools below canvas) ──
-_CANVAS_STAGE_HTML = """
-<div id="llmog-custom-canvas-app" class="custom-canvas-container canvas-stage-card">
-    <div class="canvas-stage-wrapper" id="canvas-stage-wrapper">
-        <canvas id="custom-annotation-canvas"></canvas>
-        <div id="canvas-empty-overlay" class="canvas-empty-state">
-            <div class="empty-icon">🎨</div>
-            <h3>Interactive Detection Canvas</h3>
-            <p>Upload an image or load the sample, then draw bounding boxes or strokes over objects.</p>
-            <div class="empty-actions">
-                <button type="button" class="btn-canvas-primary" id="btn-empty-upload">📁 Choose Image</button>
-                <button type="button" class="btn-canvas-secondary" id="btn-empty-sample">🖼️ Load Sample</button>
-            </div>
-            <span class="drag-hint">or drag &amp; drop an image here / paste from clipboard (Ctrl+V)</span>
-        </div>
-        <input type="file" id="canvas-file-input" accept="image/*" style="display:none">
-    </div>
-    <div class="canvas-status-bar">
-        <div class="status-left">
-            <span class="regions-count-badge" id="regions-count-badge">0 Region(s)</span>
-            <span class="canvas-hint-text">💡 Tip: Select <b>Box</b> to drag bounding boxes, or <b>Brush</b> for arbitrary strokes. Mouse wheel zooms.</span>
+            <span class="canvas-hint-text" id="draw-canvas-hint-text">💡 Draw a box or brush stroke over any object, then click <b>Recognize Now</b>.</span>
         </div>
         <div class="regions-list-chips" id="regions-chips-container"></div>
     </div>
 </div>
 """
 
+# ── Clean, Reorganized Toolbar below Canvas ────────────────────────────────────
+# "Image" group now owns both Upload and Recognize — the single place to load
+# an image and send it off, instead of splitting the actions across the ribbon
+# and toolbar.
 _TOOLBAR_HTML = """
 <div id="llmog-custom-canvas-toolbar" class="custom-canvas-container draw-toolbar-below">
     <div class="canvas-toolbar">
+        <!-- Workflow Execution Mode Toggle -->
+        <div class="canvas-tool-group highlight-group">
+            <span class="tool-group-label">Workflow Mode</span>
+            <button type="button" class="canvas-tool-btn active" id="draw-mode-btn-manual" title="Manual: Draw regions freely, then click Recognize"><span class="tool-icon">✋</span> Manual</button>
+            <button type="button" class="canvas-tool-btn auto-mode-btn" id="draw-mode-btn-auto" title="Auto: Instantly recognize each object as soon as drawing completes!"><span class="tool-icon">⚡</span> Auto-Recognize on Draw</button>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Image: Upload + Recognize live together here -->
+        <div class="canvas-tool-group highlight-group">
+            <span class="tool-group-label">Image</span>
+            <button type="button" class="canvas-tool-btn upload-btn" id="btn-toolbar-upload" title="Upload an image from your computer">📁 Upload Image</button>
+            <button type="button" class="btn-ribbon-cta" id="btn-toolbar-recognize" title="Send drawn regions to VLM (Ctrl+Enter)">
+                <span class="cta-icon">🔎</span> <b>Recognize Now</b>
+            </button>
+        </div>
+
+        <div class="canvas-toolbar-divider"></div>
+
+        <!-- Tools -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Tools</span>
             <button type="button" class="canvas-tool-btn active" id="tool-bbox" title="Bounding Box (Drag rectangle) [B]"><span class="tool-icon">🔲</span> Box</button>
@@ -313,7 +282,10 @@ _TOOLBAR_HTML = """
             <button type="button" class="canvas-tool-btn" id="tool-circle" title="Circle / Ellipse [C]"><span class="tool-icon">⭕</span> Circle</button>
             <button type="button" class="canvas-tool-btn" id="tool-eraser" title="Eraser / Delete [E]"><span class="tool-icon">🧽</span> Eraser</button>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Color & Size -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Color</span>
             <div class="color-palette-bar" id="palette-swatches">
@@ -328,12 +300,17 @@ _TOOLBAR_HTML = """
             </div>
             <input type="color" id="custom-color-picker" value="#ff3c3c" title="Custom color" class="color-picker-input">
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
         <div class="canvas-tool-group">
             <span class="tool-group-label">Size: <b id="brush-size-val">3</b>px</span>
             <input type="range" id="brush-size-slider" min="1" max="40" value="3" class="canvas-range-slider" title="Stroke thickness">
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Actions -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Actions</span>
             <button type="button" class="canvas-tool-btn" id="btn-undo" title="Undo [Ctrl+Z]">↩️ Undo</button>
@@ -341,18 +318,16 @@ _TOOLBAR_HTML = """
             <button type="button" class="canvas-tool-btn" id="btn-clear-drawings" title="Clear drawn boxes & strokes only">🧽 Clear Drawings</button>
             <button type="button" class="canvas-tool-btn danger" id="btn-clear-all" title="Clear image & drawings completely">🧹 Reset All</button>
         </div>
+
         <div class="canvas-toolbar-divider"></div>
+
+        <!-- Zoom -->
         <div class="canvas-tool-group">
             <span class="tool-group-label">Zoom</span>
             <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-in" title="Zoom in">➕</button>
             <button type="button" class="canvas-tool-btn icon-only" id="btn-zoom-out" title="Zoom out">➖</button>
             <button type="button" class="canvas-tool-btn" id="btn-zoom-fit" title="Fit to viewport">📐 Fit</button>
             <span id="zoom-level-text" class="zoom-indicator">100%</span>
-        </div>
-        <div class="canvas-toolbar-divider"></div>
-        <div class="canvas-tool-group">
-            <span class="tool-group-label">Image</span>
-            <button type="button" class="canvas-tool-btn upload-btn" id="btn-toolbar-upload" title="Upload an image from your computer">📁 Upload Image</button>
         </div>
     </div>
 </div>
@@ -366,6 +341,9 @@ _CUSTOM_CANVAS_JS = """
         imageSrc: null,
         imageWidth: 0,
         imageHeight: 0,
+
+        executionMode: 'manual',
+        isAutoSubmitting: false,
 
         mode: 'bbox',
         color: '#ff3c3c',
@@ -407,22 +385,84 @@ _CUSTOM_CANVAS_JS = """
             this.emptyOverlay = document.getElementById('canvas-empty-overlay');
             this.fileInput = document.getElementById('canvas-file-input');
 
+            // Gradio can re-render this component (e.g. tab switches) and re-run
+            // this boot script against a fresh DOM tree. Window-level listeners
+            // from a previous mount would otherwise pile up and fire repeatedly
+            // against a stale controller. Tear those down before rebinding.
+            this._teardownGlobalListeners();
             this.bindEvents();
             this.resizeCanvas();
             this.syncGradioPayload();
         },
 
+        _teardownGlobalListeners: function() {
+            const h = window.__llmog_canvas_global_handlers__;
+            if (!h) return;
+            window.removeEventListener('resize', h.resize);
+            window.removeEventListener('mousemove', h.mousemove);
+            window.removeEventListener('mouseup', h.mouseup);
+            window.removeEventListener('touchmove', h.touchmove);
+            window.removeEventListener('touchend', h.touchend);
+            window.removeEventListener('paste', h.paste);
+            window.removeEventListener('keydown', h.keydown);
+            window.__llmog_canvas_global_handlers__ = null;
+        },
+
         bindEvents: function() {
             const self = this;
-            window.addEventListener('resize', () => self.resizeCanvas());
 
-            // Scope global handlers to this tab — the canvas keeps living while
-            // its Gradio tab is hidden, so paste/keys must be ignored there.
             const isTabVisible = () => {
                 const el = document.getElementById('llmog-custom-canvas-app');
                 return !!(el && el.offsetParent !== null);
             };
 
+            // ── Recognition Mode Toggle ────────────────────────────────────
+            const btnModeManual = document.getElementById('draw-mode-btn-manual');
+            const btnModeAuto = document.getElementById('draw-mode-btn-auto');
+            const modePill = document.getElementById('draw-mode-indicator-pill');
+            const hintText = document.getElementById('draw-canvas-hint-text');
+
+            const setExecutionMode = (mode) => {
+                self.executionMode = mode;
+                if (btnModeManual) btnModeManual.classList.toggle('active', mode === 'manual');
+                if (btnModeAuto) btnModeAuto.classList.toggle('active', mode === 'auto');
+
+                if (modePill) {
+                    modePill.className = 'mode-badge-pill ' + (mode === 'auto' ? 'auto' : 'manual');
+                    modePill.innerHTML = mode === 'auto' ? '⚡ Auto-Recognize Active' : '✋ Manual Mode';
+                }
+                if (hintText) {
+                    hintText.innerHTML = mode === 'auto'
+                        ? '⚡ <b>Auto Mode Active:</b> Complete any box, circle, or stroke to recognize it immediately!'
+                        : '💡 Draw shapes over objects, then click <b>Recognize Now</b>.';
+                }
+            };
+
+            if (btnModeManual) btnModeManual.onclick = () => setExecutionMode('manual');
+            if (btnModeAuto) btnModeAuto.onclick = () => setExecutionMode('auto');
+
+            // ── Image group: Upload + Recognize (single source, lives in toolbar) ──
+            const btnToolbarUpload = document.getElementById('btn-toolbar-upload');
+            const btnToolbarRecognize = document.getElementById('btn-toolbar-recognize');
+            const btnEmptyUpload = document.getElementById('btn-empty-upload');
+            const btnEmptySample = document.getElementById('btn-empty-sample');
+
+            if (btnToolbarUpload) btnToolbarUpload.onclick = () => self.triggerFileUpload();
+            if (btnToolbarRecognize) btnToolbarRecognize.onclick = () => self.triggerRecognize();
+            if (btnEmptyUpload) btnEmptyUpload.onclick = () => self.triggerFileUpload();
+            if (btnEmptySample) btnEmptySample.onclick = () => self.loadSampleImage();
+
+            // Reuse the single hidden <input type=file> already in the DOM instead
+            // of creating (and hoping to clean up) a throwaway input per click.
+            if (self.fileInput) {
+                self.fileInput.onchange = function(e) {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) self.loadImageFromFile(file);
+                    self.fileInput.value = '';
+                };
+            }
+
+            // ── Tool Selection ────────────────────────────────────────────
             const toolBbox = document.getElementById('tool-bbox');
             const toolBrush = document.getElementById('tool-brush');
             const toolCircle = document.getElementById('tool-circle');
@@ -453,6 +493,7 @@ _CUSTOM_CANVAS_JS = """
             if (toolCircle) toolCircle.onclick = () => setTool('circle', toolCircle);
             if (toolEraser) toolEraser.onclick = () => setTool('eraser', toolEraser);
 
+            // ── Colors ────────────────────────────────────────────────────
             const swatches = document.querySelectorAll('#palette-swatches .color-swatch');
             const customPicker = document.getElementById('custom-color-picker');
 
@@ -472,6 +513,7 @@ _CUSTOM_CANVAS_JS = """
                 };
             }
 
+            // ── Size ──────────────────────────────────────────────────────
             const sizeSlider = document.getElementById('brush-size-slider');
             const sizeVal = document.getElementById('brush-size-val');
             if (sizeSlider) {
@@ -481,6 +523,7 @@ _CUSTOM_CANVAS_JS = """
                 };
             }
 
+            // ── History & Clear Actions ───────────────────────────────────
             const btnUndo = document.getElementById('btn-undo');
             const btnRedo = document.getElementById('btn-redo');
             const btnClearDrawings = document.getElementById('btn-clear-drawings');
@@ -491,6 +534,7 @@ _CUSTOM_CANVAS_JS = """
             if (btnClearDrawings) btnClearDrawings.onclick = () => self.clearDrawings();
             if (btnClearAll) btnClearAll.onclick = () => self.clearAll();
 
+            // ── Zoom Controls ─────────────────────────────────────────────
             const btnZoomIn = document.getElementById('btn-zoom-in');
             const btnZoomOut = document.getElementById('btn-zoom-out');
             const btnZoomFit = document.getElementById('btn-zoom-fit');
@@ -499,35 +543,8 @@ _CUSTOM_CANVAS_JS = """
             if (btnZoomOut) btnZoomOut.onclick = () => self.zoom(1 / 1.2);
             if (btnZoomFit) btnZoomFit.onclick = () => self.fitToScreen();
 
-            // Toolbar upload button — always visible
-            const btnToolbarUpload = document.getElementById('btn-toolbar-upload');
-            if (btnToolbarUpload) {
-                btnToolbarUpload.onclick = () => self.triggerFileUpload();
-            }
-
-            const btnEmptyUpload = document.getElementById('btn-empty-upload');
-            const btnEmptySample = document.getElementById('btn-empty-sample');
-
-            if (btnEmptyUpload) {
-                btnEmptyUpload.onclick = () => self.triggerFileUpload();
-            }
-            if (btnEmptySample) {
-                btnEmptySample.onclick = () => self.loadSampleImage();
-            }
-
-            // Wire the static hidden file input as a fallback
-            if (self.fileInput) {
-                self.fileInput.onchange = (e) => {
-                    const file = e.target.files && e.target.files[0];
-                    if (file) self.loadImageFromFile(file);
-                    // Reset so the same file can be re-selected
-                    self.fileInput.value = '';
-                };
-            }
-
+            // ── Pointer Handlers (element-level; safe to rebind each mount) ──
             self.canvas.addEventListener('mousedown', (e) => self.onPointerDown(e));
-            window.addEventListener('mousemove', (e) => self.onPointerMove(e));
-            window.addEventListener('mouseup', (e) => self.onPointerUp(e));
 
             self.canvas.addEventListener('touchstart', (e) => {
                 if (e.touches.length === 1) {
@@ -535,21 +552,6 @@ _CUSTOM_CANVAS_JS = """
                     self.onPointerDown({ clientX: touch.clientX, clientY: touch.clientY, button: 0, preventDefault: () => e.preventDefault() });
                 }
             }, { passive: false });
-
-            window.addEventListener('touchmove', (e) => {
-                if (self.isDrawing || self.isPanning) {
-                    if (e.touches.length === 1) {
-                        const touch = e.touches[0];
-                        self.onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
-                    }
-                }
-            }, { passive: false });
-
-            window.addEventListener('touchend', (e) => {
-                if (self.isDrawing || self.isPanning) {
-                    self.onPointerUp(e);
-                }
-            });
 
             self.wrapper.addEventListener('wheel', (e) => {
                 e.preventDefault();
@@ -560,6 +562,7 @@ _CUSTOM_CANVAS_JS = """
                 self.zoomAt(zoomFactor, mouseX, mouseY);
             }, { passive: false });
 
+            // ── Drag & Drop ───────────────────────────────────────────────
             ['dragenter', 'dragover'].forEach(name => {
                 self.wrapper.addEventListener(name, (e) => {
                     e.preventDefault();
@@ -581,7 +584,26 @@ _CUSTOM_CANVAS_JS = """
                 }
             });
 
-            window.addEventListener('paste', (e) => {
+            // ── Window-level Handlers ────────────────────────────────────
+            // Named + stored so a later mount can remove exactly these before
+            // adding its own (see _teardownGlobalListeners).
+            const onResize = () => self.resizeCanvas();
+            const onMouseMove = (e) => self.onPointerMove(e);
+            const onMouseUp = (e) => self.onPointerUp(e);
+            const onTouchMove = (e) => {
+                if (self.isDrawing || self.isPanning) {
+                    if (e.touches.length === 1) {
+                        const touch = e.touches[0];
+                        self.onPointerMove({ clientX: touch.clientX, clientY: touch.clientY });
+                    }
+                }
+            };
+            const onTouchEnd = (e) => {
+                if (self.isDrawing || self.isPanning) {
+                    self.onPointerUp(e);
+                }
+            };
+            const onPaste = (e) => {
                 if (!isTabVisible()) return;
                 const items = (e.clipboardData || e.originalEvent.clipboardData).items;
                 for (let i = 0; i < items.length; i++) {
@@ -591,13 +613,15 @@ _CUSTOM_CANVAS_JS = """
                         break;
                     }
                 }
-            });
-
-            window.addEventListener('keydown', (e) => {
+            };
+            const onKeyDown = (e) => {
                 if (!isTabVisible()) return;
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    self.triggerRecognize();
+                } else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
                     e.preventDefault();
                     if (e.shiftKey) self.redo();
                     else self.undo();
@@ -613,13 +637,31 @@ _CUSTOM_CANVAS_JS = """
                 } else if (e.key === 'e' || e.key === 'E') {
                     setTool('eraser', toolEraser);
                 }
-            });
+            };
+
+            window.addEventListener('resize', onResize);
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('touchmove', onTouchMove, { passive: false });
+            window.addEventListener('touchend', onTouchEnd);
+            window.addEventListener('paste', onPaste);
+            window.addEventListener('keydown', onKeyDown);
+
+            window.__llmog_canvas_global_handlers__ = {
+                resize: onResize,
+                mousemove: onMouseMove,
+                mouseup: onMouseUp,
+                touchmove: onTouchMove,
+                touchend: onTouchEnd,
+                paste: onPaste,
+                keydown: onKeyDown,
+            };
         },
 
         resizeCanvas: function() {
             if (!this.wrapper || !this.canvas) return;
             const w = this.wrapper.clientWidth;
-            const h = this.wrapper.clientHeight || 580;
+            const h = this.wrapper.clientHeight || 520;
             this.canvas.width = w;
             this.canvas.height = h;
             if (this.image) this.clampOffsets();
@@ -641,6 +683,10 @@ _CUSTOM_CANVAS_JS = """
                 if (self.emptyOverlay) self.emptyOverlay.style.display = 'none';
                 self.fitToScreen();
                 self.syncGradioPayload();
+                self.render();
+            };
+            img.onerror = function() {
+                alert('That file could not be loaded as an image.');
             };
             img.src = dataUrl;
         },
@@ -651,35 +697,16 @@ _CUSTOM_CANVAS_JS = """
             reader.onload = function(e) {
                 self.loadImageFromDataUrl(e.target.result);
             };
+            reader.onerror = function() {
+                alert('Could not read that file.');
+            };
             reader.readAsDataURL(file);
         },
 
         triggerFileUpload: function() {
-            // Create a fresh <input type="file"> every time.
-            // This bypasses the Gradio innerHTML DOM issue where getElementById
-            // may return null for elements injected via gr.HTML's innerHTML path.
-            const self = this;
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = 'image/*';
-            input.style.display = 'none';
-            document.body.appendChild(input);
-            input.onchange = function(e) {
-                const file = e.target.files && e.target.files[0];
-                if (file) self.loadImageFromFile(file);
-                document.body.removeChild(input);
-            };
-            // Ensure the dialog is removed if the user cancels (focus returns)
-            input.addEventListener('cancel', function() {
-                try { document.body.removeChild(input); } catch(_) {}
-            });
-            window.addEventListener('focus', function cleanup() {
-                setTimeout(function() {
-                    try { if (input.parentNode) document.body.removeChild(input); } catch(_) {}
-                    window.removeEventListener('focus', cleanup);
-                }, 500);
-            }, { once: true });
-            input.click();
+            if (this.fileInput) {
+                this.fileInput.click();
+            }
         },
 
         loadSampleImage: function() {
@@ -694,6 +721,7 @@ _CUSTOM_CANVAS_JS = """
             const iw = this.imageWidth || 1, ih = this.imageHeight || 1;
             return Math.min(cw / iw, ch / ih);
         },
+
         clampOffsets: function() {
             const cw = this.canvas.width, ch = this.canvas.height;
             const iw = this.imageWidth, ih = this.imageHeight;
@@ -710,6 +738,7 @@ _CUSTOM_CANVAS_JS = """
                 this.offsetY = Math.max(ch - sh, Math.min(0, this.offsetY));
             }
         },
+
         fitToScreen: function() {
             if (!this.image || !this.canvas) return;
             const cw = this.canvas.width;
@@ -765,7 +794,8 @@ _CUSTOM_CANVAS_JS = """
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            if (e.button === 1 || e.spaceKey || (e.button === 0 && e.altKey)) {
+            // Middle-click, or left-click + Alt, pans the canvas.
+            if (e.button === 1 || (e.button === 0 && e.altKey)) {
                 this.isPanning = true;
                 this.panStartX = mouseX - this.offsetX;
                 this.panStartY = mouseY - this.offsetY;
@@ -827,7 +857,7 @@ _CUSTOM_CANVAS_JS = """
             if (!this.isDrawing) return;
             this.isDrawing = false;
 
-            this.saveStateForUndo();
+            let newRegion = null;
 
             if (this.mode === 'bbox') {
                 const x1 = Math.min(this.startX, this.currentX);
@@ -836,7 +866,7 @@ _CUSTOM_CANVAS_JS = """
                 const y2 = Math.max(this.startY, this.currentY);
 
                 if (x2 - x1 >= 6 && y2 - y1 >= 6) {
-                    this.regions.push({
+                    newRegion = {
                         type: 'bbox',
                         x1: Math.round(x1),
                         y1: Math.round(y1),
@@ -844,7 +874,7 @@ _CUSTOM_CANVAS_JS = """
                         y2: Math.round(y2),
                         color: this.color,
                         size: this.size
-                    });
+                    };
                 }
             } else if (this.mode === 'circle') {
                 const x1 = Math.min(this.startX, this.currentX);
@@ -853,7 +883,7 @@ _CUSTOM_CANVAS_JS = """
                 const y2 = Math.max(this.startY, this.currentY);
 
                 if (x2 - x1 >= 6 && y2 - y1 >= 6) {
-                    this.regions.push({
+                    newRegion = {
                         type: 'circle',
                         x1: Math.round(x1),
                         y1: Math.round(y1),
@@ -861,7 +891,7 @@ _CUSTOM_CANVAS_JS = """
                         y2: Math.round(y2),
                         color: this.color,
                         size: this.size
-                    });
+                    };
                 }
             } else if (this.mode === 'brush' && this.currentStroke.length > 1) {
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -872,21 +902,36 @@ _CUSTOM_CANVAS_JS = """
                     maxY = Math.max(maxY, p.y);
                 });
                 const pad = this.size;
-                this.regions.push({
+                newRegion = {
                     type: 'stroke',
                     x1: Math.round(Math.max(0, minX - pad)),
                     y1: Math.round(Math.max(0, minY - pad)),
                     x2: Math.round(Math.min(this.imageWidth, maxX + pad)),
                     y2: Math.round(Math.min(this.imageHeight, maxY + pad)),
-                    points: this.currentStroke,
+                    points: this.currentStroke.slice(),
                     color: this.color,
                     size: this.size
-                });
-                this.currentStroke = [];
+                };
             }
 
-            this.updateRegionsList();
-            this.syncGradioPayload();
+            if (newRegion) {
+                if (this.executionMode === 'auto') {
+                    this.saveStateForUndo();
+                    this.regions = [newRegion];
+                } else {
+                    this.saveStateForUndo();
+                    this.regions.push(newRegion);
+                }
+
+                this.updateRegionsList();
+                this.syncGradioPayload();
+
+                if (this.executionMode === 'auto') {
+                    this.triggerRecognize();
+                }
+            }
+
+            this.currentStroke = [];
             this.render();
         },
 
@@ -1185,12 +1230,36 @@ _CUSTOM_CANVAS_JS = """
                 hiddenTa.value = jsonStr;
                 hiddenTa.dispatchEvent(new Event('input', { bubbles: true }));
             }
+            return jsonStr;
+        },
+
+        triggerRecognize: function() {
+            if (this.isAutoSubmitting) return;
+            if (!this.image) {
+                alert("Please upload an image first.");
+                return;
+            }
+            if (this.regions.length === 0) {
+                alert("Please draw at least one bounding box, circle, or brush stroke over an object.");
+                return;
+            }
+
+            this.isAutoSubmitting = true;
+            this.syncGradioPayload();
+
+            setTimeout(() => {
+                const gradioBtn = document.getElementById('draw_run_recognize_btn');
+                if (gradioBtn) {
+                    gradioBtn.click();
+                }
+                setTimeout(() => { this.isAutoSubmitting = false; }, 300);
+            }, 100);
         }
     };
 
     window.getCustomDrawData = function() {
         if (window.CustomCanvasController) {
-            window.CustomCanvasController.syncGradioPayload();
+            return window.CustomCanvasController.syncGradioPayload();
         }
         return window.__llmog_custom_canvas_payload__ || "{}";
     };
@@ -1226,7 +1295,6 @@ def build_draw_tab() -> Dict[str, Any]:
     # ── Top twin: canvas stage (520) | recognition viewer (520) — same level ──
     with gr.Row(equal_height=True, elem_classes=["draw-tab-row", "twin-screens-row"]):
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
-            gr.HTML('<p class="section-label">🎨 Interactive Annotation Canvas</p>')
             custom_canvas_view = gr.HTML(
                 value=_CANVAS_STAGE_HTML,
                 js_on_load=_CUSTOM_CANVAS_JS,
@@ -1234,7 +1302,9 @@ def build_draw_tab() -> Dict[str, Any]:
             )
         with gr.Column(scale=1, min_width=420, elem_classes=["batch-bottom-col"]):
             gr.HTML('<p class="section-label">👁️ Recognition Result (Interactive)</p>')
-            recls_status = gr.Markdown("**Status: Idle**")
+            recls_status = gr.Markdown(
+                "**Status: Idle — upload an image and draw regions to recognize**"
+            )
             with gr.Group(elem_classes=["img-viewer-wrap"]):
                 recls_annotated = DetectionViewer(
                     label="Annotated Recognition Result",
@@ -1249,8 +1319,11 @@ def build_draw_tab() -> Dict[str, Any]:
                     interactive=False,
                     label="Copy these lines into the image's .txt label file",
                 )
-    # ── Below twin: toolbar + controls (full width, not inside twin) ──
+
+    # ── Below twin: toolbar + controls ──
     toolbar_view = gr.HTML(value=_TOOLBAR_HTML, elem_id="draw-toolbar-html")
+
+    # ── Hidden State Bridges ──
     custom_draw_payload = gr.Textbox(
         value="{}",
         visible=False,
@@ -1261,19 +1334,23 @@ def build_draw_tab() -> Dict[str, Any]:
         visible=False,
         elem_id="recls_sample_bridge_btn",
     )
+
+    # ── Prominent Action Row (Linked to Toolbar's Image group CTA) ──
     with gr.Row(elem_classes=["btn-group"]):
         recls_run_btn = gr.Button(
             "🔎  Recognize Drawn Regions",
             variant="primary",
             scale=2,
             interactive=True,
+            elem_id="draw_run_recognize_btn",
         )
         recls_clear_btn = gr.Button(
             "🗑️ Clear Results",
             variant="secondary",
             scale=1,
         )
-    # ── Target classes & detection mode (input) ───────────────────
+
+    # ── Target classes & detection mode (input) ──
     with gr.Accordion("🎯 Target Classes & Detection Mode", open=False):
         recls_class_mode = gr.Radio(
             label="🎯 Class Expectation Mode",
@@ -1306,6 +1383,8 @@ def build_draw_tab() -> Dict[str, Any]:
             value="",
             info="Optional domain guidance.",
         )
+
+    # ── Advanced Context Settings ──
     with gr.Accordion("⚙️ Advanced Filter & Context Settings", open=False):
         recls_conf_threshold = gr.Slider(
             label="Minimum Confidence Threshold (%)",
@@ -1331,8 +1410,9 @@ def build_draw_tab() -> Dict[str, Any]:
                 ("Batched – single request with N images", "batched"),
             ],
             value="parallel",
-            info="Sequential: simple. Parallel: N concurrent via asyncio.gather (~N× faster). Batched: 1 request with N images (fewest round-trips).",
+            info="Parallel: N concurrent requests (~N× faster). Batched: 1 request with N images (fewest round-trips).",
         )
+
     return dict(
         custom_canvas_view=custom_canvas_view,
         toolbar_view=toolbar_view,
@@ -1388,9 +1468,6 @@ def wire_draw_events(
         )
 
     # ── Recognition execution with Gradio Backend ───────────────────────────
-    # Endpoint is now global from Model / Endpoint tab (c_srv), not per-batch.
-    # JS must preserve all inputs – previously `()=>[payload]` dropped sliders → None error.
-    # Optional request_mode (sequential/parallel/batched) is now exposed.
     c_draw["recls_run_btn"].click(
         fn=classify_regions_gui,
         inputs=[
