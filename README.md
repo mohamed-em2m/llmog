@@ -85,6 +85,17 @@ uv pip install -e ".[vllm]"                # vLLM on CUDA (--server_type vllm)
 
 ---
 
+## 🚀 Try It Online
+
+No local setup required. Run the auto-annotation pipeline directly in the cloud:
+
+| Platform            | Notebook                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 🔵 **Google Colab** | [**▶️ Open in Colab**](https://colab.research.google.com/drive/1YIKlyTVtRjJdRC5IjCZ39i48ydyt_J5D?usp=sharing) |
+| 🟠 **Kaggle**       | [**▶️ Open in Kaggle**](https://www.kaggle.com/code/elemam/auto-annotation-using-llms/)                       |
+
+> **💡 Tip:** Google Colab is recommended for a quick interactive demo, while Kaggle provides another convenient environment for running the notebook with GPU acceleration.
+
 ## 🖥️ Coding Snippets
 
 There is one unified entry point — `llmog` — that dispatches by `--task`. Both workflows also have shortcut aliases that pre-set the right `--task` for you.
