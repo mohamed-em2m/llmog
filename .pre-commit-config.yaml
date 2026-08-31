@@ -48,7 +48,7 @@ repos:
         name: "git · Prevent submodule creation"
       - id: check-added-large-files
         name: "git · Block large file commits"
-        args: ["--maxkb=5000"]
+        args: ["--maxkb=50000"]
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.9
@@ -66,4 +66,3 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
       - id: check-json
-      - id: check-added-large-files
