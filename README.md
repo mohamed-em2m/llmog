@@ -6,8 +6,7 @@
 
 This project implements an iterative **Detector-Judge pipeline**: a VLM "detector" agent proposes bounding boxes, a VLM "judge" agent critiques them against the original image, and the loop repeats with structured feedback until the annotations meet a quality threshold or the round limit is reached.
 
----
-<video src="https://github.com/mohamed-em2m/llmog/raw/main/assets/video.mp4" controls="controls" style="max-width: 100%;"></video>
+![Detection Demo](assets/results.gif)
 
 ## 🎯 What This Project Can Do For You
 
