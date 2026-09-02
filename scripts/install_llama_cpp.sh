@@ -11,3 +11,4 @@ cmake --build llama.cpp/build --config Release -j 24 --clean-first --target llam
 for bin in llama.cpp/build/bin/*; do
     [ -f "$bin" ] && install -m 755 "$bin" /usr/local/bin/
 done
+cp llama.cpp/build/bin/llama-* llama.cpp
