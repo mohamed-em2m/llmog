@@ -20,7 +20,7 @@ class PipelineConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     # --- Task selection -----------------------------------------------------
-    task: Literal["free_detection", "auto_label"] = "free_detection"
+    task: Literal["free_detection", "auto_label", "classify"] = "free_detection"
 
     # --- Logging -----------------------------------------------------------
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
@@ -32,6 +32,7 @@ class PipelineConfig(BaseModel):
     train_image: Optional[str] = None
     train_label: Optional[str] = None
     yaml_path: Optional[str] = None
+    input_folder: Optional[str] = None
     image_extensions: str = ".jpg,.jpeg,.png"
 
     # --- Categories --------------------------------------------------------
@@ -39,6 +40,17 @@ class PipelineConfig(BaseModel):
     definitions: str = ""
     init_class_map: bool = False
     conf_threshold: Literal[1, 2, 3, 4, 5] = 2
+
+    # --- Whole-image classification (task="classify") ----------------------
+    classification_mode: Literal["single", "multi", "top_k"] = "single"
+    top_k: int = 3
+    multi_threshold: float = 50.0
+    class_mode: Literal["strict", "hybrid", "free"] = "strict"
+    class_definitions: str = ""
+    preset: Optional[str] = None
+    output_format: Literal["csv", "yolo", "both"] = "csv"
+    classification_temperature: float = 0.2
+    classification_max_tokens: int = 1024
 
     # --- Output ------------------------------------------------------------
     output_folder: str = "./detection_results"
@@ -192,6 +204,7 @@ class PipelineConfig(BaseModel):
         ``auto_label`` requires a ``--train_image`` folder (and typically also
         ``--train_label`` and ``--yaml_path``, but those are enforced by the
         sub-entry-point, not the schema, so users can stage experiments).
+        ``classify`` requires ``--image`` paths and/or ``--input_folder``.
         """
         if self.task == "free_detection" and not self.images:
             raise ValueError(
@@ -201,6 +214,15 @@ class PipelineConfig(BaseModel):
             raise ValueError(
                 "task='auto_label' requires --train_image (folder of images)."
             )
+        if self.task == "classify" and not self.images and not self.input_folder:
+            raise ValueError(
+                "task='classify' requires at least one --image/-i path "
+                "or --input_folder."
+            )
+        if self.top_k < 1:
+            raise ValueError("--top_k must be >= 1")
+        if not 0.0 <= self.multi_threshold <= 100.0:
+            raise ValueError("--multi_threshold must be between 0 and 100")
         return self
 
     @property

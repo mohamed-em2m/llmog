@@ -44,10 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="llmog",
         description=(
-            "Unified CLI for the LLM object-detection framework. Two tasks are "
+            "Unified CLI for the LLM object-detection framework. Three tasks are "
             "supported via --task: 'free_detection' runs the detector/judge "
             "pipeline on explicit images; 'auto_label' relabels binary "
-            "defect/no-defect YOLO annotations into multi-class labels."
+            "defect/no-defect YOLO annotations into multi-class labels; "
+            "'classify' runs whole-image classification with CSV output."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -55,11 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
     # --- Task selection -----------------------------------------------------
     p.add_argument(
         "--task",
-        choices=["free_detection", "auto_label"],
+        choices=["free_detection", "auto_label", "classify"],
         default="free_detection",
         help="Which pipeline to run. 'free_detection' -> detector/judge loop on "
         "explicit --image paths. 'auto_label' -> batch YOLO relabeling from a "
-        "--train_image folder + --yaml_path.",
+        "--train_image folder + --yaml_path. 'classify' -> whole-image "
+        "classification from --image paths and/or --input_folder into CSV.",
     )
 
     # --- Logging -----------------------------------------------------------
@@ -98,6 +100,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=".jpg,.jpeg,.png",
         help="Comma-separated image extensions to process.",
     )
+    p.add_argument(
+        "--input_folder",
+        default=None,
+        help="Folder of images to classify (classify task). "
+        "Combined with repeatable --image when both are given.",
+    )
 
     # --- Categories --------------------------------------------------------
     p.add_argument(
@@ -124,6 +132,64 @@ def build_parser() -> argparse.ArgumentParser:
         choices=[1, 2, 3, 4, 5],
         help="Confidence threshold (1-5) for low-confidence review log (auto_label).",
     )
+
+    # --- Whole-image classification (classify task) -------------------------
+    p.add_argument(
+        "--classification_mode",
+        choices=["single", "multi", "top_k"],
+        default="single",
+        help="Classification output shape. 'single' -> one best class per image; "
+        "'multi' -> all classes above --multi_threshold; "
+        "'top_k' -> top-K ranked predictions.",
+    )
+    p.add_argument(
+        "--top_k",
+        type=int,
+        default=3,
+        help="How many ranked predictions to return (top_k mode).",
+    )
+    p.add_argument(
+        "--multi_threshold",
+        type=float,
+        default=50.0,
+        help="Confidence cutoff 0-100 for multi-label mode.",
+    )
+    p.add_argument(
+        "--class_mode",
+        choices=["strict", "hybrid", "free"],
+        default="strict",
+        help="How tightly the classifier is bound to --categories: "
+        "strict locks to the list (else 'none'), hybrid may discover new "
+        "classes, free names whatever it sees.",
+    )
+    p.add_argument(
+        "--class_definitions",
+        default="",
+        help="Optional per-class descriptions to help the classifier "
+        "(plain text, or path to a .txt/.md file for the standalone CLI).",
+    )
+    p.add_argument(
+        "--preset",
+        default=None,
+        choices=[
+            "fabric_defects",
+            "coco",
+            "road_traffic",
+            "retail_packaging",
+            "pcb_defects",
+        ],
+        help="Built-in category preset populating --class_definitions "
+        "when it is not already set (classify task).",
+    )
+    p.add_argument(
+        "--output_format",
+        choices=["csv", "yolo", "both"],
+        default="csv",
+        help="Classification output format. 'csv' writes predictions.csv "
+        "(default); 'yolo' writes YOLO-cls .txt files; 'both' writes both.",
+    )
+    p.add_argument("--classification_temperature", type=float, default=0.2)
+    p.add_argument("--classification_max_tokens", type=int, default=1024)
 
     # --- Output ------------------------------------------------------------
     p.add_argument(
@@ -523,6 +589,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         from auto_annotation import main as auto_annotation_main
 
         auto_annotation_main(config)
+    elif config.task == "classify":
+        from image_classification import main as classify_main
+
+        classify_main(config)
     else:  # pragma: no cover -- guarded by Literal + argparse choices
         raise ValueError(f"Invalid task: {config.task!r}")
 

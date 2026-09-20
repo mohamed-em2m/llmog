@@ -54,11 +54,12 @@ docs = [
 
 
 [project.scripts]
-# Unified entry point: dispatch to free_detection or auto_annotation via --task
+# Unified entry point: dispatch via --task (free_detection / auto_label / classify)
 llmog = "main:main"
 # Convenience aliases that pass the right --task for you
 detection-cli = "free_detection:main"
 auto-annotation = "auto_annotation:main"
+classify-cli = "image_classification:main"
 # Launch the Gradio web interface (lives in the `interface` package)
 detection-gui = "interface.gui:main"
 
@@ -74,6 +75,7 @@ where = ["llmog"]
 include = [
     "free_detection*",
     "auto_annotation*",
+    "image_classification*",
     "schemes*",
     "servers*",
     "interface*",
