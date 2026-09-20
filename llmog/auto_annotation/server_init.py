@@ -22,39 +22,14 @@ from auto_annotation.logging_utils import logger
 factory = servers_factory
 
 
-def _manager_stage(manager) -> str:
-    """Best-effort current loading stage from a server manager (vLLM)."""
-    try:
-        stage = getattr(manager, "current_stage", None)
-        return str(stage) if stage else ""
-    except Exception:
-        return ""
-
-
-def wait_for_server_health(port, timeout=1200, poll_interval=2.0, manager=None):
+def wait_for_server_health(port, timeout=1200, poll_interval=2.0):
     """
     Poll the llama.cpp /health endpoint until it returns a status of 200 ('ok')
     or we hit the timeout threshold.
-
-    ``manager`` is an optional server manager (e.g. :class:`VllmServerManager`)
-    whose ``current_stage`` is surfaced in heartbeat logs so users can see
-    model-loading progress while they wait.
     """
     url = f"http://localhost:{port}/health"
     start_time = time.time()
-    last_heartbeat = 0.0
     logger.info(f"Probing server health at {url} (max timeout: {timeout}s)...")
-
-    def _heartbeat(force=False):
-        nonlocal last_heartbeat
-        now = time.time()
-        if not force and now - last_heartbeat < 15.0:
-            return
-        last_heartbeat = now
-        elapsed = int(now - start_time)
-        stage = _manager_stage(manager)
-        suffix = f" — stage: {stage}" if stage and stage != "starting" else ""
-        logger.info(f"Still waiting for server ({elapsed}s elapsed){suffix}...")
 
     while time.time() - start_time < timeout:
         try:
@@ -64,15 +39,11 @@ def wait_for_server_health(port, timeout=1200, poll_interval=2.0, manager=None):
                         data = json.loads(response.read().decode())
                         if data.get("status") == "ok":
                             logger.info(
-                                "Server is healthy, model is loaded, and ready to process requests "
-                                f"(took {int(time.time() - start_time)}s)."
+                                "Server is healthy, model is loaded, and ready to process requests."
                             )
                             return True
                     except Exception:
-                        logger.info(
-                            "Server responded with 200. Proceeding "
-                            f"(took {int(time.time() - start_time)}s)."
-                        )
+                        logger.info("Server responded with 200. Proceeding.")
                         return True
         except urllib.error.HTTPError as e:
             # HTTP 503 means the server is online but still loading the model weights
@@ -81,25 +52,17 @@ def wait_for_server_health(port, timeout=1200, poll_interval=2.0, manager=None):
                     err_data = json.loads(e.read().decode())
                     msg = err_data.get("error", {}).get("message", "Loading model")
                     logger.info(
-                        f"Server is online but model is still loading: '{msg}' "
-                        f"({int(time.time() - start_time)}s elapsed)..."
+                        f"Server is online but model is still loading: '{msg}'..."
                     )
                 except Exception:
-                    logger.info(
-                        "Server is online but still loading the model (503) "
-                        f"({int(time.time() - start_time)}s elapsed)..."
-                    )
+                    logger.info("Server is online but still loading the model (503)...")
             else:
                 logger.warning(f"Server returned unexpected HTTP status: {e.code}")
-        except Exception:
-            # The server process hasn't bound to the port yet (imports, torch
-            # init and weight download all happen before that). Heartbeat at
-            # INFO so users know we're alive; details stay at DEBUG.
-            _heartbeat()
+        except Exception as e:
+            # Quietly wait if connection is refused (server process hasn't fully bound to the port yet)
+            logger.debug(f"Could not connect to server port yet: {e}")
 
         time.sleep(poll_interval)
-        # If polls are far apart, still reassure periodically between them.
-        _heartbeat()
 
     logger.error(
         f"Timed out waiting for server to become healthy after {timeout} seconds."
@@ -238,11 +201,8 @@ def init_server(args):
             f"Unsupported server_type for local serving: {args.server_type!r}"
         )
 
-    # Active HTTP polling replaces the static event wait logic. The manager
-    # is passed so heartbeat logs can surface vLLM loading stages.
-    server_ready = wait_for_server_health(
-        args.port, timeout=1200, poll_interval=20.0, manager=manager
-    )
+    # Active HTTP polling replaces the static event wait logic
+    server_ready = wait_for_server_health(args.port, timeout=1200, poll_interval=20.0)
     if not server_ready:
         logger.warning(
             "Proceeding, but server health checks did not pass successfully."
