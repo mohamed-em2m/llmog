@@ -1,12 +1,93 @@
 import datetime as _dt
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
 import requests
 
 logger = logging.getLogger("detection_pipeline.server")
+
+
+# ─── Loading-stage patterns ──────────────────────────────────────────────
+# vLLM startup takes minutes and prints a wall of framework logs. These
+# patterns turn key milestone lines into one-line human progress updates.
+# First match wins; ``None`` label means "track silently, don't announce".
+_STAGE_PATTERNS: list[tuple[re.Pattern, str | None]] = [
+    (
+        re.compile(r"Uvicorn running on|Application startup complete"),
+        "api-server-up",
+    ),
+    (
+        re.compile(r"Resolved architecture:\s*(\S+)"),
+        "architecture-resolved",
+    ),
+    (
+        re.compile(r"Initializing a V\d? LLM engine"),
+        "engine-init",
+    ),
+    (
+        re.compile(r"Loading model from scratch"),
+        "weights-load-start",
+    ),
+    (
+        re.compile(r"Parse safetensors files"),
+        "checkpoints-parse",
+    ),
+    (
+        re.compile(r"Time spent downloading weights for \S+: ([\d.]+)"),
+        "weights-downloaded",
+    ),
+    (
+        re.compile(r"Loading safetensors checkpoint shards:\s*100%"),
+        "shards-loaded",
+    ),
+    (
+        re.compile(r"Loading weights took ([\d.]+) seconds"),
+        "weights-loaded",
+    ),
+    (
+        re.compile(r"Model loading took ([\d.]+) GiB memory and ([\d.]+) seconds"),
+        "model-in-vram",
+    ),
+    (
+        re.compile(r"Encoder cache will be initialized"),
+        "vision-encoder-init",
+    ),
+    (
+        re.compile(r"Compiling a graph for|torch\.compile took"),
+        "cuda-graphs-compile",
+    ),
+    (
+        re.compile(r"collected artifacts:|saved AOT compiled"),
+        "compile-cache-saved",
+    ),
+]
+
+_STAGE_LABELS = {
+    "api-server-up": "API server up — engine is now loading the model (this takes minutes)",
+    "architecture-resolved": "model architecture resolved",
+    "engine-init": "initializing inference engine",
+    "weights-load-start": "loading model weights",
+    "checkpoints-parse": "reading checkpoint files",
+    "weights-downloaded": "weights downloaded",
+    "shards-loaded": "checkpoint shards loaded",
+    "weights-loaded": "weights loaded",
+    "model-in-vram": "model resident in VRAM",
+    "vision-encoder-init": "initializing vision encoder cache",
+    "cuda-graphs-compile": "compiling CUDA graphs (one-time cost, can take minutes)",
+    "compile-cache-saved": "compile cache saved",
+}
+
+# Lines that look scary (ERROR/WARNING) but are routine on older GPUs.
+_LEGACY_GPU_PATTERNS = [
+    re.compile(r"compute capability 7\.5"),
+    re.compile(r"doesn't support torch\.bfloat16"),
+    re.compile(r"Cannot use FA version 2"),
+    re.compile(r"FlashInfer .* unsupported compute capability"),
+    re.compile(r"Falling back to the Triton"),
+]
 
 
 # ─── vLLM Server Class ─────────────────────────────────────────────────────
@@ -64,6 +145,10 @@ class VllmServerManager:
         self.log_lock = threading.Lock()
         self._started_at: float | None = None
         self._last_health_latency_ms: float | None = None
+        # Human-readable loading progress, updated by the monitor thread.
+        self.current_stage: str = "starting"
+        self.stage_history: list[tuple[str, float]] = []
+        self._legacy_gpu_note_logged = False
 
         req_host = "localhost" if self.host == "0.0.0.0" else self.host
         self.server_url = f"http://{req_host}:{self.port}"
@@ -149,7 +234,9 @@ class VllmServerManager:
         )
 
         def monitor_output():
+            last_raw = None
             for line in self.process.stdout:
+                self._note_stage(line)
                 ts = _dt.datetime.now().strftime("%H:%M:%S")
                 stamped = f"[{ts}] {line}" if not line.startswith("[") else line
                 with self.log_lock:
@@ -160,7 +247,11 @@ class VllmServerManager:
                     logger.debug(stamped.rstrip())
                 except Exception:
                     pass
-                print(stamped, end="", flush=True)
+                # Collapse exact consecutive duplicates (vLLM re-prints 100%
+                # progress bars and shard counters) to keep the console readable.
+                if line != last_raw:
+                    print(stamped, end="", flush=True)
+                    last_raw = line
                 if (
                     "Uvicorn running on" in line
                     or "Application startup complete" in line
@@ -170,6 +261,41 @@ class VllmServerManager:
 
         monitor_thread = threading.Thread(target=monitor_output, daemon=True)
         monitor_thread.start()
+
+    def _note_stage(self, line: str) -> None:
+        """Match a raw server line against known loading milestones.
+
+        On a new milestone, update ``current_stage`` and emit one concise
+        INFO line so users see progress instead of a wall of framework logs.
+        Also emits a one-time reassurance when legacy-GPU fallback lines
+        (which look like ERRORs) are detected.
+        """
+        if not self._legacy_gpu_note_logged and any(
+            p.search(line) for p in _LEGACY_GPU_PATTERNS
+        ):
+            self._legacy_gpu_note_logged = True
+            logger.info(
+                "vLLM: older GPU detected — compatible fallback kernels in use. "
+                "Related FA2/FlashInfer/bfloat16 ERROR/WARNING lines are "
+                "expected and harmless."
+            )
+        seen = {s for s, _ in self.stage_history} | {self.current_stage}
+        for pattern, stage in _STAGE_PATTERNS:
+            m = pattern.search(line)
+            if not m:
+                continue
+            if stage is None or stage in seen:
+                return
+            self.current_stage = stage
+            elapsed = time.time() - self._started_at if self._started_at else 0.0
+            with self.log_lock:
+                self.stage_history.append((stage, elapsed))
+            label = _STAGE_LABELS.get(stage, stage)
+            detail = ""
+            if m.groups():
+                detail = f" ({', '.join(g for g in m.groups() if g)})"
+            logger.info("vLLM loading: %s%s [+%.0fs]", label, detail, elapsed)
+            return
 
     def get_logs(self) -> str:
         """Return all captured logs so far as a single string."""
@@ -300,6 +426,8 @@ class VllmServerManager:
             "health_latency_ms": self._last_health_latency_ms,
             "healthy": self.is_healthy() if pid else False,
             "log_lines": len(self.logs),
+            "current_stage": self.current_stage,
+            "stages_seen": [s for s, _ in self.stage_history],
         }
 
     # ─── Context Manager ────────────────────────────────────────────────────
