@@ -7,7 +7,7 @@ requires-python = ">=3.12, <3.14"
 dependencies = [
     "json-repair==0.61.0",
     "matplotlib==3.11.0",
-    "openai==2.43.0",
+    "openai==3.3.1",
     "pillow==12.2.0",
     "gradio==6.19.0",
     "requests>=2.34.2",
