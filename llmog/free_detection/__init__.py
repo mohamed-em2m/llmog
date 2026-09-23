@@ -369,6 +369,17 @@ def main(args=None) -> None:
     if not categories:
         print("ERROR: --categories must contain at least one entry.", file=sys.stderr)
         sys.exit(1)
+    # Normalize escaped "\n" literals (PowerShell double-quoted strings pass
+    # them through literally) so one-per-line definitions render correctly.
+    _definitions = getattr(args, "definitions", "") or ""
+    if isinstance(_definitions, str) and "\\n" in _definitions:
+        _definitions = _definitions.replace("\\n", "\n")
+    print(f"Categories ({len(categories)}): {categories}")
+    if _definitions.strip():
+        _preview = _definitions.strip()[:300]
+        print(f"Definitions:\n{_preview}")
+    else:
+        print("Definitions: (none)")
 
     prep_config = _build_prep_config(args)
 
@@ -418,7 +429,7 @@ def main(args=None) -> None:
             best, history = pipeline.run(
                 image_path=str(p),
                 categories=categories,
-                category_definitions=args.definitions,
+                category_definitions=_definitions,
                 show_plot=not args.no_plot,
                 output_dir=str(image_out_dir),
                 progress_callback=on_round,

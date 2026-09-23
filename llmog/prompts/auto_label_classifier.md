@@ -17,6 +17,8 @@ Analyze the cropped defect image and identify the **primary visible defect**.
    - When uncertain whether a new class is warranted, prefer reusing the closest existing class.
 3. **Rate severity** based on the visible size and area of the defect:
    - 1 = very small, 2 = small, 3 = medium, 4 = large, 5 = very large
+4. **Clean / background crops** — if no defect is visible, respond with `"class": "none"` and `"confidence": 1`
+   instead of guessing a defect name. Downstream this is treated as an empty YOLO prediction (no label line).
 
 ## Output
 Respond with **only** valid JSON in exactly this format — no explanations, markdown, comments, or additional fields:

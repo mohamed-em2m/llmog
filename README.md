@@ -125,6 +125,10 @@ uv run detection-cli -i image.jpg -c "person, car, dog"
 | `--judge_url` | Separate base URL for the judge model | same as `--base_url` |
 | `--max_rounds` | Max detector→judge iterations per image | `2` |
 | `--score_threshold` | Quality score (0–10) to stop the loop early | `8` |
+| `--detector_model` / `--judge_model` / `--judge_url` | Models for each role + optional separate judge URL | `local-model` / same as `--base_url` |
+| `--model` / `--api_key` / `--base_url` / `--server_type` | Single-model name, API key, OpenAI-compatible base URL, backend (`llama_cpp`, `llama_cpp_python`, `vllm`, `external`) | `local-model` / `not-needed` / `http://localhost:8080/v1` / `llama_cpp` |
+| `--image_extensions` | Comma-separated extensions to pick up in batch runs | `.jpg,.jpeg,.png` |
+| `--dry_run` | Don't call the model or write files; just print the plan | off |
 | `-o`, `--output_folder` (also `--output_dir`) | Output directory for results | `./detection_results` |
 | `--no_plot` | Skip displaying the matplotlib preview window after completion | off |
 
@@ -199,23 +203,78 @@ uv run auto-annotation --train_image imgs/ --train_label lbls/ \
 
 #### Auto-label-specific options
 
+> Full reference: `uv run llmog --help` (every flag mirrors a `PipelineConfig` field in `llmog/schemes/argument.py`).
+
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--train_image` | Folder containing the training images (required) | — |
 | `--train_label` | Folder containing the YOLO `.txt` label files (required) | — |
 | `--yaml_path` | Path to the dataset's `data.yaml` (required) | — |
+| `--image_extensions` | Comma-separated image extensions to process | `.jpg,.jpeg,.png` |
 | `--init_class_map` | Initialize the class map from the YAML's `names` list | off |
 | `--conf_threshold` | Confidence (1–5); boxes at or below this are also logged to a `*_low_confidence.json` for manual review | `2` |
+| `--class_mode` (`strict`/`hybrid`/`free`) | How tightly the crop classifier is bound to known classes: `strict` locks to the class list (unknown → `none`), `hybrid` reuses known names but may discover new ones, `free` names whatever it sees | `strict` (unified CLI) / `hybrid` (standalone `auto-annotation`) |
+| `--class_definitions` | Per-class descriptions to help the classifier (plain text, or path to a `.txt`/`.md` file) — merged over `data.yaml` descriptions | — |
+| `--preset` | Built-in preset populating definitions (`fabric_defects`, `coco`, `road_traffic`, `retail_packaging`, `pcb_defects`) — used only when neither `data.yaml` nor CLI provides descriptions | — |
+| `--height` / `--width` | Crop resize dimensions in pixels (aspect-ratio-preserving letterbox via `preprocess_custom_resize`) | `1024` / `1024` |
+| `--image_size` (alias `--image-size`) | Square crop size, YOLO-style `imgsz`: sets **both** `--height` and `--width` (takes precedence) | — (e.g. `--image_size 640`) |
+| `--none_labels` (alias `--none-labels`) | Comma-separated labels treated as "no detection". Matching is case-insensitive; spaces/dashes normalize to underscores (`No Detection` → `no_detection`) | `none,no_detection,nodetection,no_defect,background,unknown,negative,normal` |
+| `--drop_none` (default ON) / `--keep_none` (alias `--no_drop_none`) | Drop none-like boxes (write **no** YOLO line → empty prediction) vs. keep them as regular classes (legacy) | `drop_none=True` |
 | `--inplace_saving` | Write relabeled `.txt` files back over the originals | off (writes to `--output_folder`) |
 | `--num_samples` | Only process this many images (sanity-check run) | — |
-| `--shuffle` / `--seed` | Shuffle image order with a fixed seed | off |
+| `--shuffle` / `--seed` | Shuffle image order with a fixed seed | off / `42` |
 | `--start_index` / `--end_index` | 0-based `[start, end)` slice of the image list — useful for splitting a large dataset across multiple runs/machines | — |
 | `--batch_size` | Images per batch; each finished batch is checkpointed so resumed runs can skip it | `0` (disabled) |
-| `--max_workers` | Thread-pool size for concurrent image processing (raise for remote APIs) | — |
+| `--max_workers` | Thread-pool size for concurrent image processing (raise for remote APIs) | `1` |
+| `--model` / `--api_key` / `--base_url` / `--server_type` | Relabeler model name, API key, OpenAI-compatible base URL, backend (`llama_cpp`, `llama_cpp_python`, `vllm`, `external`) | `local-model` / `not-needed` / `http://localhost:8080/v1` / `llama_cpp` |
+| `--dry_run` | Don't call the model or write files; just print the plan | off |
 | `--resume` | Legacy per-file resume (skip if output `.txt` already exists) | off |
 | `--auto_resume` (default on) / `--no_auto_resume` | Resume from `<output_folder>/.checkpoint.json` after an interrupted run; pass `--no_auto_resume` to start fresh | on |
 
-### 3. Launching the Web GUI
+Crop size + empty-prediction example:
+
+```bash
+# 640px square crops; "none"-like crops produce empty .txt files (YOLO "no objects")
+uv run llmog --task auto_label \
+    --train_image imgs/ --train_label lbls/ \
+    --yaml_path data.yaml --model local-model -o ./out \
+    --image_size 640
+
+# Custom none vocabulary + keep legacy behavior (none becomes a real class)
+uv run llmog --task auto_label \
+    --train_image imgs/ --train_label lbls/ \
+    --yaml_path data.yaml --model local-model -o ./out \
+    --none_labels "none,empty,background" --keep_none
+```
+
+### 3. Whole-Image Classification CLI (`--task classify`)
+
+Classify full images (no boxes) into `single`, `multi`, or `top_k` predictions, with CSV and/or YOLO-cls outputs.
+`--class_mode` works exactly as in auto-label: `strict` locks to `--categories` (else `none`), `hybrid` may discover new classes, `free` names whatever it sees.
+
+```bash
+uv run llmog --task classify -i img1.jpg -i img2.jpg \
+    -c "hole, stain, tear" --classification_mode single -o ./cls_out
+
+uv run llmog --task classify --input_folder imgs/ \
+    -c "car, truck, pedestrian" --classification_mode top_k --top_k 3 \
+    --output_format both -o ./cls_out
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-i`, `--image` (repeatable) / `--input_folder` | Images to classify (both can be combined) | — |
+| `-c`, `--categories` | Candidate class list | `person, car, bicycle, dog, cat` |
+| `--classification_mode` (`single`/`multi`/`top_k`) | `single` → one best class; `multi` → all above `--multi_threshold`; `top_k` → top-K ranked | `single` |
+| `--top_k` | Ranked predictions to return in `top_k` mode | `3` |
+| `--multi_threshold` | Confidence cutoff 0–100 for `multi` mode | `50.0` |
+| `--class_mode` (`strict`/`hybrid`/`free`) | Binding to `--categories` (see above) | `strict` |
+| `--class_definitions` / `--preset` | Per-class help text or built-in preset (`fabric_defects`, `coco`, `road_traffic`, `retail_packaging`, `pcb_defects`) | — |
+| `--output_format` (`csv`/`yolo`/`both`) | `csv` → `predictions.csv`; `yolo` → YOLO-cls `.txt` files; `both` → both | `csv` |
+| `--classification_temperature` / `--classification_max_tokens` | Sampling temperature / max tokens for the classifier call | `0.2` / `1024` |
+| `-o`, `--output_folder` | Output directory | `./detection_results` |
+
+### 4. Launching the Web GUI
 
 To launch the interactive Gradio interface:
 
@@ -238,7 +297,7 @@ Example:
 uv run detection-gui --port 7861 --share
 ```
 
-### 4. YAML Config + CLI Overrides
+### 5. YAML Config + CLI Overrides
 
 Any field on `PipelineConfig` can live in a YAML file loaded by `--config`. A fully-commented example is at [`examples/config.example.yaml`](examples/config.example.yaml).
 

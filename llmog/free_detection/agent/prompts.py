@@ -335,6 +335,8 @@ def render_auto_label_prompt(
     template: Optional[str] = None,
     class_mode: str = "hybrid",
     class_definitions: str = "",
+    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    drop_none: bool = True,
 ) -> str:
     """Render the auto-annotation defect-classification prompt.
 
@@ -348,6 +350,11 @@ def render_auto_label_prompt(
             Controls how tightly the model is bound to ``known_class_names``.
         class_definitions: Optional per-class description block (plain text)
             to inject into the prompt to help the model distinguish classes.
+        none_labels: Comma-separated labels treated downstream as "no
+            detection" (empty YOLO prediction when *drop_none* is True).
+        drop_none: When True, the prompt explicitly tells the model it may
+            answer with ``class='none'`` (confidence=1) for clean/background
+            crops instead of forcing a defect name.
 
     Returns:
         The rendered prompt string ready to pass to the VLM.
@@ -400,17 +407,43 @@ def render_auto_label_prompt(
     # Try to inject the mode instruction into the template via DynaPrompt / Jinja2
     t = template if template is not None else DEFAULT_AUTO_LABEL_TEMPLATE
 
+    # Explicit none/no-detection guidance so the model prefers "none" over a
+    # forced (hallucinated) defect name on clean crops. Downstream, none-like
+    # labels (see --none_labels) are dropped -> empty YOLO prediction.
+    none_guidance = ""
+    if drop_none:
+        none_aliases = (
+            ", ".join(
+                f"'{x.strip()}'" for x in str(none_labels).split(",") if x.strip()
+            )
+            or "'none'"
+        )
+        none_guidance = (
+            f"\nIf the crop shows no defect / clean background, respond with "
+            f"class='none' (any of {none_aliases} is accepted) and confidence=1 "
+            f"instead of guessing a defect name."
+        )
+
     if template is None:
         dp = _dynaprompt_attr("auto_label_classifier")
         if dp is not None:
             try:
-                return dp.render(
+                dp_text = dp.render(
                     {
                         "known_classes": known_str,
-                        "mode_instruction": mode_instruction,
+                        "mode_instruction": mode_instruction + none_guidance,
                         "class_mode": mode,
                     }
                 ).text
+                # The .md template has no {{ mode_instruction }} slot, so a
+                # successful DynaPrompt render would silently drop the
+                # strict/hybrid/free + none guidance. Append it explicitly
+                # unless the template already echoed it back.
+                if mode_instruction.strip() not in dp_text:
+                    dp_text = dp_text + "\n\n" + mode_instruction + none_guidance
+                elif none_guidance and none_guidance.strip() not in dp_text:
+                    dp_text = dp_text + none_guidance
+                return dp_text
             except Exception as exc:
                 logger.warning(
                     "DynaPrompt auto_label_classifier rendering failed, falling back: %s",
@@ -419,4 +452,4 @@ def render_auto_label_prompt(
 
     # Fallback: append the mode instruction to the rendered template
     rendered = _jinja_render(t, known_classes=known_str)
-    return rendered + "\n\n" + mode_instruction
+    return rendered + "\n\n" + mode_instruction + none_guidance

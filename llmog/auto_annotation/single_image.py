@@ -13,6 +13,22 @@ from auto_annotation.logging_utils import logger
 from auto_annotation.image_io import detect_defect
 
 
+def _normalize_label(name: str) -> str:
+    """Normalize a model class label for none-like comparison."""
+    return name.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _parse_none_labels(none_labels) -> set:
+    """Parse comma-separated none-labels into a normalized set."""
+    if not none_labels:
+        return set()
+    if isinstance(none_labels, (list, tuple, set)):
+        raw = list(none_labels)
+    else:
+        raw = str(none_labels).split(",")
+    return {_normalize_label(x) for x in raw if str(x).strip()}
+
+
 def process_one_image(
     img_file,
     train_image,
@@ -35,6 +51,8 @@ def process_one_image(
     batches_done=None,
     class_mode: str = "hybrid",
     class_definitions: str = "",
+    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    drop_none: bool = True,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats."""
     img_path = os.path.join(train_image, img_file)
@@ -165,6 +183,8 @@ def process_one_image(
                 known_names,
                 class_mode=class_mode,
                 class_definitions=class_definitions,
+                none_labels=none_labels,
+                drop_none=drop_none,
             )
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")
@@ -191,6 +211,24 @@ def process_one_image(
             logger.warning(f"Empty class name in response for {img_file}: {result}")
             stats.incr("boxes_bad_response")
             continue
+
+        # --- None / no-detection handling -----------------------------------
+        # If the model says this crop is "none" (or any alias in --none_labels
+        # like "no_detection", "background", "unknown"), treat it as an empty
+        # prediction: write NO YOLO line for this box. An image whose every
+        # box is none-like therefore gets an empty (0-byte) .txt file, which
+        # is exactly YOLO's "no objects" format.
+        none_set = _parse_none_labels(none_labels)
+        if _normalize_label(class_name) in none_set:
+            if drop_none:
+                logger.info(
+                    f"{img_file}: dropping none-like box "
+                    f"(class={class_name!r}) -> empty YOLO prediction for this box."
+                )
+                stats.incr("boxes_dropped_none")
+                continue
+            # drop_none=False: fall through and keep it as a regular class
+            # (legacy behavior).
 
         raw_confidence = result.get("confidence", 0)
         try:
@@ -232,9 +270,17 @@ def process_one_image(
 
     write_ok = True
     try:
+        # Always (over)write the label file: when new_label_lines is empty
+        # (e.g. every box was none-like and dropped) this intentionally
+        # produces an empty (0-byte) .txt file = YOLO empty prediction.
         with open(label_out_path, "w") as f:
             if new_label_lines:
                 f.write("\n".join(new_label_lines) + "\n")
+            else:
+                logger.info(
+                    f"{img_file}: no boxes to write "
+                    "(all dropped/empty) -> writing empty YOLO label file."
+                )
     except Exception as e:
         write_ok = False
         logger.error(f"Failed to write relabeled annotations to {label_out_path}: {e}")

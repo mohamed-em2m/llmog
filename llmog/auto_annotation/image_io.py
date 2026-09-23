@@ -28,6 +28,8 @@ def detect_defect(
     known_class_names,
     class_mode: str = "hybrid",
     class_definitions: str = "",
+    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    drop_none: bool = True,
 ):
     """
     Ask the model to classify a cropped defect region.
@@ -40,6 +42,9 @@ def detect_defect(
 
     class_definitions: Optional per-class description block injected into prompt.
 
+    none_labels / drop_none: forwarded to the prompt so the model knows it may
+    answer 'none' for clean crops (which the caller then drops -> empty YOLO).
+
     Returns dict like {"class": "spot", "confidence": 4}
     """
     data_uri = encode_crop_to_data_uri(crop_image)
@@ -47,6 +52,8 @@ def detect_defect(
         known_class_names,
         class_mode=class_mode,
         class_definitions=class_definitions,
+        none_labels=none_labels,
+        drop_none=drop_none,
     )
     response = client.chat.completions.create(
         model=model_name,

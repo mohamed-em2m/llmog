@@ -125,6 +125,22 @@ class PipelineConfig(BaseModel):
     image_max_tokens: int = 4096
     height: int = 1024
     width: int = 1024
+    # Convenience square size: when set (>0), overrides height/width so the
+    # crop is resized to image_size x image_size (YOLO-style `imgsz`).
+    image_size: Optional[int] = None
+
+    # --- Auto-label none / no-detection handling ---------------------------
+    # Model outputs whose class normalizes to one of these labels are treated
+    # as "nothing detected" (comma-separated, case-insensitive; spaces and
+    # dashes are normalized to underscores before comparison).
+    none_labels: str = (
+        "none,no_detection,nodetection,no_defect,background,unknown,negative,normal"
+    )
+    # When True (default), none-like boxes are DROPPED: no YOLO line is
+    # written for them, so an image whose every box is none-like gets an
+    # empty (0-byte) .txt file = empty YOLO prediction. When False, none-like
+    # labels are kept as regular classes (legacy behavior).
+    drop_none: bool = True
 
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False
@@ -183,6 +199,34 @@ class PipelineConfig(BaseModel):
         if not 0.0 < v <= 1.0:
             raise ValueError("gpu_memory_utilization must be in (0, 1]")
         return v
+
+    @model_validator(mode="after")
+    def _check_image_size(self) -> "PipelineConfig":
+        """Apply --image_size square override onto height/width."""
+        if self.image_size is not None:
+            if self.image_size <= 0:
+                raise ValueError("--image_size must be > 0")
+            # Square override wins over individual height/width values.
+            self.height = self.image_size
+            self.width = self.image_size
+        if self.height <= 0 or self.width <= 0:
+            raise ValueError("--height/--width must be > 0")
+        return self
+
+    @model_validator(mode="after")
+    def _normalize_definition_text(self) -> "PipelineConfig":
+        """Normalize escaped ``\\n`` literals in definition text.
+
+        Shells (notably PowerShell double-quoted strings) pass ``"a\\n b"``
+        through as a literal backslash-n rather than a newline. The prompts
+        expect real newlines (one definition per line), so convert them here
+        once so every task (free_detection / auto_label / classify) benefits.
+        """
+        if isinstance(self.definitions, str) and "\\n" in self.definitions:
+            self.definitions = self.definitions.replace("\\n", "\n")
+        if isinstance(self.class_definitions, str) and "\\n" in self.class_definitions:
+            self.class_definitions = self.class_definitions.replace("\\n", "\n")
+        return self
 
     @model_validator(mode="after")
     def _check_indices(self) -> "PipelineConfig":

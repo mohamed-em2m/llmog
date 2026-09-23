@@ -171,6 +171,13 @@ def main(args: Any = None) -> None:
     class_definitions = _resolve_preset_defs(
         preset, str(cfg.get("class_definitions") or cfg.get("definitions") or "")
     )
+    if isinstance(class_definitions, str) and "\\n" in class_definitions:
+        class_definitions = class_definitions.replace("\\n", "\n")
+    print(f"Categories ({len(categories)}): {categories}")
+    if (class_definitions or "").strip():
+        print(f"Definitions:\n{(class_definitions or '').strip()[:300]}")
+    else:
+        print("Definitions: (none)")
     class_mode = str(cfg.get("class_mode") or "strict")
     if class_mode == "strict" and not categories:
         print("ERROR: strict class_mode requires --categories.", file=sys.stderr)

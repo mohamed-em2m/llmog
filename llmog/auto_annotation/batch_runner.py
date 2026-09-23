@@ -45,6 +45,8 @@ def read_images_with_labels(
     auto_save=None,
     class_mode: str = "hybrid",
     class_definitions: str = "",
+    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    drop_none: bool = True,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -172,6 +174,8 @@ def read_images_with_labels(
                         batches_done=batches_done,
                         class_mode=class_mode,
                         class_definitions=class_definitions,
+                        none_labels=none_labels,
+                        drop_none=drop_none,
                     )
                     if img is not None:
                         last_img = img
@@ -206,6 +210,8 @@ def read_images_with_labels(
                         batches_done,
                         class_mode,
                         class_definitions,
+                        none_labels,
+                        drop_none,
                     ): img_file
                     for img_file in batch_images
                 }

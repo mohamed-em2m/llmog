@@ -115,6 +115,25 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Path to the dataset yaml file (data.yaml).",
     )
     parser.add_argument(
+        "--categories",
+        "-c",
+        type=str,
+        default="",
+        help="Comma-separated class list seeding the known-class map, "
+        "e.g. --categories 'spot, cut, stain, texture'. Merged with "
+        "--init_class_map names from data.yaml (yaml ids win on conflict). "
+        "In strict mode the model is locked to exactly these classes.",
+    )
+    parser.add_argument(
+        "--definitions",
+        "-d",
+        type=str,
+        default="",
+        help="Per-class definitions, one per line (fallback for "
+        "--class_definitions when that is empty). Escaped '\\n' is "
+        "converted to real newlines.",
+    )
+    parser.add_argument(
         "--conf_threshold",
         type=int,
         default=2,
@@ -359,13 +378,47 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "--height",
         type=int,
         default=1024,
-        help="Height of the input image for the model.",
+        help="Crop resize height in pixels (auto_label). Overridden by --image_size.",
     )
     parser.add_argument(
         "--width",
         type=int,
         default=1024,
-        help="Width of the input image for the model.",
+        help="Crop resize width in pixels (auto_label). Overridden by --image_size.",
+    )
+    parser.add_argument(
+        "--image_size",
+        "--image-size",
+        dest="image_size",
+        type=int,
+        default=None,
+        help="Square crop size (YOLO-style imgsz): sets both --height and --width "
+        "to this value, e.g. --image_size 640. Takes precedence over --height/--width.",
+    )
+    parser.add_argument(
+        "--none_labels",
+        "--none-labels",
+        dest="none_labels",
+        type=str,
+        default="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+        help="Comma-separated labels treated as 'no detection'. A box classified to any "
+        "of these writes NO YOLO line when --drop_none is set (empty prediction). "
+        "Matching is case-insensitive; spaces/dashes normalize to underscores.",
+    )
+    parser.add_argument(
+        "--drop_none",
+        dest="drop_none",
+        action="store_true",
+        default=True,
+        help="Drop boxes classified as none-like (see --none_labels): no YOLO line is "
+        "written, so fully-none images get an empty .txt file (default ON).",
+    )
+    parser.add_argument(
+        "--keep_none",
+        "--no_drop_none",
+        dest="drop_none",
+        action="store_false",
+        help="Keep none-like predictions as regular classes instead of dropping them.",
     )
     parser.add_argument(
         "--init_class_map",
@@ -480,6 +533,12 @@ def parse_args(argv=None) -> argparse.Namespace:
     else:
         args.serving_extra = {}
 
+    # ── Normalize escaped newlines (PowerShell passes literal \n) ──────────
+    for _attr in ("class_definitions", "definitions"):
+        _val = getattr(args, _attr, "") or ""
+        if isinstance(_val, str) and "\\n" in _val:
+            setattr(args, _attr, _val.replace("\\n", "\n"))
+
     # ── Resolve --class_definitions (file path or inline text) ─────────────
     import os as _os
 
@@ -490,6 +549,19 @@ def parse_args(argv=None) -> argparse.Namespace:
                 args.class_definitions = _f.read().strip()
         except Exception as _e:
             parser.error(f"--class_definitions: could not read file {raw_defs!r}: {_e}")
+
+    # -d/--definitions is the fallback when --class_definitions is empty
+    # (mirrors the classify task).
+    if not (getattr(args, "class_definitions", "") or "").strip():
+        _d = getattr(args, "definitions", "") or ""
+        if _d and _os.path.isfile(_d):
+            try:
+                with open(_d, "r", encoding="utf-8") as _f:
+                    args.class_definitions = _f.read().strip()
+            except Exception as _e:
+                parser.error(f"--definitions: could not read file {_d!r}: {_e}")
+        elif _d.strip():
+            args.class_definitions = _d.strip()
 
     # ── Resolve --preset -> populate class_definitions if not already set ───
     _PRESET_DEFS = {
@@ -548,5 +620,23 @@ def parse_args(argv=None) -> argparse.Namespace:
     # Ensure class_mode has a sensible default even when PipelineConfig skips parse_args
     if not getattr(args, "class_mode", None):
         args.class_mode = "hybrid"
+
+    # ── Resolve --image_size square override -> height/width ───────────────
+    image_size = getattr(args, "image_size", None)
+    if image_size is not None:
+        if image_size <= 0:
+            parser.error("--image_size must be > 0")
+        args.height = image_size
+        args.width = image_size
+    if getattr(args, "height", 1024) <= 0 or getattr(args, "width", 1024) <= 0:
+        parser.error("--height/--width must be > 0")
+
+    # ── Defaults for none-handling (older checkpoints / callers) ──────────
+    if getattr(args, "none_labels", None) is None:
+        args.none_labels = (
+            "none,no_detection,nodetection,no_defect,background,unknown,negative,normal"
+        )
+    if getattr(args, "drop_none", None) is None:
+        args.drop_none = True
 
     return args

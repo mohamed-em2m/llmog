@@ -382,8 +382,52 @@ def build_parser() -> argparse.ArgumentParser:
     # --- VLM image encoding -----------------------------------------------
     p.add_argument("--image_min_tokens", type=int, default=1024)
     p.add_argument("--image_max_tokens", type=int, default=4096)
-    p.add_argument("--height", type=int, default=1024)
-    p.add_argument("--width", type=int, default=1024)
+    p.add_argument(
+        "--height",
+        type=int,
+        default=1024,
+        help="Crop resize height for auto_label (pixels). Overridden by --image_size.",
+    )
+    p.add_argument(
+        "--width",
+        type=int,
+        default=1024,
+        help="Crop resize width for auto_label (pixels). Overridden by --image_size.",
+    )
+    p.add_argument(
+        "--image_size",
+        "--image-size",
+        dest="image_size",
+        type=int,
+        default=None,
+        help="Square crop size (YOLO-style imgsz): sets both --height and --width "
+        "to this value, e.g. --image_size 640. Takes precedence over --height/--width.",
+    )
+    p.add_argument(
+        "--none_labels",
+        "--none-labels",
+        dest="none_labels",
+        default="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+        help="Comma-separated labels treated as 'no detection' in auto_label. "
+        "A box classified to any of these writes NO YOLO line when --drop_none "
+        "is set (empty prediction). Matching is case-insensitive; spaces/dashes "
+        "are normalized to underscores.",
+    )
+    p.add_argument(
+        "--drop_none",
+        dest="drop_none",
+        action="store_true",
+        default=True,
+        help="Drop boxes classified as none-like (see --none_labels): no YOLO line "
+        "is written, so fully-none images get an empty .txt file (default ON).",
+    )
+    p.add_argument(
+        "--keep_none",
+        "--no_drop_none",
+        dest="drop_none",
+        action="store_false",
+        help="Keep none-like predictions as regular classes instead of dropping them.",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(
