@@ -1,9 +1,9 @@
 """VLM classification call and dataset-IO helpers used by the pipeline."""
 
+from rich import traceback
 import base64
 import os
 from pathlib import Path
-
 import cv2
 import json_repair
 
@@ -151,8 +151,21 @@ def find_labeled_images(train_image, train_label, image_extensions):
     return sorted(image_names)
 
 
-def chunk_list(items, batch_size):
+def chunk_list(items, batch_size=0):
     """Split `items` into consecutive chunks of at most `batch_size` each."""
+    if not items:
+        return []
+
     if not batch_size or batch_size <= 0:
-        return [items]
+        if type(items) is list:
+            return items
+        elif type(dict):
+            return list(items.values())
+        else:
+            try:
+                return list(items)
+            except Exception:
+                traceback.print_exc()
+                raise Exception(f"images list names can't listed {Exception}")
+
     return [items[i : i + batch_size] for i in range(0, len(items), batch_size)]
