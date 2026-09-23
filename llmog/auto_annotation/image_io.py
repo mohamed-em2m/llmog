@@ -158,7 +158,7 @@ def chunk_list(items, batch_size=0):
 
     if not batch_size or batch_size <= 0:
         if type(items) is list:
-            return items
+            return [items]
         elif type(dict):
             return list(items.values())
         else:
