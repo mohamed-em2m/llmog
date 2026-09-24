@@ -8,6 +8,23 @@ This project implements an iterative **Detector-Judge pipeline**: a VLM "detecto
 
 ![Detection Demo](assets/results.gif)
 
+## Table of Contents
+
+- [What This Project Can Do For You](#-what-this-project-can-do-for-you)
+- [Key Features](#-key-features)
+- [Quick Start](#-quick-start)
+- [Try It Online](#-try-it-online)
+- [Coding Snippets](#️-coding-snippets)
+  - [1. Free-Detection CLI](#1-free-detection-cli)
+  - [2. Auto-Labeling CLI](#2-auto-labeling-cli---task-auto_label)
+  - [3. Whole-Image Classification CLI](#3-whole-image-classification-cli---task-classify)
+  - [4. Launching the Web GUI](#4-launching-the-web-gui)
+  - [5. YAML Config + CLI Overrides](#5-yaml-config--cli-overrides)
+- [Output Structure](#-output-structure)
+- [Technology Stack](#️-technology-stack)
+
+---
+
 ## 🎯 What This Project Can Do For You
 
 **Stop hand-labeling and let a vision-language model do the heavy lifting.** `llmog` turns any OpenAI-compatible VLM (llama.cpp, vLLM, Ollama, cloud APIs) into a practical object-detection tool for real workflows:
@@ -78,7 +95,7 @@ uv sync
 **Install one serving backend:**
 
 ```bash
-uv pip install -e ".[llama-cpp-python]"   # Python binding, ships its own server (--server_type llama_cpp_python)
+uv pip install -e ".[llama-cpp-python]"    # Python binding, ships its own server (--server_type llama_cpp_python)
 uv pip install -e ".[llama-cpp]"           # native llama.cpp binary (default; build with ./scripts/install_llama_cpp.sh)
 uv pip install -e ".[vllm]"                # vLLM on CUDA (--server_type vllm)
 ```
@@ -89,10 +106,10 @@ uv pip install -e ".[vllm]"                # vLLM on CUDA (--server_type vllm)
 
 No local setup required. Run the auto-annotation pipeline directly in the cloud:
 
-| Platform            | Notebook                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 🔵 **Google Colab** | [**▶️ Open in Colab**](https://colab.research.google.com/drive/1YIKlyTVtRjJdRC5IjCZ39i48ydyt_J5D?usp=sharing) |
-| 🟠 **Kaggle**       | [**▶️ Open in Kaggle**](https://www.kaggle.com/code/elemam/auto-annotation-using-llms/)                       |
+| Platform            | Notebook                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------|
+| 🔵 **Google Colab** | [**▶️ Open in Colab**](https://colab.research.google.com/drive/1YIKlyTVtRjJdRC5IjCZ39i48ydyt_J5D?usp=sharing)  |
+| 🟠 **Kaggle**       | [**▶️ Open in Kaggle**](https://www.kaggle.com/code/elemam/auto-annotation-using-llms/)                        |
 
 > **💡 Tip:** Google Colab is recommended for a quick interactive demo, while Kaggle provides another convenient environment for running the notebook with GPU acceleration.
 
@@ -120,12 +137,10 @@ uv run detection-cli -i image.jpg -c "person, car, dog"
 | `-i`, `--image` | Path to an input image (repeatable for batch processing) | — |
 | `-c`, `--categories` | Comma-separated list of object categories to detect | `person, car, bicycle, dog, cat` |
 | `-d`, `--definitions` | Optional category definitions to help the VLM distinguish similar categories | — |
-| `--base_url` | OpenAI-compatible API base URL | `http://localhost:8080/v1` |
-| `--detector_model` / `--judge_model` | Models to use for detection and judging | — |
+| `--detector_model` / `--judge_model` | Models to use for detection and judging | `local-model` for both |
 | `--judge_url` | Separate base URL for the judge model | same as `--base_url` |
 | `--max_rounds` | Max detector→judge iterations per image | `2` |
 | `--score_threshold` | Quality score (0–10) to stop the loop early | `8` |
-| `--detector_model` / `--judge_model` / `--judge_url` | Models for each role + optional separate judge URL | `local-model` / same as `--base_url` |
 | `--model` / `--api_key` / `--base_url` / `--server_type` | Single-model name, API key, OpenAI-compatible base URL, backend (`llama_cpp`, `llama_cpp_python`, `vllm`, `external`) | `local-model` / `not-needed` / `http://localhost:8080/v1` / `llama_cpp` |
 | `--image_extensions` | Comma-separated extensions to pick up in batch runs | `.jpg,.jpeg,.png` |
 | `--dry_run` | Don't call the model or write files; just print the plan | off |
@@ -166,7 +181,7 @@ uv run detection-cli -i image.jpg -c "person, car, dog"
 | `--prep_min_pixels` | VLM `min_pixels` parameter passed to the model processor | `200704` |
 | `--prep_max_pixels` | VLM `max_pixels` parameter passed to the model processor | `4194304` |
 
-Example running CLAHE, NMS tiling, custom blue grid coordinates, and custom Qwen-VL pixel bounds:
+Example running CLAHE, NMS tiling, a custom blue grid, and custom Qwen-VL pixel bounds:
 
 ```bash
 uv run llmog --task free_detection \
@@ -201,9 +216,9 @@ uv run auto-annotation --train_image imgs/ --train_label lbls/ \
     --yaml_path data.yaml --model local-model -o ./out
 ```
 
-#### Auto-label-specific options
-
 > Full reference: `uv run llmog --help` (every flag mirrors a `PipelineConfig` field in `llmog/schemes/argument.py`).
+
+#### Auto-label-specific options
 
 | Flag | Description | Default |
 |------|-------------|---------|
@@ -316,10 +331,10 @@ prep_tiling_enabled: true
 ```bash
 # YAML provides defaults; CLI flags override only what they explicitly set.
 uv run llmog --task free_detection --config pipeline.yaml -i img.jpg --max_rounds 2
-# → max_rounds == 2          (CLI won)
-# → score_threshold == 9      (from YAML)
+# → max_rounds == 2             (CLI won)
+# → score_threshold == 9        (from YAML)
 # → output_folder == ./yaml_out (from YAML)
-# → prep_enabled == true       (from YAML)
+# → prep_enabled == true        (from YAML)
 
 # Full example: detect on the included sample config
 uv run llmog --config examples/config.example.yaml
@@ -348,11 +363,11 @@ Relabeled `.txt` files (YOLO format with the discovered class IDs) plus a checkp
 
 ```
 out/
-├── labels/                # (when not using --inplace_saving)
+├── labels/                 # (when not using --inplace_saving)
 │   ├── img_0001.txt
 │   └── ...
-├── .checkpoint.json       # Auto-resume state (only if --auto_resume is on)
-└── data.yaml               # Updated copy with the discovered class_map
+├── .checkpoint.json        # Auto-resume state (only if --auto_resume is on)
+└── data.yaml                # Updated copy with the discovered class_map
 ```
 
 ---
@@ -366,4 +381,5 @@ out/
 
 ---
 
-*Repository: [mohamed-em2m/llmog — framework for testing LLMs on object grounding](https://github.com/mohamed-em2m/llm-object-grounding)*
+*Repository: [mohamed-em2m/llm-object-grounding](https://github.com/mohamed-em2m/llm-object-grounding) — a framework for testing LLMs on object grounding.*
+*Docs: [github.com/mohamed-em2m/llm-object-grounding/tree/main/docs](https://github.com/mohamed-em2m/llm-object-grounding/tree/main/docs)*

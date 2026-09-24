@@ -34,6 +34,7 @@ class VllmServerManager:
         trust_remote_code: bool = True,
         limit_mm_per_prompt: str | None = None,  # e.g. "image=2"
         chat_template: str | None = None,
+        download_dir: str | None = None,  # model download / cache directory
         extra_args: list[str] | None = None,
     ):
         self.model = model
@@ -56,6 +57,7 @@ class VllmServerManager:
         self.trust_remote_code = trust_remote_code
         self.limit_mm_per_prompt = limit_mm_per_prompt
         self.chat_template = chat_template
+        self.download_dir = download_dir
         self.extra_args = extra_args or []
 
         self.process = None
@@ -118,6 +120,8 @@ class VllmServerManager:
             cmd.extend(["--limit-mm-per-prompt", self.limit_mm_per_prompt])
         if self.chat_template:
             cmd.extend(["--chat-template", self.chat_template])
+        if self.download_dir:
+            cmd.extend(["--download-dir", self.download_dir])
         if self.speculative_model:
             # vLLM expects a JSON-ish dict string for --speculative-config
             spec_cfg = {"model": self.speculative_model}

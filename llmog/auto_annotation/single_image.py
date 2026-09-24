@@ -132,6 +132,22 @@ def process_one_image(
 
         _old_cls, x, y, bw, bh = map(float, values)
 
+        # YOLO format is normalized cx/cy/bw/bh in [0, 1]. Anything outside
+        # usually means a misformatted file (pixel coords, 0-1000 scale, or
+        # xyxy) that would otherwise clamp into a degenerate box and be
+        # skipped silently below -- flag it explicitly.
+        if not (
+            0.0 <= x <= 1.0
+            and 0.0 <= y <= 1.0
+            and 0.0 <= bw <= 1.0
+            and 0.0 <= bh <= 1.0
+        ):
+            logger.warning(
+                f"Out-of-range normalized coords in {label_path}: "
+                f"'{line.strip()}' (expected cx/cy/bw/bh in [0, 1]). "
+                "Clamping to image bounds; check the label format."
+            )
+
         x1 = max(0, min(w, round((x - bw / 2) * w)))
         y1 = max(0, min(h, round((y - bh / 2) * h)))
         x2 = max(0, min(w, round((x + bw / 2) * w)))

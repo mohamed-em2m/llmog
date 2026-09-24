@@ -1,0 +1,90 @@
+# Auto-label (YOLO relabeling) on vLLM — fabric-defect example.
+# Mirrors a Kaggle/Colab run on the ZJU-Leaper dataset with Qwen3-VL.
+#
+# Load with:
+#   uv run llmog --task auto_label --config examples/auto_label_vllm.example.yaml
+# CLI flags override whatever you set here, e.g.:
+#   uv run llmog --config examples/auto_label_vllm.example.yaml --max_workers 4 --max_num_seqs 4
+#
+# Every key here mirrors a PipelineConfig field (llmog/schemes/argument.py),
+# so ALL vLLM options below flow through --config into `vllm serve`.
+
+# --- Task selection -----------------------------------------------------
+task: auto_label
+
+# --- Logging ------------------------------------------------------------
+log_level: INFO
+log_file: null
+
+# --- Dataset (YOLO format) ----------------------------------------------
+train_image: ./ZJU-Leaper-8/train/images
+train_label: ./ZJU-Leaper-8/train/labels
+yaml_path: ./ZJU-Leaper-8/data.yaml
+image_extensions: .jpg,.jpeg,.png
+output_folder: /kaggle/working/output
+
+# --- Classes ------------------------------------------------------------
+# Seeds the known-class map (merged with data.yaml names when
+# init_class_map is set; yaml ids win on conflict).
+categories: spot, cut
+init_class_map: false
+# One definition per line (literal block keeps real newlines — no \n needed).
+definitions: |
+  spot: A localized, usually compact area of abnormal color, stain, contamination, or surface appearance on the fabric, without a physical separation or tear in the fabric.
+  cut: A linear or elongated physical separation/tear in the fabric caused by cutting or tearing, typically appearing as a narrow damaged region and potentially extending across a significant distance.
+class_mode: hybrid               # "strict" | "hybrid" | "free"
+class_definitions: ""            # wins over definitions when set (or a .txt/.md path)
+preset: null                     # fabric_defects | coco | road_traffic | retail_packaging | pcb_defects
+conf_threshold: 2                # 1-5; boxes at/below this go to *_low_confidence.json
+
+# --- Crop size + none handling ------------------------------------------
+# image_size: 640                # square YOLO-style imgsz; overrides height/width below
+height: 1024
+width: 1024
+none_labels: none,no_detection,nodetection,no_defect,background,unknown,negative,normal
+drop_none: true                  # none-like boxes -> NO YOLO line (empty prediction)
+
+# --- Sampling / batching ------------------------------------------------
+num_samples: null
+shuffle: false
+seed: 42
+start_index: null
+end_index: null
+batch_size: 32                   # images per checkpointed batch (0 = disabled)
+dry_run: false
+
+# --- Resume -------------------------------------------------------------
+resume: false
+auto_resume: false               # true = resume from <output_folder>/.checkpoint.json
+
+# --- Model / server -----------------------------------------------------
+model: nvidia/Qwen3.8-27B-NVFP4
+server_type: vllm                 # "llama_cpp" | "llama_cpp_python" | "vllm" | "external"
+api_key: not-needed
+base_url: http://localhost:8080/v1   # only used when server_type is "external"
+port: 8080
+# Client-side concurrency: raise together with max_num_seqs below.
+max_workers: 1
+
+# --- vLLM server (all forwarded to `vllm serve`) -------------------------
+max_model_len: 20000
+gpu_memory_utilization: 0.90
+tensor_parallel_size: 1          # >1 splits across GPUs (needs matching GPU count)
+pipeline_parallel_size: 1
+dtype: auto
+quantization: null               # e.g. "fp8", "awq", "gptq"
+kv_cache_dtype: auto             # e.g. "fp8", "fp8_e5m2"
+max_num_seqs: 1                  # server-side concurrent sequences; match max_workers
+enforce_eager: false
+enable_chunked_prefill: true
+enable_prefix_caching: true
+speculative_model: null
+num_speculative_tokens: null
+trust_remote_code: true
+limit_mm_per_prompt: null        # e.g. "image=2"
+chat_template: null              # path to a Jinja chat template
+download_dir: null               # model download/cache directory
+# Raw extra tokens appended to `vllm serve` (repeatable on CLI via --extra_args).
+extra_args: null
+# serving_extra:
+#   key: value

@@ -187,7 +187,11 @@ def init_server(args):
             enable_chunked_prefill=args.enable_chunked_prefill,
             enable_prefix_caching=args.enable_prefix_caching,
             speculative_model=args.speculative_model,
+            num_speculative_tokens=args.num_speculative_tokens,
             trust_remote_code=args.trust_remote_code,
+            limit_mm_per_prompt=args.limit_mm_per_prompt,
+            chat_template=args.chat_template,
+            download_dir=args.download_dir,
             extra_args=extra_args,
         )
         # vLLM manager surfaces its own readiness; still poll HTTP health before
@@ -233,6 +237,7 @@ def init_vllm_server(args):
         trust_remote_code=args.trust_remote_code,
         limit_mm_per_prompt=args.limit_mm_per_prompt,
         chat_template=args.chat_template,
+        download_dir=args.download_dir,
         extra_args=extra_args,
     )
     vllm_manager.start_vllm_server()
