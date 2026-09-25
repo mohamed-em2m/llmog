@@ -244,6 +244,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Don't call model or write files; just print plan.",
     )
+    p.add_argument(
+        "--flatten",
+        dest="flatten",
+        action="store_true",
+        default=True,
+        help="After all batches finish, copy best-per-stem labels to the top of "
+        "<output-folder>/labels/ (YOLO-trainable flat layout, default ON).",
+    )
+    p.add_argument(
+        "--no_flatten",
+        dest="flatten",
+        action="store_false",
+        help="Disable end-of-run label flattening.",
+    )
 
     # --- Resume ------------------------------------------------------------
     p.add_argument(
@@ -260,6 +274,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         dest="auto_resume",
         help="Disable auto-resume and start fresh.",
+    )
+    p.add_argument(
+        "--max_consecutive_failures",
+        type=int,
+        default=20,
+        help="Abort auto_label after this many consecutive server-class model "
+        "failures (dead server, timeout, 5xx, OOM) instead of writing "
+        "fake-empty labels.",
+    )
+    p.add_argument(
+        "--abort_on_server_down",
+        dest="abort_on_server_down",
+        action="store_true",
+        default=True,
+        help="Abort auto_label when the inference server is down (default ON).",
+    )
+    p.add_argument(
+        "--no_abort_on_server_down",
+        dest="abort_on_server_down",
+        action="store_false",
+        help="Keep going image-by-image without a server (legacy, not recommended).",
     )
 
     # --- Server / model ----------------------------------------------------
@@ -411,7 +446,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated labels treated as 'no detection' in auto_label. "
         "A box classified to any of these writes NO YOLO line when --drop_none "
         "is set (empty prediction). Matching is case-insensitive; spaces/dashes "
-        "are normalized to underscores.",
+        "are normalized to underscores. In --config YAML you may also use a list.",
     )
     p.add_argument(
         "--drop_none",

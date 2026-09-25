@@ -203,6 +203,32 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         dest="auto_resume",
         help="Disable auto-resume and ignore/clear any existing checkpoint, starting completely fresh.",
     )
+    parser.add_argument(
+        "--max_consecutive_failures",
+        type=int,
+        default=20,
+        help="Abort the run after this many consecutive server-class model "
+        "failures in a row (dead vLLM/llama.cpp process, timeout, 5xx, OOM). "
+        "This stops the run instead of writing fake-empty labels for every "
+        "remaining image. Per-box content errors never count toward this.",
+    )
+    parser.add_argument(
+        "--abort_on_server_down",
+        dest="abort_on_server_down",
+        action="store_true",
+        default=True,
+        help="Abort the run when the inference server is judged dead/OOM "
+        "(default ON). Failed images are left out of the checkpoint so a "
+        "resumed run retries them.",
+    )
+    parser.add_argument(
+        "--no_abort_on_server_down",
+        dest="abort_on_server_down",
+        action="store_false",
+        help="Keep going image-by-image without a server (legacy behavior). "
+        "Not recommended: the run burns through the dataset writing nothing, "
+        "though failed images are still retried on resume.",
+    )
 
     parser.add_argument(
         "--batch_size",
@@ -213,6 +239,21 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "--output-folder, and a checkpoint marks each batch done as soon as it finishes, so a "
         "resumed run can skip whole finished batches quickly. Pass 0 to disable batching "
         "(single flat output folder, same as before).",
+    )
+    parser.add_argument(
+        "--flatten",
+        dest="flatten",
+        action="store_true",
+        default=True,
+        help="After all batches finish, copy the best copy per stem to the top "
+        "level of '<output-folder>/labels/' so it is directly YOLO-trainable "
+        "(batch_XXXX/ dirs are kept untouched). On by default.",
+    )
+    parser.add_argument(
+        "--no_flatten",
+        dest="flatten",
+        action="store_false",
+        help="Disable the end-of-run flattening of batch_XXXX/ labels.",
     )
     parser.add_argument(
         "--image_extensions",
@@ -403,7 +444,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         default="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
         help="Comma-separated labels treated as 'no detection'. A box classified to any "
         "of these writes NO YOLO line when --drop_none is set (empty prediction). "
-        "Matching is case-insensitive; spaces/dashes normalize to underscores.",
+        "Matching is case-insensitive; spaces/dashes normalize to underscores. "
+        "In --config YAML you may also use a list.",
     )
     parser.add_argument(
         "--drop_none",
@@ -638,5 +680,15 @@ def parse_args(argv=None) -> argparse.Namespace:
         )
     if getattr(args, "drop_none", None) is None:
         args.drop_none = True
+
+    # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
+    if getattr(args, "max_consecutive_failures", None) is None:
+        args.max_consecutive_failures = 20
+    if getattr(args, "abort_on_server_down", None) is None:
+        args.abort_on_server_down = True
+
+    # ── Default for end-of-run flatten (hand-built Namespaces) ─────────────
+    if getattr(args, "flatten", None) is None:
+        args.flatten = True
 
     return args

@@ -11,6 +11,10 @@ from PIL import Image
 from free_detection.image_preprocessing import preprocess_custom_resize
 from auto_annotation.logging_utils import logger
 from auto_annotation.image_io import detect_defect
+from auto_annotation.server_guard import (
+    ServerDownError,
+    is_server_error,
+)
 
 
 def _normalize_label(name: str) -> str:
@@ -51,10 +55,22 @@ def process_one_image(
     batches_done=None,
     class_mode: str = "hybrid",
     class_definitions: str = "",
-    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    # Comma-separated string or list of names (YAML --config list form).
+    none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
+    failure_tracker=None,
+    abort_on_server_down: bool = True,
 ):
-    """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats."""
+    """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
+
+    ``failure_tracker`` (a :class:`FailureTracker`, may be None) is the shared
+    circuit breaker against a dead/OOM inference server: server-class model
+    errors are recorded on it, successes reset it, and when it trips a
+    :class:`ServerDownError` is raised (if ``abort_on_server_down``) so the
+    run aborts instead of writing fake-empty labels for every remaining
+    image. Images with server failures are never marked completed, so a
+    resumed run always retries them.
+    """
     img_path = os.path.join(train_image, img_file)
     img_stem = Path(img_file).stem
     label_path = os.path.join(train_label, img_stem + ".txt")
@@ -121,6 +137,13 @@ def process_one_image(
 
     new_label_lines = []
     low_confidence_records = []
+    # Boxes whose model call failed at the *server* level (dead process,
+    # timeout, 5xx, OOM) as opposed to per-box content problems. If any such
+    # failure happened on this image, the result is untrustworthy: the image
+    # must NOT be marked completed, and a fully-empty result must NOT be
+    # written (that would forge a "no objects" label for an image the server
+    # never actually looked at).
+    server_failures_this_image = 0
 
     for line in lines:
         stats.incr("boxes_seen")
@@ -205,7 +228,34 @@ def process_one_image(
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")
             stats.incr("boxes_model_call_failed")
+            if is_server_error(e):
+                # Server-class failure (dead process, timeout, 5xx, OOM):
+                # counted locally even without a shared tracker so the
+                # image is never marked completed on server trouble.
+                server_failures_this_image += 1
+                if failure_tracker is not None:
+                    tripped = failure_tracker.record_failure()
+                    logger.warning(
+                        f"Server-class failure {failure_tracker.consecutive} in a row "
+                        f"({img_file})."
+                    )
+                    if tripped and abort_on_server_down:
+                        # Abort immediately: no label file, no checkpoint update.
+                        # The batch runner catches this and stops the whole run.
+                        logger.error(
+                            f"Server appears dead/OOM during {img_file}; aborting run."
+                        )
+                        raise ServerDownError(
+                            f"Inference server appears dead/OOM during {img_file} "
+                            f"({failure_tracker.consecutive} consecutive server "
+                            "failures). Aborting so no fake-empty labels are "
+                            "written -- fix the server and resume with the same "
+                            "command (auto-resume skips finished images)."
+                        ) from e
             continue
+
+        if failure_tracker is not None:
+            failure_tracker.record_success()
 
         if not isinstance(result, dict):
             logger.warning(
@@ -267,7 +317,14 @@ def process_one_image(
                     )
                     stats.incr("boxes_bad_response")
                     continue
-                class_map[class_name] = len(class_map)
+                # max()+1 (not len()) so resumed maps with gaps/merges never
+                # collide with an id already written to finished label files.
+                try:
+                    from auto_annotation.checkpoint import next_free_id as _next_free_id
+
+                    class_map[class_name] = _next_free_id(class_map)
+                except Exception:
+                    class_map[class_name] = len(class_map)
                 stats.note_new_class(class_name)
             new_cls_id = class_map[class_name]
 
@@ -283,6 +340,25 @@ def process_one_image(
     if dry_run:
         stats.log_progress(img_file)
         return img
+
+    had_server_failure = server_failures_this_image > 0
+
+    if had_server_failure and not new_label_lines:
+        # Every box on this image failed at the server level: writing an
+        # empty file here would forge a "no objects" label for an image the
+        # server never looked at. Leave disk and checkpoint untouched so a
+        # resumed run retries this image from scratch.
+        logger.warning(
+            f"{img_file}: {server_failures_this_image} server failure(s) and "
+            "no boxes classified -> NOT writing a label file and NOT marking "
+            "as completed (will be retried on resume)."
+        )
+        stats.incr("images_failed_server")
+        stats.log_progress(img_file)
+        if failure_tracker is not None and abort_on_server_down:
+            # Another thread may have tripped the breaker meanwhile.
+            failure_tracker.check_and_raise(img_file)
+        return None
 
     write_ok = True
     try:
@@ -315,6 +391,24 @@ def process_one_image(
     # actually landed on disk. This is what lets a killed/crashed run resume
     # exactly at the first unfinished image instead of redoing work or
     # silently losing an image that never got written.
+    #
+    # Additionally, an image that suffered ANY server-class failure is never
+    # marked completed, even if a partial label file was written: some of its
+    # boxes were never classified, so a resumed run must retry it (and
+    # overwrite the partial file with the full result).
+    if had_server_failure:
+        logger.warning(
+            f"{img_file}: label write finished with "
+            f"{server_failures_this_image} server failure(s); partial result "
+            "kept on disk but NOT marking as completed in checkpoint "
+            "(will be retried on resume)."
+        )
+        stats.incr("images_failed_server")
+        stats.log_progress(img_file)
+        if failure_tracker is not None and abort_on_server_down:
+            failure_tracker.check_and_raise(img_file)
+        return img
+
     if write_ok and checkpoint is not None and completed_images is not None:
         with completed_lock:
             completed_images.add(img_stem)

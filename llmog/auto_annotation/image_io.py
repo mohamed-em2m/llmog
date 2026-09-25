@@ -28,7 +28,8 @@ def detect_defect(
     known_class_names,
     class_mode: str = "hybrid",
     class_definitions: str = "",
-    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    # Comma-separated string or list of names (YAML --config list form).
+    none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
 ):
     """

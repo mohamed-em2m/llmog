@@ -37,6 +37,20 @@ from .image_io import (
 from .single_image import process_one_image
 from .batch_runner import read_images_with_labels
 from .yaml_utils import save_updated_yaml
+from .server_guard import (
+    ServerDownError,
+    FailureTracker,
+    is_server_error,
+    probe_server,
+)
+from .reverse_batches import (
+    pick_best,
+    group_by_stem,
+    rebuild_checkpoint,
+    consolidate_batches,
+    flatten_batches_to_labels,
+    drop_classes_and_compact,
+)
 from .cli import parse_args
 from .main import main
 
@@ -58,6 +72,16 @@ __all__ = [
     "process_one_image",
     "read_images_with_labels",
     "save_updated_yaml",
+    "ServerDownError",
+    "FailureTracker",
+    "is_server_error",
+    "probe_server",
+    "pick_best",
+    "group_by_stem",
+    "rebuild_checkpoint",
+    "consolidate_batches",
+    "flatten_batches_to_labels",
+    "drop_classes_and_compact",
     "parse_args",
     "main",
 ]

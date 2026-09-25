@@ -65,10 +65,23 @@ class PipelineConfig(BaseModel):
     end_index: Optional[int] = None
     batch_size: int = 0
     dry_run: bool = False
+    # After all batches finish, copy best-per-stem labels to the top level of
+    # <output-folder>/labels/ (YOLO-trainable flat layout). Copy-only: batch
+    # folders and the checkpoint are kept so resume keeps working.
+    flatten: bool = True
 
     # --- Resume ------------------------------------------------------------
     resume: bool = False
     auto_resume: bool = True
+
+    # --- Server-failure safety (auto_label) ----------------------------------
+    # Consecutive server-class model failures (dead process, timeout, 5xx,
+    # OOM) after which the run aborts instead of writing fake-empty labels.
+    max_consecutive_failures: int = 20
+    # When False, the run keeps going image-by-image without a server
+    # (legacy behavior); failed images are still left out of the checkpoint
+    # so a resumed run retries them.
+    abort_on_server_down: bool = True
 
     # --- Server / model ----------------------------------------------------
     model: str = "local-model"
@@ -131,11 +144,20 @@ class PipelineConfig(BaseModel):
 
     # --- Auto-label none / no-detection handling ---------------------------
     # Model outputs whose class normalizes to one of these labels are treated
-    # as "nothing detected" (comma-separated, case-insensitive; spaces and
-    # dashes are normalized to underscores before comparison).
+    # as "nothing detected" (case-insensitive; spaces and dashes are
+    # normalized to underscores before comparison). Accepts a comma-separated
+    # string (CLI) or a YAML list (``--config``); stored comma-separated.
     none_labels: str = (
         "none,no_detection,nodetection,no_defect,background,unknown,negative,normal"
     )
+
+    @field_validator("none_labels", mode="before")
+    @classmethod
+    def _coerce_none_labels(cls, v: Any) -> Any:
+        if isinstance(v, (list, tuple, set)):
+            return ",".join(str(x).strip() for x in v if str(x).strip())
+        return v
+
     # When True (default), none-like boxes are DROPPED: no YOLO line is
     # written for them, so an image whose every box is none-like gets an
     # empty (0-byte) .txt file = empty YOLO prediction. When False, none-like
@@ -191,6 +213,13 @@ class PipelineConfig(BaseModel):
     def _check_overlap(cls, v: float) -> float:
         if not 0.0 <= v <= 0.5:
             raise ValueError("prep_tile_overlap must be between 0.0 and 0.5")
+        return v
+
+    @field_validator("max_consecutive_failures")
+    @classmethod
+    def _check_consecutive_failures(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("--max_consecutive_failures must be >= 1")
         return v
 
     @field_validator("gpu_memory_utilization")

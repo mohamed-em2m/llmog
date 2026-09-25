@@ -335,7 +335,7 @@ def render_auto_label_prompt(
     template: Optional[str] = None,
     class_mode: str = "hybrid",
     class_definitions: str = "",
-    none_labels: str = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    none_labels: Any = "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
 ) -> str:
     """Render the auto-annotation defect-classification prompt.
@@ -350,8 +350,9 @@ def render_auto_label_prompt(
             Controls how tightly the model is bound to ``known_class_names``.
         class_definitions: Optional per-class description block (plain text)
             to inject into the prompt to help the model distinguish classes.
-        none_labels: Comma-separated labels treated downstream as "no
-            detection" (empty YOLO prediction when *drop_none* is True).
+        none_labels: Labels treated downstream as "no detection" (empty
+            YOLO prediction when *drop_none* is True). Comma-separated
+            string or list of names.
         drop_none: When True, the prompt explicitly tells the model it may
             answer with ``class='none'`` (confidence=1) for clean/background
             crops instead of forcing a defect name.
@@ -412,11 +413,12 @@ def render_auto_label_prompt(
     # labels (see --none_labels) are dropped -> empty YOLO prediction.
     none_guidance = ""
     if drop_none:
+        if isinstance(none_labels, (list, tuple, set)):
+            _none_items = [str(x).strip() for x in none_labels]
+        else:
+            _none_items = str(none_labels or "").split(",")
         none_aliases = (
-            ", ".join(
-                f"'{x.strip()}'" for x in str(none_labels).split(",") if x.strip()
-            )
-            or "'none'"
+            ", ".join(f"'{x.strip()}'" for x in _none_items if x.strip()) or "'none'"
         )
         none_guidance = (
             f"\nIf the crop shows no defect / clean background, respond with "

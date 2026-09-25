@@ -1,6 +1,9 @@
 # ==============================================================================
-# Auto-label (YOLO relabeling) on vLLM — Fabric Defect Inspection
-# Optimized for Vision-Language Models (e.g., Qwen-VL)
+# Auto-label (YOLO relabeling) on an EXTERNAL OpenAI-compatible API
+# Same fabric-defect task as auto_label_vllm.example.yaml, but talks to a
+# hosted endpoint instead of spinning up a local vLLM server.
+# Load with: uv run llmog --task auto_label --config examples/auto_label_external.example.yaml
+# CLI flags override whatever you set here.
 # ==============================================================================
 
 # --- Task selection -----------------------------------------------------------
@@ -18,6 +21,7 @@ image_extensions: .jpg,.jpeg,.png
 output_folder: ./output
 
 # --- Classes & VLM Prompt Definitions -----------------------------------------
+# --- Classes & VLM Prompt Definitions -----------------------------------------
 categories: broken_end, hole, slub_knot, thin_bar, thick_bar, abrasion, stain, none
 init_class_map: true
 
@@ -31,7 +35,7 @@ definitions: |
   stain: Any discolored, foreign, or contaminated patch on the fabric surface, including machine oil/grease spots, dirt residue, dye bleed, water marks, or rust marks. Appears as an irregular discolored zone without structural damage to the weave.
   none: Defect-free fabric. Uniform weave pattern, consistent thread spacing, no structural disruptions, and no foreign stains. Use this label whenever the crop shows clean, normal fabric.
 
-class_mode: hybrid
+class_mode: strict
 preset: null
 
 # Note: In most YOLO/VLM pipelines, confidence is [0.0 - 1.0].
@@ -66,29 +70,20 @@ dry_run: false
 resume: true
 auto_resume: true
 
-# --- vLLM Engine Configuration ------------------------------------------------
-model: Qwen/Qwen3.8-27B-FP8
-server_type: vllm
-api_key: not-needed
-base_url: http://localhost:8080/v1
-port: 8080
-max_workers: 10
-
-max_model_len: 20000
-gpu_memory_utilization: 0.90
-tensor_parallel_size: 1
-pipeline_parallel_size: 1
-dtype: auto
-quantization: null
-kv_cache_dtype: auto
-max_num_seqs: 10
-enforce_eager: false
-enable_chunked_prefill: true
-enable_prefix_caching: true
-speculative_model: null
-num_speculative_tokens: null
-trust_remote_code: true
-limit_mm_per_prompt: null
-chat_template: null
-download_dir: null
-extra_args: null
+# --- External API Configuration -----------------------------------------------
+# server_type: external skips local server startup entirely (see
+# auto_annotation/server_init.py: build_client) and talks directly to
+# base_url with api_key. No local GPU, port, or health-check is used.
+# All vLLM engine knobs from the vLLM example (max_model_len,
+# gpu_memory_utilization, tensor_parallel_size, dtype, quantization,
+# max_num_seqs, trust_remote_code, download_dir, chat_template,
+# limit_mm_per_prompt, extra_args, ...) are intentionally omitted here:
+# they are only consumed by the local server path and do nothing for external.
+model: your-model-id # e.g. qwen/qwen2.5-vl-32b-instruct, gpt-4o-mini
+server_type: external
+api_key: sk-replace-me # replace, or override via CLI: --api_key $MY_KEY
+base_url: https://your-endpoint/v1 # e.g. https://openrouter.ai/api/v1, https://api.openai.com/v1
+max_workers:
+  4 # lower than the vLLM example's 10; hosted endpoints enforce
+  # RPM/TPM rate limits, so raise this only if your provider allows it.
+  # On 429s, lower max_workers and/or batch_size and retry.

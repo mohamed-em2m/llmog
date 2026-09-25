@@ -16,6 +16,7 @@ import yaml
 from auto_annotation.logging_utils import logger, setup_logging
 from auto_annotation.stats import RunStats
 from auto_annotation.checkpoint import CheckpointManager
+from auto_annotation.server_guard import ServerDownError
 from auto_annotation.image_io import load_or_init_class_map
 from auto_annotation.server_init import build_client
 from auto_annotation.batch_runner import read_images_with_labels
@@ -155,46 +156,132 @@ def main(args=None):
         logger.error(f"Failed to read dataset yaml file at {yaml_path}: {e}")
         exit(1)
 
-    class_map = (
-        load_or_init_class_map(data.get("names", [])) if args.init_class_map else {}
-    )
-    # ---- Track yaml names explicitly -----------------------------------------
-    # data.yaml is always read, but its `names` only seed the prompt when
-    # --init_class_map is set. Log both cases so a silently-ignored yaml is
-    # visible instead of a mystery.
+    # ---- Normalize yaml names (ordered list + yaml-side ids) -------------------
+    # Needed both for the fresh-run seed and for the resume consistency check
+    # against the checkpoint (checkpoint ids always win on conflict).
     yaml_names = data.get("names", []) or []
     if isinstance(yaml_names, dict):
         yaml_names = [yaml_names[k] for k in sorted(yaml_names, key=int)]
+    yaml_names = [str(n) for n in list(yaml_names)]
+    yaml_id_by_name = load_or_init_class_map(data.get("names", []))
     if yaml_names:
-        if args.init_class_map:
-            logger.info(
-                f"Loaded {len(yaml_names)} class(es) from data.yaml "
-                f"(--init_class_map): {list(yaml_names)}"
-            )
-        else:
-            logger.warning(
-                f"data.yaml contains {len(yaml_names)} name(s) "
-                f"{list(yaml_names)} but --init_class_map was NOT passed, "
-                "so they are ignored and the run starts from an empty class map "
-                "(pass --init_class_map to reuse them, or --categories to seed "
-                "a list explicitly)."
-            )
+        logger.info(f"data.yaml contains {len(yaml_names)} name(s): {yaml_names}")
     else:
-        logger.info("data.yaml contains no names; starting from an empty class map.")
+        logger.info("data.yaml contains no names.")
 
-    # ---- Seed known classes from --categories --------------------------------
-    # --categories/-c was previously silently ignored by auto_label. Merge it
-    # into the class_map so strict mode locks to it and hybrid reuses it.
-    # Yaml ids (via --init_class_map) win on name conflict to keep old label
-    # files valid.
     cli_categories = parse_categories_list(getattr(args, "categories", ""))
-    if cli_categories:
-        for name in cli_categories:
-            if name not in class_map:
-                class_map[name] = len(class_map)
+
+    # ---- Load checkpoint FIRST so resume is checkpoint-authoritative ---------
+    # The checkpoint's class_map preserves the exact ids already burned into
+    # previously-written label files. On resume it is the source of truth:
+    # yaml/--categories can only ADD brand-new names (at max(id)+1), never
+    # reassign an existing id (which would corrupt the finished labels).
+    os.makedirs(args.output_folder, exist_ok=True)
+    checkpoint = CheckpointManager(args.output_folder)
+    completed_images = set()
+    batches_done = set()
+    checkpoint_data = None
+    if not args.auto_resume:
         logger.info(
-            f"Seeded {len(cli_categories)} class(es) from --categories: {cli_categories}"
+            "--no_auto_resume set: ignoring/clearing any existing checkpoint, starting fresh."
         )
+        checkpoint.clear()
+    else:
+        checkpoint_data = checkpoint.load()
+        if checkpoint_data is None:
+            logger.info(
+                "Auto-resume: no existing checkpoint found, starting a new run."
+            )
+
+    if checkpoint_data:
+        from auto_annotation.checkpoint import next_free_id as _next_free_id
+
+        checkpoint_class_map = {
+            str(k): int(v)
+            for k, v in dict(checkpoint_data.get("class_map", {})).items()
+        }
+        completed_images = set(checkpoint_data.get("completed_images", []))
+        batches_done = set(checkpoint_data.get("batches_done", []))
+        # Start from the checkpoint verbatim -- ids stay exactly as written.
+        class_map = dict(sorted(checkpoint_class_map.items(), key=lambda kv: kv[1]))
+        # ---- Consistency check: data.yaml vs checkpoint ----------------------
+        for name in yaml_names:
+            if name not in class_map:
+                logger.warning(
+                    f"Resume check: data.yaml class {name!r} (yaml id "
+                    f"{yaml_id_by_name.get(name, '?')}) is NOT in the checkpoint; "
+                    "it will be appended as a NEW class so finished labels keep "
+                    "their ids."
+                )
+        for name, idx in checkpoint_class_map.items():
+            if name not in yaml_id_by_name:
+                logger.warning(
+                    f"Resume check: checkpoint class {name!r} (id {idx}) is missing "
+                    f"from {yaml_path}; data.yaml will be re-synced from the "
+                    "checkpoint so the run does not start from scratch."
+                )
+            elif yaml_id_by_name[name] != idx:
+                logger.warning(
+                    f"Resume check: class {name!r} has yaml id "
+                    f"{yaml_id_by_name[name]} but checkpoint id {idx}. "
+                    "CHECKPOINT WINS (finished label files already use it); "
+                    "data.yaml will be re-synced. Continuing -- no labels harmed."
+                )
+        if cli_categories:
+            known = [n for n in cli_categories if n in class_map]
+            if known:
+                logger.info(
+                    f"Resume check: {len(known)} --categories name(s) already known "
+                    f"from checkpoint (ids kept): {known}"
+                )
+        # Merge yaml + CLI names as new-only additions (append-only, max+1).
+        for name in list(yaml_names) + cli_categories:
+            if name not in class_map:
+                class_map[name] = _next_free_id(class_map)
+                logger.info(
+                    f"Resume check: appended new class {name!r} "
+                    f"as id {class_map[name]} (from "
+                    f"{'data.yaml' if name in yaml_names else '--categories'})."
+                )
+        logger.info(
+            f"Auto-resume: found checkpoint with {len(completed_images)} completed image(s), "
+            f"{len(batches_done)} finished batch(es), and {len(class_map)} known class(es). "
+            "Continuing from where the previous run left off (classes from checkpoint, "
+            "NOT from scratch)."
+        )
+        # Re-sync data.yaml files from the checkpoint-backed map so the prompt
+        # and the next resume see the same classes from image 1. Append-only:
+        # never shrinks/renumbers checkpoint ids (see yaml_utils guard).
+        try:
+            save_updated_yaml(yaml_path, args.output_folder, data, class_map)
+            data = dict(data)
+            data["names"] = [
+                name for name, _ in sorted(class_map.items(), key=lambda kv: kv[1])
+            ]
+            data["nc"] = len(class_map)
+        except Exception as e:
+            logger.error(f"Resume check: failed to re-sync data.yaml: {e}")
+    else:
+        from auto_annotation.checkpoint import next_free_id as _next_free_id
+
+        # ---- Fresh run: yaml (--init_class_map) + --categories ----------------
+        class_map = (
+            load_or_init_class_map(data.get("names", [])) if args.init_class_map else {}
+        )
+        if yaml_names and not args.init_class_map:
+            logger.warning(
+                f"data.yaml contains {len(yaml_names)} name(s) {yaml_names} but "
+                "--init_class_map was NOT passed, so they are ignored and the run "
+                "starts from an empty class map (pass --init_class_map to reuse them, "
+                "or --categories to seed a list explicitly)."
+            )
+        if cli_categories:
+            for name in cli_categories:
+                if name not in class_map:
+                    class_map[name] = _next_free_id(class_map)
+            logger.info(
+                f"Seeded {len(cli_categories)} class(es) from --categories: {cli_categories}"
+            )
 
     # ---- Resolve effective class definitions ---------------------------------
     # Layers: data.yaml description fields + CLI (-d/--class_definitions),
@@ -220,39 +307,6 @@ def main(args=None):
             "discarded as unknown (empty YOLO files). Provide --categories "
             "and/or --init_class_map, or switch to --class_mode hybrid."
         )
-
-    # ---- Auto-resume: pick the checkpoint back up if one exists ----
-    os.makedirs(args.output_folder, exist_ok=True)
-    checkpoint = CheckpointManager(args.output_folder)
-    completed_images = set()
-    batches_done = set()
-
-    if not args.auto_resume:
-        logger.info(
-            "--no_auto_resume set: ignoring/clearing any existing checkpoint, starting fresh."
-        )
-        checkpoint.clear()
-    else:
-        checkpoint_data = checkpoint.load()
-        if checkpoint_data:
-            completed_images = set(checkpoint_data.get("completed_images", []))
-            batches_done = set(checkpoint_data.get("batches_done", []))
-            # Merge checkpointed classes into class_map, keeping their original
-            # ids so previously-written label files (which already reference
-            # those ids) stay valid.
-            checkpoint_class_map = checkpoint_data.get("class_map", {})
-            for name, idx in sorted(checkpoint_class_map.items(), key=lambda kv: kv[1]):
-                if name not in class_map:
-                    class_map[name] = idx
-            logger.info(
-                f"Auto-resume: found checkpoint with {len(completed_images)} completed image(s), "
-                f"{len(batches_done)} finished batch(es), and {len(class_map)} known class(es). "
-                "Continuing from where the previous run left off."
-            )
-        else:
-            logger.info(
-                "Auto-resume: no existing checkpoint found, starting a new run."
-            )
 
     if args.resume and args.inplace_saving:
         logger.warning(
@@ -324,7 +378,23 @@ def main(args=None):
                 "none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
             ),
             drop_none=getattr(args, "drop_none", True),
+            max_consecutive_failures=getattr(args, "max_consecutive_failures", 20),
+            abort_on_server_down=getattr(args, "abort_on_server_down", True),
         )
+    except ServerDownError as e:
+        # The inference server died/OOMed mid-run. Progress up to the failure
+        # is already checkpointed (failed images were NOT marked completed),
+        # so just save the yaml and exit non-zero: schedulers/Kaggle must see
+        # this as a failure, not a successful run, and a resume with the same
+        # command will retry exactly the unfinished images.
+        logger.error(f"Run aborted: {e}")
+        try:
+            save_updated_yaml(yaml_path, args.output_folder, data, class_map)
+        except Exception as save_e:
+            logger.error(f"Failed to save updated dataset yaml file: {save_e}")
+        for line in stats.summary_lines():
+            logger.info(line)
+        exit(1)
     except Exception as e:
         logger.exception(f"An unexpected error occurred during image processing: {e}")
     finally:
@@ -350,6 +420,19 @@ def main(args=None):
             logger.info(f"Done. Final classes: {class_map}")
         except Exception as e:
             logger.error(f"Failed to save updated dataset yaml file: {e}")
+        # Flatten batch_XXXX/ labels to the top level of <output>/labels/ so
+        # the output is directly YOLO-trainable. Copy-only (batch folders and
+        # checkpoint untouched); runs only after ALL batches finished, never
+        # on abort paths above. Disable with --no_flatten.
+        if getattr(args, "flatten", True) and not args.inplace_saving:
+            try:
+                from auto_annotation.reverse_batches import (
+                    flatten_batches_to_labels,
+                )
+
+                flatten_batches_to_labels(args.output_folder)
+            except Exception as e:
+                logger.error(f"Failed to flatten batch labels: {e}")
 
 
 if __name__ == "__main__":
