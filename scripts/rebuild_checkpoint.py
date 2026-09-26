@@ -1,7 +1,9 @@
-"""Rebuild .checkpoint.json from existing batch_XXXX labels + output data.yaml.
+"""Rebuild .checkpoint.json from staged batch_XXXX labels + output data.yaml.
 Safe resume: per-image completion only, batches_done=[] so a resumed run
 re-enters each batch but skips finished stems individually (works even if
---batch_size changed). Run: python rebuild_checkpoint.py
+--batch_size changed). Scans <output>/batches/ (current staging location)
+plus legacy <output>/labels/batch_XXXX/ plus flat <output>/labels/*.txt.
+Run: python rebuild_checkpoint.py
 """
 
 import argparse
@@ -55,9 +57,16 @@ def main(output=None):
     print(f"class_map from output data.yaml ({len(class_map)}): {class_map}")
 
     by_stem = defaultdict(list)
-    for p in LABELS.rglob("*.txt"):
-        stem = p.stem  # txt filename without .txt == img_stem
-        by_stem[stem].append(p)
+    out = Path(output)
+    seen: set[Path] = set()
+    # Current staging location first, then legacy + flat labels.
+    for base in (out / "batches", LABELS):
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.txt"):
+            if p not in seen:
+                seen.add(p)
+                by_stem[p.stem].append(p)
 
     print(f"total .txt files: {sum(len(v) for v in by_stem.values())}")
     print(f"unique stems: {len(by_stem)}")

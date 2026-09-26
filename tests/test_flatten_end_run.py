@@ -1,12 +1,25 @@
-"""End-of-run flatten: batch_XXXX labels -> flat top-level labels/."""
+"""End-of-run flatten: batches/batch_XXXX staging -> flat top-level labels/."""
 
 import os
 import time
+from pathlib import Path
 
 from auto_annotation.reverse_batches import flatten_batches_to_labels
 
 
 def _make_output(tmp_path):
+    labels = tmp_path / "labels"
+    labels.mkdir(parents=True, exist_ok=True)
+    staging = tmp_path / "batches"
+    b0 = staging / "batch_0000"
+    b1 = staging / "batch_0001"
+    b0.mkdir(parents=True)
+    b1.mkdir(parents=True)
+    return labels, b0, b1
+
+
+def _make_legacy_output(tmp_path):
+    """Pre-fix layout: staging nested inside labels/."""
     labels = tmp_path / "labels"
     b0 = labels / "batch_0000"
     b1 = labels / "batch_0001"
@@ -62,6 +75,39 @@ class TestFlattenBatchesToLabels:
 
         flatten_batches_to_labels(tmp_path, dry_run=True)
         assert not (tmp_path / "labels" / "x.txt").exists()
+
+    def test_legacy_layout_still_flattens(self, tmp_path):
+        """Runs started before the staging move (labels/batch_XXXX) flatten too."""
+        _, b0, b1 = _make_legacy_output(tmp_path)
+        (b0 / "img1.txt").write_text("")
+        (b1 / "img1.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+
+        out = flatten_batches_to_labels(tmp_path)
+        assert (out / "img1.txt").read_text() == "0 0.5 0.5 0.2 0.2\n"
+
+    def test_mixed_new_and_legacy_staging(self, tmp_path):
+        """A resumed-then-migrated output (both locations) picks the best copy."""
+        _, b0, _ = _make_output(tmp_path)
+        _, lb0, _ = _make_legacy_output(tmp_path)
+        (b0 / "img1.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+        (lb0 / "img1.txt").write_text("")
+
+        out = flatten_batches_to_labels(tmp_path)
+        assert (out / "img1.txt").read_text() == "0 0.5 0.5 0.2 0.2\n"
+
+    def test_resolve_batch_dir_migrates_legacy(self, tmp_path):
+        """batch_runner moves labels/batch_XXXX -> batches/batch_XXXX on touch."""
+        from auto_annotation.batch_runner import _resolve_batch_dir
+
+        labels = tmp_path / "labels"
+        legacy = labels / "batch_0002"
+        legacy.mkdir(parents=True)
+        (legacy / "a.txt").write_text("0 0.1 0.1 0.1 0.1\n")
+
+        got = _resolve_batch_dir(tmp_path, 2, tmp_path / "batches", labels)
+        assert Path(got) == tmp_path / "batches" / "batch_0002"
+        assert (tmp_path / "batches" / "batch_0002" / "a.txt").exists()
+        assert not legacy.exists()
 
     def test_cli_flags_default_on(self):
         from auto_annotation.cli import parse_args

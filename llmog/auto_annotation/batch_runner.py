@@ -22,6 +22,41 @@ from auto_annotation.single_image import process_one_image
 from pathlib import Path
 
 
+def _resolve_batch_dir(output_folder, batch_idx, staging_root, labels_folder):
+    """Return the staging dir for one batch, migrating legacy layout if needed.
+
+    New layout: ``<output>/batches/batch_XXXX/``. Legacy layout (pre-fix):
+    ``<output>/labels/batch_XXXX/``. When a legacy dir exists but the new one
+    does not, move it forward (atomic ``os.rename`` on the same filesystem)
+    so a resumed run keeps its per-image ``--resume`` file checks working and
+    all downstream code only ever deals with the new layout.
+    """
+    new_dir = Path(staging_root) / f"batch_{batch_idx:04d}"
+    legacy_dir = Path(labels_folder) / f"batch_{batch_idx:04d}"
+    if legacy_dir.is_dir() and not new_dir.exists():
+        try:
+            os.makedirs(staging_root, exist_ok=True)
+            os.rename(legacy_dir, new_dir)
+            logger.info(
+                f"Migrated legacy staging dir {legacy_dir} -> {new_dir} "
+                "(batch output now lives under <output>/batches/)."
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not migrate legacy staging dir {legacy_dir} -> "
+                f"{new_dir} ({e}); using the legacy location for this batch."
+            )
+            return str(legacy_dir)
+    elif legacy_dir.is_dir() and new_dir.exists():
+        logger.warning(
+            f"Both new ({new_dir}) and legacy ({legacy_dir}) staging dirs "
+            "exist; using the new one. Remove the legacy dir manually once "
+            "you have verified the run."
+        )
+    os.makedirs(new_dir, exist_ok=True)
+    return str(new_dir)
+
+
 def read_images_with_labels(
     train_image,
     train_label,
@@ -66,9 +101,13 @@ def read_images_with_labels(
 
     Images are processed in fixed-size batches (batch_size). When not saving
     in-place, each batch's relabeled annotations land in their own
-    'batch_XXXX' subfolder under output_folder. If a checkpoint says a whole
-    batch is already done (batches_done), that batch is skipped without even
-    looking at the individual images inside it.
+    'batch_XXXX' staging subfolder under <output_folder>/batches/ (NOT under
+    labels/). The final <output_folder>/labels/ directory is only populated
+    once, after ALL batches finish, by the end-of-run flatten step
+    (flatten_batches_to_labels), so labels/ is always directly YOLO-trainable
+    and never contains half-finished staging state. If a checkpoint says a
+    whole batch is already done (batches_done), that batch is skipped without
+    even looking at the individual images inside it.
 
     Server safety: model calls that fail at the *server* level (dead process,
     timeout, 5xx, OOM) are counted on a shared :class:`FailureTracker`. When
@@ -89,6 +128,12 @@ def read_images_with_labels(
         completed_images = set()
     if batches_done is None:
         batches_done = set()
+    # Staging vs final output: in-progress batches live under
+    # <output>/batches/batch_XXXX/; <output>/labels/ is reserved for the final
+    # flattened YOLO labels written after all batches finish. Legacy runs
+    # (< v0.x) staged under <output>/labels/batch_XXXX/ -- those dirs are
+    # migrated forward on first touch (see _resolve_batch_dir below).
+    staging_root = Path(output_folder) / "batches"
     labels_folder = Path(output_folder) / "labels"
 
     os.makedirs(output_folder, exist_ok=True)
@@ -198,8 +243,9 @@ def read_images_with_labels(
         if inplace_saving or batch_size <= 0:
             batch_output_folder = labels_folder
         else:
-            batch_output_folder = os.path.join(labels_folder, f"batch_{batch_idx:04d}")
-            os.makedirs(batch_output_folder, exist_ok=True)
+            batch_output_folder = _resolve_batch_dir(
+                output_folder, batch_idx, staging_root, labels_folder
+            )
 
         # Fail fast before burning through a batch when the server is gone.
         _check_server_before_batch(batch_idx)

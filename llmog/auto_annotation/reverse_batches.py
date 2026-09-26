@@ -1,12 +1,14 @@
 """Reverse batched auto-label output back into a flat, resumable state.
 
-Batched runs write ``<output>/labels/batch_XXXX/*.txt``. If the run was
-stopped with ``--no_auto_resume`` there is no ``.checkpoint.json``, so a
-plain re-run would redo everything and reshuffle class ids.
+Batched runs stage per-batch labels under ``<output>/batches/batch_XXXX/``
+(legacy runs used ``<output>/labels/batch_XXXX/`` -- both are read). If the
+run was stopped with ``--no_auto_resume`` there is no ``.checkpoint.json``,
+so a plain re-run would redo everything and reshuffle class ids.
 
 This module reverses that situation:
 
-1. Scans all ``batch_*/`` label files, groups by stem
+1. Scans all staged ``batch_*/`` label files (new ``batches/`` location plus
+   legacy ``labels/batch_*/``), groups by stem
    (txt stem == image stem, e.g. ``002674_jpg.rf.<hash>``).
 2. Picks the best copy per stem: non-empty > newest mtime > largest size.
 3. Writes a flat ``labels_flat/`` folder (YOLO-trainable layout).
@@ -35,6 +37,13 @@ import yaml
 
 from auto_annotation.logging_utils import logger, setup_logging
 
+# Staging dir for in-progress batches. <output>/labels/ is reserved for the
+# FINAL flattened YOLO labels; batch_XXXX/ staging dirs live here, never
+# inside labels/. The legacy location (<output>/labels/batch_XXXX/) is still
+# read for backward compatibility with runs started before the move.
+STAGING_DIRNAME = "batches"
+LABELS_DIRNAME = "labels"
+
 
 def pick_best(paths: list[Path]) -> Path:
     """Best copy per stem: non-empty > newest mtime > largest size.
@@ -60,6 +69,58 @@ def group_by_stem(labels_dir: Path) -> dict[str, list[Path]]:
             # flat file directly under labels/ (batch_size=0 runs) — keep too
             pass
         by_stem[p.stem].append(p)
+    return by_stem
+
+
+def _iter_staged_txts(output: Path) -> list[Path]:
+    """All candidate label files: new staging + legacy staging + flat top-level.
+
+    - ``<output>/batches/**/ *.txt`` (current staging location)
+    - ``<output>/labels/batch_*/ *.txt`` (legacy staging location)
+    - ``<output>/labels/*.txt`` (flat files: batch_size=0 runs, or an
+      already-flattened final output)
+    """
+    found: list[Path] = []
+    staging = output / STAGING_DIRNAME
+    labels = output / LABELS_DIRNAME
+    if staging.is_dir():
+        found.extend(p for p in staging.rglob("*.txt") if p.is_file())
+    if labels.is_dir():
+        found.extend(p for p in labels.glob("batch_*/*.txt") if p.is_file())
+        found.extend(p for p in labels.glob("*.txt") if p.is_file())
+    return found
+
+
+def _iter_staged_low_conf(output: Path) -> list[Path]:
+    """Debug ``*_low_confidence.json`` files from staging dirs (new + legacy)."""
+    found: list[Path] = []
+    staging = output / STAGING_DIRNAME
+    labels = output / LABELS_DIRNAME
+    if staging.is_dir():
+        found.extend(staging.rglob("*_low_confidence.json"))
+    if labels.is_dir():
+        found.extend(labels.glob("batch_*/*_low_confidence.json"))
+    return found
+
+
+def group_staged_by_stem(
+    output_folder: str | Path,
+    labels_dirname: str = LABELS_DIRNAME,
+    staging_dirname: str = STAGING_DIRNAME,
+) -> dict[str, list[Path]]:
+    """Group staged + flat label files by stem across all known locations."""
+    output = Path(output_folder)
+    by_stem: dict[str, list[Path]] = defaultdict(list)
+    if staging_dirname == STAGING_DIRNAME and labels_dirname == LABELS_DIRNAME:
+        for p in _iter_staged_txts(output):
+            by_stem[p.stem].append(p)
+        return by_stem
+    # Custom dirnames (tests / scripts): scan the given trees directly.
+    for base in (output / staging_dirname, output / labels_dirname):
+        if base.is_dir():
+            for p in base.rglob("*.txt"):
+                if p.is_file():
+                    by_stem[p.stem].append(p)
     return by_stem
 
 
@@ -92,7 +153,7 @@ def rebuild_checkpoint(
     class_map, names, _ = load_class_map(data_yaml)
     logger.info(f"class_map from {data_yaml} ({len(class_map)}): {class_map}")
 
-    by_stem = group_by_stem(labels_dir)
+    by_stem = group_staged_by_stem(output, labels_dirname, STAGING_DIRNAME)
     total = sum(len(v) for v in by_stem.values())
     dups = sum(1 for v in by_stem.values() if len(v) > 1)
     logger.info(f"total .txt: {total}, unique stems: {len(by_stem)}, dups: {dups}")
@@ -124,7 +185,7 @@ def consolidate_batches(
     output = Path(output_folder)
     labels_dir = output / labels_dirname
     flat = output / flat_dirname
-    by_stem = group_by_stem(labels_dir)
+    by_stem = group_staged_by_stem(output, labels_dirname, STAGING_DIRNAME)
     if dry_run:
         logger.info(f"[dry run] would write {len(by_stem)} files to {flat}.")
         return flat
@@ -135,11 +196,16 @@ def consolidate_batches(
     logger.info(f"Wrote flat {len(by_stem)} files -> {flat}.")
     if copy_low_conf:
         n = 0
-        for p in labels_dir.rglob("*_low_confidence.json"):
+        seen: set[str] = set()
+        for p in list(labels_dir.rglob("*_low_confidence.json")) + (
+            _iter_staged_low_conf(output) if labels_dirname == LABELS_DIRNAME else []
+        ):
             dest = flat / f"{p.parent.name}_{p.name}"
-            if not dest.exists():
-                shutil.copy2(p, dest)
-                n += 1
+            if str(dest) in seen or dest.exists():
+                continue
+            seen.add(str(dest))
+            shutil.copy2(p, dest)
+            n += 1
         logger.info(f"Copied {n} low_confidence json(s).")
     return flat
 
@@ -152,12 +218,13 @@ def flatten_batches_to_labels(
 ) -> Path:
     """Copy best copy per stem to the TOP LEVEL of the labels dir.
 
-    Batched runs write ``<output>/labels/batch_XXXX/*.txt`` which is not
-    YOLO-trainable (YOLO expects flat ``*.txt`` next to the images). After
-    all batches finish, this copies the best copy per stem
-    (non-empty > newest > largest, see :func:`pick_best`) to
-    ``<output>/labels/<stem>.txt`` so the labels dir is directly usable for
-    training. Copy-only: ``batch_XXXX/`` dirs and ``.checkpoint.json`` stay
+    Batched runs stage per-batch labels under ``<output>/batches/batch_XXXX/``
+    (legacy: ``<output>/labels/batch_XXXX/``), which is not YOLO-trainable
+    (YOLO expects flat ``*.txt``). After all batches finish, this copies the
+    best copy per stem (non-empty > newest > largest, see :func:`pick_best`)
+    to ``<output>/labels/<stem>.txt`` so the labels dir is directly usable
+    for training -- it is populated ONLY here, never during batching.
+    Copy-only: ``batches/batch_XXXX/`` dirs and ``.checkpoint.json`` stay
     untouched, so resume (``batches_done`` skipping) keeps working and a
     re-run is idempotent (already-flattened stems are skipped).
     """
@@ -165,7 +232,7 @@ def flatten_batches_to_labels(
     labels_dir = output / labels_dirname
     if not labels_dir.is_dir():
         raise FileNotFoundError(f"labels dir missing: {labels_dir}")
-    by_stem = group_by_stem(labels_dir)
+    by_stem = group_staged_by_stem(output, labels_dirname, STAGING_DIRNAME)
     if dry_run:
         logger.info(f"[dry run] would flatten {len(by_stem)} files -> {labels_dir}.")
         return labels_dir
@@ -187,7 +254,10 @@ def flatten_batches_to_labels(
     )
     if copy_low_conf:
         n = 0
-        for p in labels_dir.rglob("*_low_confidence.json"):
+        staged_extra = (
+            _iter_staged_low_conf(output) if labels_dirname == LABELS_DIRNAME else []
+        )
+        for p in list(labels_dir.rglob("*_low_confidence.json")) + staged_extra:
             if p.parent == labels_dir:
                 continue  # already top-level
             dest = labels_dir / f"{p.parent.name}_{p.name}"

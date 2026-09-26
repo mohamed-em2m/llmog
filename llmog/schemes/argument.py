@@ -66,8 +66,10 @@ class PipelineConfig(BaseModel):
     batch_size: int = 0
     dry_run: bool = False
     # After all batches finish, copy best-per-stem labels to the top level of
-    # <output-folder>/labels/ (YOLO-trainable flat layout). Copy-only: batch
-    # folders and the checkpoint are kept so resume keeps working.
+    # <output-folder>/labels/ (YOLO-trainable flat layout). In-progress batches
+    # are staged under <output-folder>/batches/batch_XXXX/ so labels/ is only
+    # ever final output. Copy-only: batch folders and the checkpoint are kept
+    # so resume keeps working.
     flatten: bool = True
 
     # --- Resume ------------------------------------------------------------

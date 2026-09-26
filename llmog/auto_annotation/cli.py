@@ -235,9 +235,11 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=0,
         help="Number of images per batch (default: 50). When not using --inplace_saving, each "
-        "batch's relabeled annotations are written to their own 'batch_XXXX' subfolder under "
-        "--output-folder, and a checkpoint marks each batch done as soon as it finishes, so a "
-        "resumed run can skip whole finished batches quickly. Pass 0 to disable batching "
+        "batch's relabeled annotations are staged in their own 'batch_XXXX' subfolder under "
+        "'<output-folder>/batches/' (never inside labels/), and a checkpoint marks each batch "
+        "done as soon as it finishes, so a resumed run can skip whole finished batches quickly. "
+        "After all batches finish, the best copy per image is flattened into "
+        "'<output-folder>/labels/'. Pass 0 to disable batching "
         "(single flat output folder, same as before).",
     )
     parser.add_argument(
@@ -247,13 +249,14 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         default=True,
         help="After all batches finish, copy the best copy per stem to the top "
         "level of '<output-folder>/labels/' so it is directly YOLO-trainable "
-        "(batch_XXXX/ dirs are kept untouched). On by default.",
+        "(labels/ is only populated here, never during batching; "
+        "batches/batch_XXXX/ staging dirs are kept untouched). On by default.",
     )
     parser.add_argument(
         "--no_flatten",
         dest="flatten",
         action="store_false",
-        help="Disable the end-of-run flattening of batch_XXXX/ labels.",
+        help="Disable the end-of-run flattening of batches/batch_XXXX/ staging labels.",
     )
     parser.add_argument(
         "--image_extensions",

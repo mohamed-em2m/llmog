@@ -420,10 +420,13 @@ def main(args=None):
             logger.info(f"Done. Final classes: {class_map}")
         except Exception as e:
             logger.error(f"Failed to save updated dataset yaml file: {e}")
-        # Flatten batch_XXXX/ labels to the top level of <output>/labels/ so
-        # the output is directly YOLO-trainable. Copy-only (batch folders and
-        # checkpoint untouched); runs only after ALL batches finished, never
-        # on abort paths above. Disable with --no_flatten.
+        # Flatten staged batches/batch_XXXX/ labels to the top level of
+        # <output>/labels/ so the output is directly YOLO-trainable.
+        # labels/ is populated ONLY here -- never during batching -- so it is
+        # always final output, never half-finished staging state.
+        # Copy-only (staging folders and checkpoint untouched); runs only
+        # after ALL batches finished, never on abort paths above.
+        # Disable with --no_flatten.
         if getattr(args, "flatten", True) and not args.inplace_saving:
             try:
                 from auto_annotation.reverse_batches import (
