@@ -21,6 +21,36 @@ def encode_crop_to_data_uri(crop_rgb):
     return f"data:image/jpeg;base64,{b64}"
 
 
+def _coerce_extra_body(extra_body):
+    """Normalize an extra_body value to a dict ({} when unset).
+
+    Accepts a mapping (YAML form) or a JSON-object string (CLI form) so every
+    entry point converges here; raises ValueError on anything else.
+    """
+    if extra_body is None:
+        return {}
+    if isinstance(extra_body, dict):
+        return dict(extra_body)
+    if isinstance(extra_body, str):
+        import json
+
+        text = extra_body.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except ValueError as e:
+            raise ValueError(
+                f"extra_body must be a JSON object, got: {extra_body!r} ({e})"
+            )
+        if not isinstance(parsed, dict):
+            raise ValueError(f"extra_body must be a JSON object, got: {extra_body!r}")
+        return parsed
+    raise ValueError(
+        f"extra_body must be a mapping or JSON object, got: {extra_body!r}"
+    )
+
+
 def detect_defect(
     crop_image,
     client,
@@ -31,6 +61,7 @@ def detect_defect(
     # Comma-separated string or list of names (YAML --config list form).
     none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
+    extra_body=None,
 ):
     """
     Ask the model to classify a cropped defect region.
@@ -46,6 +77,11 @@ def detect_defect(
     none_labels / drop_none: forwarded to the prompt so the model knows it may
     answer 'none' for clean crops (which the caller then drops -> empty YOLO).
 
+    extra_body: optional mapping forwarded verbatim as the `extra_body=`
+    kwarg of the chat-completions call (provider-specific params such as
+    OpenRouter `provider` routing or reasoning controls). A JSON string is
+    accepted and parsed; None/empty means "send nothing extra".
+
     Returns dict like {"class": "spot", "confidence": 4}
     """
     data_uri = encode_crop_to_data_uri(crop_image)
@@ -56,9 +92,9 @@ def detect_defect(
         none_labels=none_labels,
         drop_none=drop_none,
     )
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
+    create_kwargs = {
+        "model": model_name,
+        "messages": [
             {
                 "role": "user",
                 "content": [
@@ -67,7 +103,11 @@ def detect_defect(
                 ],
             }
         ],
-    )
+    }
+    coerced = _coerce_extra_body(extra_body)
+    if coerced:
+        create_kwargs["extra_body"] = coerced
+    response = client.chat.completions.create(**create_kwargs)
     if not response.choices or not response.choices[0].message:
         raise ValueError("No choices returned from the VLM API call.")
 

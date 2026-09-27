@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -199,8 +200,35 @@ class PipelineConfig(BaseModel):
     serving_extra: Dict[str, Any] = Field(default_factory=dict)
     # Raw extra command-line tokens forwarded verbatim to vLLM (list[str]).
     extra_args: Optional[List[str]] = None
+    # Provider-specific params forwarded verbatim as the `extra_body=` kwarg
+    # of every auto_label chat-completions call (e.g. OpenRouter `provider`
+    # routing, reasoning controls). Set it as a YAML mapping; None (default)
+    # means "send nothing extra" so current behavior is unchanged.
+    extra_body: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------ validators
+    @field_validator("extra_body", mode="before")
+    @classmethod
+    def _coerce_extra_body(cls, v: Any) -> Any:
+        # YAML mapping passes through; a CLI JSON string is parsed here so
+        # the unified entry point accepts --extra_body '{"k": v}' directly.
+        if v is None or isinstance(v, dict):
+            return v
+        if isinstance(v, str):
+            text = v.strip()
+            if not text:
+                return None
+            try:
+                parsed = json.loads(text)
+            except ValueError as e:
+                raise ValueError(
+                    f"--extra_body must be a JSON object, got: {v!r} ({e})"
+                )
+            if not isinstance(parsed, dict):
+                raise ValueError(f"--extra_body must be a JSON object, got: {v!r}")
+            return parsed
+        raise ValueError(f"--extra_body must be a mapping or JSON object, got: {v!r}")
+
     @field_validator("images", mode="before")
     @classmethod
     def _coerce_images(cls, v: Any) -> List[str]:

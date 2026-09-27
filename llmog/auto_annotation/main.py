@@ -380,6 +380,7 @@ def main(args=None):
             drop_none=getattr(args, "drop_none", True),
             max_consecutive_failures=getattr(args, "max_consecutive_failures", 20),
             abort_on_server_down=getattr(args, "abort_on_server_down", True),
+            extra_body=getattr(args, "extra_body", None),
         )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

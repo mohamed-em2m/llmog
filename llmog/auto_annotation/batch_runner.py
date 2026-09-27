@@ -91,6 +91,7 @@ def read_images_with_labels(
     failure_tracker=None,
     max_consecutive_failures: int = 20,
     abort_on_server_down: bool = True,
+    extra_body=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -284,6 +285,7 @@ def read_images_with_labels(
                         drop_none=drop_none,
                         failure_tracker=failure_tracker,
                         abort_on_server_down=abort_on_server_down,
+                        extra_body=extra_body,
                     )
                     if img is not None:
                         last_img = img
@@ -330,6 +332,7 @@ def read_images_with_labels(
                         drop_none,
                         failure_tracker,
                         abort_on_server_down,
+                        extra_body=extra_body,
                     ): img_file
                     for img_file in batch_images
                 }

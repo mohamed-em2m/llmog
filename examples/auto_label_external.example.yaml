@@ -87,3 +87,12 @@ max_workers:
   4 # lower than the vLLM example's 10; hosted endpoints enforce
   # RPM/TPM rate limits, so raise this only if your provider allows it.
   # On 429s, lower max_workers and/or batch_size and retry.
+
+# --- Provider-specific params (optional) --------------------------------------
+# Forwarded verbatim as extra_body=... on every classify call. Omit (or leave
+# commented) to send nothing extra. CLI equivalent:
+#   --extra_body '{"provider": {"order": ["deepinfra"]}}'
+# extra_body:
+#   provider:
+#     order: ["deepinfra"]
+#     allow_fallbacks: false

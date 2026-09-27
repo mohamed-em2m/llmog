@@ -60,6 +60,7 @@ def process_one_image(
     drop_none: bool = True,
     failure_tracker=None,
     abort_on_server_down: bool = True,
+    extra_body=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -224,6 +225,7 @@ def process_one_image(
                 class_definitions=class_definitions,
                 none_labels=none_labels,
                 drop_none=drop_none,
+                extra_body=extra_body,
             )
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")

@@ -407,6 +407,16 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "in 'key=value' form (repeatable).",
     )
     parser.add_argument(
+        "--extra_body",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help="JSON object forwarded verbatim as extra_body=... on every "
+        "auto_label chat-completions call (provider-specific params, e.g. "
+        '\'{"provider": {"order": ["deepinfra"]}}\'). In YAML, set '
+        "extra_body: as a mapping instead.",
+    )
+    parser.add_argument(
         "--image_min_tokens",
         type=int,
         default=1024,
@@ -577,6 +587,28 @@ def parse_args(argv=None) -> argparse.Namespace:
         args.serving_extra = coerced
     else:
         args.serving_extra = {}
+
+    # Normalize --extra_body from a JSON string -> dict for downstream
+    # consumers (YAML configs already arrive as a dict).
+    _raw_extra = getattr(args, "extra_body", None)
+    if isinstance(_raw_extra, dict) or _raw_extra is None:
+        args.extra_body = _raw_extra
+    elif isinstance(_raw_extra, str):
+        _text = _raw_extra.strip()
+        if not _text:
+            args.extra_body = None
+        else:
+            import json as _json
+
+            try:
+                _parsed = _json.loads(_text)
+            except ValueError:
+                parser.error(f"--extra_body must be a JSON object, got: {_raw_extra!r}")
+            if not isinstance(_parsed, dict):
+                parser.error(f"--extra_body must be a JSON object, got: {_raw_extra!r}")
+            args.extra_body = _parsed
+    else:
+        parser.error(f"--extra_body must be a JSON object, got: {_raw_extra!r}")
 
     # ── Normalize escaped newlines (PowerShell passes literal \n) ──────────
     for _attr in ("class_definitions", "definitions"):

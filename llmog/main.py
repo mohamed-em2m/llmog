@@ -519,6 +519,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Extra override tokens for the underlying server-manager kwargs, "
         "in 'key=value' form (repeatable). Parsed into a dict on the config.",
     )
+    p.add_argument(
+        "--extra_body",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help="JSON object forwarded verbatim as extra_body=... on every "
+        "auto_label chat-completions call (provider-specific params). "
+        "In YAML, set extra_body: as a mapping instead.",
+    )
 
     # --- Config file ------------------------------------------------------
     p.add_argument(
