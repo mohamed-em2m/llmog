@@ -501,6 +501,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the empty YOLO file even when every box was removed by the "
         "small-box filter (legacy drop semantics).",
     )
+    p.add_argument(
+        "--use_batch_api",
+        "--use-batch-api",
+        dest="use_batch_api",
+        action="store_true",
+        default=False,
+        help="Run auto_label through the OpenAI Batch API (~50%% cheaper than sync "
+        "chat-completions). Requires --server_type external against a provider "
+        "with /v1/batches support. See --batch_mode for submit/poll splitting.",
+    )
+    p.add_argument(
+        "--batch_mode",
+        "--batch-mode",
+        dest="batch_mode",
+        choices=["auto", "submit", "poll"],
+        default="auto",
+        help="Batch flow control: 'auto' resumes a saved job or runs "
+        "submit+poll+finalize; 'submit' only builds and submits the job, then "
+        "exits (finalize later within the 24h window); 'poll' polls a saved "
+        "job (or --batch_job_id) and finalizes it into YOLO labels.",
+    )
+    p.add_argument("--batch_poll_interval", type=int, default=60)
+    p.add_argument(
+        "--batch_poll_timeout",
+        type=int,
+        default=0,
+        help="Give up polling after this many seconds (0 = wait forever). The job "
+        "stays alive provider-side; re-run with --batch_mode poll to resume.",
+    )
+    p.add_argument(
+        "--batch_completion_window",
+        choices=["24h"],
+        default="24h",
+        help="Provider completion window for the batch job.",
+    )
+    p.add_argument(
+        "--batch_job_id",
+        default=None,
+        help="Poll/finalize a specific provider batch id instead of the job "
+        "saved in <output_folder>/.batch_job.json.",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(

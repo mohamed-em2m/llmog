@@ -100,6 +100,17 @@ max_workers:
   # RPM/TPM rate limits, so raise this only if your provider allows it.
   # On 429s, lower max_workers and/or batch_size and retry.
 
+# --- OpenAI Batch API (optional, ~50% cheaper than sync) -----------------------
+# One /v1/chat/completions request per box is submitted as a batch job, then
+# polled to completion and finalized into YOLO labels. Needs a provider with
+# /v1/batches support (OpenAI, and some OpenAI-compatible hosts).
+# use_batch_api: false
+# batch_mode: auto # "auto" | "submit" (exit after submit) | "poll" (finalize a saved job)
+# batch_poll_interval: 60
+# batch_poll_timeout: 0 # 0 = wait forever; re-run with batch_mode poll to resume
+# batch_completion_window: 24h
+# batch_job_id: null # poll a specific provider batch id instead of the saved job
+
 # --- Provider-specific params (optional) --------------------------------------
 # Forwarded verbatim as extra_body=... on every classify call. Omit (or leave
 # commented) to send nothing extra. CLI equivalent:

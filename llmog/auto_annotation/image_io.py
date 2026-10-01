@@ -51,6 +51,48 @@ def _coerce_extra_body(extra_body):
     )
 
 
+def build_classify_body(
+    crop_image,
+    model_name,
+    known_class_names,
+    class_mode: str = "hybrid",
+    class_definitions: str = "",
+    # Comma-separated string or list of names (YAML --config list form).
+    none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
+    drop_none: bool = True,
+    extra_body=None,
+):
+    """Build the chat-completions request body for one crop.
+
+    Shared by the online path (:func:`detect_defect`) and the Batch API path
+    (:mod:`auto_annotation.batch_api`), so both send byte-identical prompts.
+    """
+    data_uri = encode_crop_to_data_uri(crop_image)
+    prompt = render_auto_label_prompt(
+        known_class_names,
+        class_mode=class_mode,
+        class_definitions=class_definitions,
+        none_labels=none_labels,
+        drop_none=drop_none,
+    )
+    body = {
+        "model": model_name,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_uri}},
+                ],
+            }
+        ],
+    }
+    coerced = _coerce_extra_body(extra_body)
+    if coerced:
+        body["extra_body"] = coerced
+    return body
+
+
 def detect_defect(
     crop_image,
     client,
@@ -84,29 +126,16 @@ def detect_defect(
 
     Returns dict like {"class": "spot", "confidence": 4}
     """
-    data_uri = encode_crop_to_data_uri(crop_image)
-    prompt = render_auto_label_prompt(
+    create_kwargs = build_classify_body(
+        crop_image,
+        model_name,
         known_class_names,
         class_mode=class_mode,
         class_definitions=class_definitions,
         none_labels=none_labels,
         drop_none=drop_none,
+        extra_body=extra_body,
     )
-    create_kwargs = {
-        "model": model_name,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_uri}},
-                ],
-            }
-        ],
-    }
-    coerced = _coerce_extra_body(extra_body)
-    if coerced:
-        create_kwargs["extra_body"] = coerced
     response = client.chat.completions.create(**create_kwargs)
     if not response.choices or not response.choices[0].message:
         raise ValueError("No choices returned from the VLM API call.")

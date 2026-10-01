@@ -187,6 +187,24 @@ class PipelineConfig(BaseModel):
     # written (legacy drop semantics).
     drop_small_images: bool = True
 
+    # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
+    # Submit one /v1/chat/completions request per box as a batch job, then
+    # poll to completion and finalize into YOLO labels. Requires an external
+    # OpenAI-compatible provider with /v1/batches support (local llama.cpp /
+    # vLLM servers do not have it).
+    use_batch_api: bool = False
+    # auto: resume a saved job or submit+poll+finalize in one run.
+    # submit: build + submit only, exit (finalize later, 24h window).
+    # poll: poll a saved job (or --batch_job_id) and finalize.
+    batch_mode: Literal["auto", "submit", "poll"] = "auto"
+    batch_poll_interval: int = 60
+    # 0 = poll forever; otherwise give up waiting after this many seconds
+    # (the job stays alive provider-side; re-run with --batch_mode poll).
+    batch_poll_timeout: int = 0
+    batch_completion_window: Literal["24h"] = "24h"
+    # Poll/finalize a specific provider batch id instead of the saved job.
+    batch_job_id: Optional[str] = None
+
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False
     prep_short_edge: int = 1024
@@ -277,6 +295,20 @@ class PipelineConfig(BaseModel):
     def _check_min_box_size(cls, v: int) -> int:
         if v < 0:
             raise ValueError("--min_box_size must be >= 0 (0 disables the filter)")
+        return v
+
+    @field_validator("batch_poll_interval")
+    @classmethod
+    def _check_batch_poll_interval(cls, v: int) -> int:
+        if v < 5:
+            raise ValueError("--batch_poll_interval must be >= 5 seconds")
+        return v
+
+    @field_validator("batch_poll_timeout")
+    @classmethod
+    def _check_batch_poll_timeout(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("--batch_poll_timeout must be >= 0 (0 = poll forever)")
         return v
 
     @field_validator("gpu_memory_utilization")

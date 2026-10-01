@@ -515,6 +515,54 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "small-box filter (legacy drop semantics).",
     )
     parser.add_argument(
+        "--use_batch_api",
+        "--use-batch-api",
+        dest="use_batch_api",
+        action="store_true",
+        default=False,
+        help="Run auto_label through the OpenAI Batch API (~50% cheaper than sync "
+        "chat-completions). Requires --server_type external against a provider "
+        "with /v1/batches support.",
+    )
+    parser.add_argument(
+        "--batch_mode",
+        "--batch-mode",
+        dest="batch_mode",
+        type=str,
+        default="auto",
+        choices=["auto", "submit", "poll"],
+        help="Batch flow control: 'auto' resumes a saved job or runs "
+        "submit+poll+finalize; 'submit' only builds and submits, then exits; "
+        "'poll' polls a saved job (or --batch_job_id) and finalizes it.",
+    )
+    parser.add_argument(
+        "--batch_poll_interval",
+        type=int,
+        default=60,
+        help="Seconds between batch status polls (min 5).",
+    )
+    parser.add_argument(
+        "--batch_poll_timeout",
+        type=int,
+        default=0,
+        help="Give up polling after this many seconds (0 = wait forever). "
+        "Re-run with --batch_mode poll to resume.",
+    )
+    parser.add_argument(
+        "--batch_completion_window",
+        type=str,
+        default="24h",
+        choices=["24h"],
+        help="Provider completion window for the batch job.",
+    )
+    parser.add_argument(
+        "--batch_job_id",
+        type=str,
+        default=None,
+        help="Poll/finalize a specific provider batch id instead of the job "
+        "saved in <output_folder>/.batch_job.json.",
+    )
+    parser.add_argument(
         "--init_class_map",
         action="store_true",
         help="Initialize the class map from the YAML file.",
@@ -767,6 +815,19 @@ def parse_args(argv=None) -> argparse.Namespace:
             parser.error("--small_box_action must be 'keep' or 'drop'")
     if getattr(args, "drop_small_images", None) is None:
         args.drop_small_images = True
+    if getattr(args, "batch_mode", None) not in ("auto", "submit", "poll"):
+        if getattr(args, "batch_mode", None) is None:
+            args.batch_mode = "auto"
+        else:
+            parser.error("--batch_mode must be 'auto', 'submit' or 'poll'")
+    if getattr(args, "batch_poll_interval", None) is None:
+        args.batch_poll_interval = 60
+    if args.batch_poll_interval < 5:
+        parser.error("--batch_poll_interval must be >= 5 seconds")
+    if getattr(args, "batch_poll_timeout", None) is None:
+        args.batch_poll_timeout = 0
+    if args.batch_poll_timeout < 0:
+        parser.error("--batch_poll_timeout must be >= 0 (0 = poll forever)")
 
     # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
     if getattr(args, "max_consecutive_failures", None) is None:
