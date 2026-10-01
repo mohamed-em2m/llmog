@@ -476,6 +476,104 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Keep none-like predictions as regular classes instead of dropping them.",
     )
     parser.add_argument(
+        "--min_box_size",
+        "--min-box-size",
+        dest="min_box_size",
+        type=int,
+        default=0,
+        help="Minimum box side in pixels for reclassification: boxes with "
+        "width < MIN or height < MIN (measured on the original image) are never sent "
+        "to the LLM. 0 disables the filter (default). "
+        "Small-box fate is set by --small_box_action.",
+    )
+    parser.add_argument(
+        "--small_box_action",
+        "--small-box-action",
+        dest="small_box_action",
+        type=str,
+        default="keep",
+        choices=["keep", "drop"],
+        help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
+        "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
+    )
+    parser.add_argument(
+        "--drop_small_images",
+        dest="drop_small_images",
+        action="store_true",
+        default=True,
+        help="When small_box_action=drop leaves an image with zero writable boxes "
+        "only because of the small-box filter, write NO label file and list the "
+        "image in skipped_small_images.txt instead of an empty .txt (an empty file "
+        "would train as a false negative). Exclude those images from training.",
+    )
+    parser.add_argument(
+        "--keep_small_images",
+        "--no_drop_small_images",
+        dest="drop_small_images",
+        action="store_false",
+        help="Write the empty YOLO file even when every box was removed by the "
+        "small-box filter (legacy drop semantics).",
+    )
+    parser.add_argument(
+        "--use_batch_api",
+        "--use-batch-api",
+        dest="use_batch_api",
+        action="store_true",
+        default=False,
+        help="Run auto_label through the OpenAI Batch API (~50% cheaper than sync "
+        "chat-completions). Requires --server_type external against a provider "
+        "with /v1/batches support.",
+    )
+    parser.add_argument(
+        "--batch_mode",
+        "--batch-mode",
+        dest="batch_mode",
+        type=str,
+        default="auto",
+        choices=["auto", "submit", "poll"],
+        help="Batch flow control: 'auto' resumes a saved job or runs "
+        "submit+poll+finalize; 'submit' only builds and submits, then exits; "
+        "'poll' polls a saved job (or --batch_job_id) and finalizes it.",
+    )
+    parser.add_argument(
+        "--batch_poll_interval",
+        type=int,
+        default=60,
+        help="Seconds between batch status polls (min 5).",
+    )
+    parser.add_argument(
+        "--batch_poll_timeout",
+        type=int,
+        default=0,
+        help="Give up polling after this many seconds (0 = wait forever). "
+        "Re-run with --batch_mode poll to resume.",
+    )
+    parser.add_argument(
+        "--batch_completion_window",
+        type=str,
+        default="24h",
+        choices=["24h"],
+        help="Provider completion window for the batch job.",
+    )
+    parser.add_argument(
+        "--batch_submit_style",
+        type=str,
+        default="auto",
+        choices=["auto", "file", "inline"],
+        help="How the batch requests reach the provider. 'file' uploads the "
+        "JSONL and passes input_file_id (OpenAI). 'inline' embeds the requests "
+        "in the create body over httpx, for OpenAI-compatible hosts whose "
+        "/batches ignores input_file_id (e.g. OpenRouter). 'auto' (default) "
+        "tries file, then inline.",
+    )
+    parser.add_argument(
+        "--batch_job_id",
+        type=str,
+        default=None,
+        help="Poll/finalize a specific provider batch id instead of the job "
+        "saved in <output_folder>/.batch_job.json.",
+    )
+    parser.add_argument(
         "--init_class_map",
         action="store_true",
         help="Initialize the class map from the YAML file.",
@@ -715,6 +813,32 @@ def parse_args(argv=None) -> argparse.Namespace:
         )
     if getattr(args, "drop_none", None) is None:
         args.drop_none = True
+
+    # ── Defaults for small-box filter (hand-built Namespaces) ─────────────
+    if getattr(args, "min_box_size", None) is None:
+        args.min_box_size = 0
+    if getattr(args, "min_box_size", 0) < 0:
+        parser.error("--min_box_size must be >= 0 (0 disables the filter)")
+    if getattr(args, "small_box_action", None) not in ("keep", "drop"):
+        if getattr(args, "small_box_action", None) is None:
+            args.small_box_action = "keep"
+        else:
+            parser.error("--small_box_action must be 'keep' or 'drop'")
+    if getattr(args, "drop_small_images", None) is None:
+        args.drop_small_images = True
+    if getattr(args, "batch_mode", None) not in ("auto", "submit", "poll"):
+        if getattr(args, "batch_mode", None) is None:
+            args.batch_mode = "auto"
+        else:
+            parser.error("--batch_mode must be 'auto', 'submit' or 'poll'")
+    if getattr(args, "batch_poll_interval", None) is None:
+        args.batch_poll_interval = 60
+    if args.batch_poll_interval < 5:
+        parser.error("--batch_poll_interval must be >= 5 seconds")
+    if getattr(args, "batch_poll_timeout", None) is None:
+        args.batch_poll_timeout = 0
+    if args.batch_poll_timeout < 0:
+        parser.error("--batch_poll_timeout must be >= 0 (0 = poll forever)")
 
     # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
     if getattr(args, "max_consecutive_failures", None) is None:

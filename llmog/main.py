@@ -463,6 +463,94 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Keep none-like predictions as regular classes instead of dropping them.",
     )
+    p.add_argument(
+        "--min_box_size",
+        "--min-box-size",
+        dest="min_box_size",
+        type=int,
+        default=0,
+        help="Minimum box side in pixels for auto_label reclassification: boxes with "
+        "width < MIN or height < MIN (measured on the original image) are never sent "
+        "to the LLM. 0 disables the filter (default). "
+        "Small-box fate is set by --small_box_action.",
+    )
+    p.add_argument(
+        "--small_box_action",
+        "--small-box-action",
+        dest="small_box_action",
+        choices=["keep", "drop"],
+        default="keep",
+        help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
+        "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
+    )
+    p.add_argument(
+        "--drop_small_images",
+        dest="drop_small_images",
+        action="store_true",
+        default=True,
+        help="When small_box_action=drop leaves an image with zero writable boxes "
+        "only because of the small-box filter, write NO label file and list the "
+        "image in skipped_small_images.txt instead of an empty .txt (an empty file "
+        "would train as a false negative). Exclude those images from training. (default ON).",
+    )
+    p.add_argument(
+        "--keep_small_images",
+        "--no_drop_small_images",
+        dest="drop_small_images",
+        action="store_false",
+        help="Write the empty YOLO file even when every box was removed by the "
+        "small-box filter (legacy drop semantics).",
+    )
+    p.add_argument(
+        "--use_batch_api",
+        "--use-batch-api",
+        dest="use_batch_api",
+        action="store_true",
+        default=False,
+        help="Run auto_label through the OpenAI Batch API (~50%% cheaper than sync "
+        "chat-completions). Requires --server_type external against a provider "
+        "with /v1/batches support. See --batch_mode for submit/poll splitting.",
+    )
+    p.add_argument(
+        "--batch_mode",
+        "--batch-mode",
+        dest="batch_mode",
+        choices=["auto", "submit", "poll"],
+        default="auto",
+        help="Batch flow control: 'auto' resumes a saved job or runs "
+        "submit+poll+finalize; 'submit' only builds and submits the job, then "
+        "exits (finalize later within the 24h window); 'poll' polls a saved "
+        "job (or --batch_job_id) and finalizes it into YOLO labels.",
+    )
+    p.add_argument("--batch_poll_interval", type=int, default=60)
+    p.add_argument(
+        "--batch_poll_timeout",
+        type=int,
+        default=0,
+        help="Give up polling after this many seconds (0 = wait forever). The job "
+        "stays alive provider-side; re-run with --batch_mode poll to resume.",
+    )
+    p.add_argument(
+        "--batch_completion_window",
+        choices=["24h"],
+        default="24h",
+        help="Provider completion window for the batch job.",
+    )
+    p.add_argument(
+        "--batch_submit_style",
+        choices=["auto", "file", "inline"],
+        default="auto",
+        help="How the batch requests reach the provider. 'file' uploads the "
+        "JSONL and passes input_file_id (OpenAI). 'inline' embeds the requests "
+        "in the create body, for OpenAI-compatible hosts whose /v1/batches "
+        "ignores input_file_id. 'auto' (default) tries file, then inline.",
+    )
+    p.add_argument(
+        "--batch_job_id",
+        default=None,
+        help="Poll/finalize a specific provider batch id instead of the job "
+        "saved in <output_folder>/.batch_job.json.",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(

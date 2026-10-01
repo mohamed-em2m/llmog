@@ -61,6 +61,9 @@ def process_one_image(
     failure_tracker=None,
     abort_on_server_down: bool = True,
     extra_body=None,
+    min_box_size: int = 0,
+    small_box_action: str = "keep",
+    drop_small_images: bool = True,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -138,6 +141,10 @@ def process_one_image(
 
     new_label_lines = []
     low_confidence_records = []
+    # Boxes removed by the small-box filter on THIS image (never sent to the
+    # LLM). Used by the drop_small_images guard below to tell "genuinely
+    # empty" apart from "emptied by the size filter".
+    small_skipped_this_image = 0
     # Boxes whose model call failed at the *server* level (dead process,
     # timeout, 5xx, OOM) as opposed to per-box content problems. If any such
     # failure happened on this image, the result is untrustworthy: the image
@@ -179,6 +186,50 @@ def process_one_image(
 
         if x2 <= x1 or y2 <= y1:
             logger.warning(f"Invalid box in {img_file}: {values}")
+            continue
+
+        # --- Small-box filter (measured on ORIGINAL image pixels) -----------
+        # Tiny boxes produce crops the VLM cannot classify reliably, so they
+        # are never sent to the model. "keep" preserves the original YOLO
+        # line verbatim; "drop" omits the box from the output entirely.
+        try:
+            _min_side = int(min_box_size or 0)
+        except (TypeError, ValueError):
+            _min_side = 0
+        _action = str(small_box_action or "keep").lower().strip()
+        if _action not in ("keep", "drop"):
+            _action = "keep"
+        if _min_side > 0 and ((x2 - x1) < _min_side or (y2 - y1) < _min_side):
+            stats.incr("boxes_skipped_small")
+            small_skipped_this_image += 1
+            # INFO (not DEBUG): the user needs to see the filter firing to trust
+            # it, and the box dimensions to calibrate min_box_size.
+            logger.info(
+                f"{img_file}: small box filtered "
+                f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
+                f"action={_action})."
+            )
+            if dry_run:
+                logger.info(
+                    f"[dry run] {img_file}: would skip small box "
+                    f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
+                    f"action={_action})."
+                )
+                continue
+            if _action == "keep":
+                new_label_lines.append(line.strip())
+                stats.incr("boxes_kept_small")
+                logger.debug(
+                    f"{img_file}: keeping small box "
+                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
+                    f"without LLM call: '{line.strip()}'."
+                )
+            else:
+                stats.incr("boxes_dropped_small")
+                logger.debug(
+                    f"{img_file}: dropping small box "
+                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px)."
+                )
             continue
 
         crop_image = img[y1:y2, x1:x2]
@@ -361,6 +412,51 @@ def process_one_image(
             # Another thread may have tripped the breaker meanwhile.
             failure_tracker.check_and_raise(img_file)
         return None
+
+    if not new_label_lines and small_skipped_this_image > 0 and drop_small_images:
+        # Every writable box was removed by the small-box filter: writing an
+        # empty .txt here would teach the detector "no objects" for an image
+        # that DOES contain (tiny) defects -- a baked-in false negative. So
+        # write nothing at all (inplace mode: original labels left untouched)
+        # and record the stem in skipped_small_images.txt so the image can be
+        # excluded from the training set. Still marked completed: re-running
+        # with the same flags would deterministically repeat this, so resume
+        # must not retry it -- re-run with a smaller --min_box_size (and
+        # --no_auto_resume) to reconsider these images.
+        manifest_path = Path(output_folder) / "skipped_small_images.txt"
+        try:
+            if completed_lock is not None:
+                with completed_lock:
+                    with open(manifest_path, "a") as mf:
+                        mf.write(img_stem + "\n")
+            else:
+                with open(manifest_path, "a") as mf:
+                    mf.write(img_stem + "\n")
+        except Exception as e:
+            logger.error(
+                f"Failed to append to small-image manifest {manifest_path}: {e}"
+            )
+        logger.warning(
+            f"{img_file}: all {small_skipped_this_image} box(es) removed by "
+            f"the small-box filter (min_box_size={_min_side}px) -> NOT writing a label file "
+            f"(no false-negative empty label; listed in {manifest_path}). "
+            "Exclude this image from training or re-run with a smaller --min_box_size."
+        )
+        stats.incr("images_skipped_all_small")
+        if checkpoint is not None and completed_images is not None:
+            if completed_lock is not None:
+                with completed_lock:
+                    completed_images.add(img_stem)
+                    completed_snapshot = set(completed_images)
+            else:
+                completed_images.add(img_stem)
+                completed_snapshot = set(completed_images)
+            with class_map_lock:
+                class_map_snapshot = dict(class_map)
+            batches_snapshot = set(batches_done) if batches_done is not None else set()
+            checkpoint.save(completed_snapshot, class_map_snapshot, batches_snapshot)
+        stats.log_progress(img_file)
+        return img
 
     write_ok = True
     try:

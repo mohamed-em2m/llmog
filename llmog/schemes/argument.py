@@ -167,6 +167,50 @@ class PipelineConfig(BaseModel):
     # labels are kept as regular classes (legacy behavior).
     drop_none: bool = True
 
+    # --- Small-box reclassification filter (auto_label) --------------------
+    # Boxes whose pixel size on the ORIGINAL image is smaller than
+    # min_box_size in either dimension (w < min OR h < min) are never sent
+    # to the LLM -- tiny crops are usually unclassifiable noise. 0 disables.
+    min_box_size: int = 0
+    # What to do with small boxes: "keep" writes the original YOLO line
+    # verbatim (original class id + coords, no LLM call, no class_map
+    # mutation); "drop" skips the box entirely (no YOLO line).
+    small_box_action: Literal["keep", "drop"] = "keep"
+    # Image-level guard against false negatives: when True (default) and
+    # small_box_action="drop", an image that ends up with ZERO writable
+    # boxes only because the small-box filter removed them gets NO label
+    # file at all (and its stem is appended to skipped_small_images.txt in
+    # the output folder) instead of an empty .txt -- an empty file would
+    # teach the detector "no objects here" for an image that does contain
+    # defects. Remove those images from the training set (see the manifest)
+    # so they don't train as background. When False, the empty file is
+    # written (legacy drop semantics).
+    drop_small_images: bool = True
+
+    # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
+    # Submit one /v1/chat/completions request per box as a batch job, then
+    # poll to completion and finalize into YOLO labels. Requires an external
+    # OpenAI-compatible provider with /v1/batches support (local llama.cpp /
+    # vLLM servers do not have it).
+    use_batch_api: bool = False
+    # auto: resume a saved job or submit+poll+finalize in one run.
+    # submit: build + submit only, exit (finalize later, 24h window).
+    # poll: poll a saved job (or --batch_job_id) and finalize.
+    batch_mode: Literal["auto", "submit", "poll"] = "auto"
+    batch_poll_interval: int = 60
+    # 0 = poll forever; otherwise give up waiting after this many seconds
+    # (the job stays alive provider-side; re-run with --batch_mode poll).
+    batch_poll_timeout: int = 0
+    batch_completion_window: Literal["24h"] = "24h"
+    # Poll/finalize a specific provider batch id instead of the saved job.
+    batch_job_id: Optional[str] = None
+    # How the batch requests reach the provider:
+    #   file   -- OpenAI's way: upload the .jsonl, pass input_file_id.
+    #   inline -- embed the requests in the create body, for hosts whose
+    #             /v1/batches ignores input_file_id.
+    #   auto   -- try file, fall back to inline on that specific 400.
+    batch_submit_style: Literal["auto", "file", "inline"] = "auto"
+
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False
     prep_short_edge: int = 1024
@@ -250,6 +294,27 @@ class PipelineConfig(BaseModel):
     def _check_consecutive_failures(cls, v: int) -> int:
         if v < 1:
             raise ValueError("--max_consecutive_failures must be >= 1")
+        return v
+
+    @field_validator("min_box_size")
+    @classmethod
+    def _check_min_box_size(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("--min_box_size must be >= 0 (0 disables the filter)")
+        return v
+
+    @field_validator("batch_poll_interval")
+    @classmethod
+    def _check_batch_poll_interval(cls, v: int) -> int:
+        if v < 5:
+            raise ValueError("--batch_poll_interval must be >= 5 seconds")
+        return v
+
+    @field_validator("batch_poll_timeout")
+    @classmethod
+    def _check_batch_poll_timeout(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("--batch_poll_timeout must be >= 0 (0 = poll forever)")
         return v
 
     @field_validator("gpu_memory_utilization")

@@ -1,0 +1,27 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+jobs:
+  publish-pypi:
+    name: publish on pypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/llmog
+    permissions:
+      id-token: write
+    steps:
+      - name: github actions
+        uses: actions/checkout@v4
+      - name: python loading
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: install pytthon
+        run: python -m pip install --upgrade build
+      - name: build
+        run: python -m build
+      - name: publish
+        run: pypa/gh-action-pypi-publish@release/v1
