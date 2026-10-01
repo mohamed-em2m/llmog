@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
+import httpx
 import json_repair
 import numpy as np
 from PIL import Image
@@ -226,6 +227,134 @@ def collect_batch_requests(
     return requests, stems
 
 
+def _batches_url(client) -> str:
+    base = str(getattr(client, "base_url", "") or "").rstrip("/")
+    return f"{base}/batches"
+
+
+def _batches_headers(client) -> dict:
+    key = getattr(client, "api_key", None)
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def _inline_requests(requests):
+    """Shape one batch request list for providers that reject ``input_file_id``.
+
+    Hosts like OpenRouter implement ``/batches`` but read the requests straight
+    out of the create body and ignore an uploaded file reference (they answer
+    ``Batch body ended before a `requests` array was found.``). Their per-item
+    shape is just ``custom_id`` + ``body`` -- no method/url envelope.
+    """
+    return [{"custom_id": req["custom_id"], "body": req["body"]} for req in requests]
+
+
+def _create_batch_inline(client, requests, model_name, timeout=120.0):
+    """POST /batches with the requests inline instead of an uploaded file id.
+
+    Uses httpx directly rather than ``client.batches.create``: the SDK casts the
+    response into its strict ``Batch`` model, which rejects the non-standard
+    status enums and shapes these hosts return. Plain JSON keeps them working.
+    """
+    payload = {
+        "endpoint": "/v1/chat/completions",
+        "model": model_name,
+        "requests": _inline_requests(requests),
+    }
+    timeout = httpx.Timeout(timeout, connect=30.0)
+    with httpx.Client(timeout=timeout) as http:
+        resp = http.post(
+            _batches_url(client), headers=_batches_headers(client), json=payload
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"POST {_batches_url(client)} failed with {resp.status_code}: {resp.text[:400]}"
+        )
+    data = resp.json()
+    if not isinstance(data, dict) or not data.get("id"):
+        raise RuntimeError(f"Batch create returned no id: {resp.text[:400]}")
+    return data
+
+
+def _retrieve_batch_inline(client, batch_id, timeout=60.0):
+    """GET /batches/{id} as plain JSON (same tolerance reason as create)."""
+    url = f"{_batches_url(client)}/{batch_id}"
+    timeout = httpx.Timeout(timeout, connect=30.0)
+    with httpx.Client(timeout=timeout) as http:
+        resp = http.get(url, headers=_batches_headers(client))
+    if resp.status_code == 404:
+        raise RuntimeError(
+            f"Batch {batch_id} not found at {url}. Batch ids are provider-scoped; "
+            "pass the right --batch_job_id or re-run with --batch_mode submit."
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(
+            f"GET {url} failed with {resp.status_code}: {resp.text[:400]}"
+        )
+    data = resp.json()
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Unexpected batch payload from {url}: {resp.text[:400]}")
+    return data
+
+
+def _batch_field(batch, name, default=None):
+    """Read a field from either an SDK Batch object or a plain JSON dict."""
+    if isinstance(batch, dict):
+        return batch.get(name, default)
+    value = getattr(batch, name, None)
+    if value is None:
+        extra = getattr(batch, "model_extra", None)
+        if isinstance(extra, dict):
+            value = extra.get(name)
+    return default if value is None else value
+
+
+def _inline_results(batch):
+    """Return the inlined ``results`` list from a provider batch payload, if any.
+
+    OpenAI writes results to an output file; hosts like OpenRouter inline them
+    in the retrieve response instead (retained ~30 days).
+    """
+    results = _batch_field(batch, "results")
+    return results if isinstance(results, list) else None
+
+
+def _result_content_text(item):
+    """Pull the assistant text out of one batch result, tolerating shape drift.
+
+    Handles OpenAI's ``{"response": {"body": {"choices": [...]}}}`` and inline
+    hosts' ``{"result": {"body": {"choices": [...]}}}`` / flatter variants.
+    """
+    node = item.get("result")
+    if not isinstance(node, dict):
+        node = item.get("response")
+    if not isinstance(node, dict):
+        return None
+    if node.get("status_code") not in (None, 200):
+        return None
+    body = node.get("body")
+    if not isinstance(body, dict):
+        body = node
+    choices = body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    message = choices[0].get("message") or {}
+    content = message.get("content")
+    if content is None:
+        content = choices[0].get("text")
+    return content if isinstance(content, str) else None
+
+
+def _is_inline_required_error(err) -> bool:
+    """True when a 400 means the provider wants an inline ``requests`` array."""
+    text = f"{getattr(err, 'message', '') or ''} {err}".lower()
+    return "requests" in text and (
+        "before a" in text or "not found" in text or "missing" in text
+    )
+
+
 def submit_batch_job(
     client,
     output_folder,
@@ -235,6 +364,7 @@ def submit_batch_job(
     class_map,
     params,
     completion_window="24h",
+    submit_style="auto",
 ):
     """Write the JSONL, upload it, create the batch, persist the job file.
 
@@ -242,6 +372,10 @@ def submit_batch_job(
     (class_mode, class_definitions, none_labels, drop_none, conf_threshold,
     min_box_size, small_box_action, drop_small_images, extra_body,
     inplace_saving). Returns the job dict.
+
+    ``submit_style``: ``file`` (OpenAI's uploaded-JSONL reference), ``inline``
+    (requests embedded in the create body -- for hosts whose /v1/batches
+    ignores ``input_file_id``), or ``auto`` (try file, fall back to inline).
     """
     os.makedirs(output_folder, exist_ok=True)
     jsonl_path = Path(output_folder) / "batch_requests.jsonl"
@@ -260,9 +394,16 @@ def submit_batch_job(
             )
     logger.info(f"Wrote {len(requests)} batch request(s) to {jsonl_path}.")
 
-    try:
-        batch_client = client.batches
-    except AttributeError:
+    style = (submit_style or "auto").strip().lower()
+    if style not in ("auto", "file", "inline"):
+        raise ValueError(
+            f"--batch_submit_style must be auto|file|inline, got {style!r}"
+        )
+
+    batch_client = getattr(client, "batches", None)
+    # The file path needs the SDK namespace; the inline path needs a base_url
+    # to POST to. Neither present means this is not a provider client at all.
+    if batch_client is None and not getattr(client, "base_url", None):
         raise RuntimeError(
             "This endpoint does not expose the Batches API (client.batches is "
             "missing). Batch mode needs an OpenAI-compatible provider with "
@@ -270,25 +411,51 @@ def submit_batch_job(
             "it. Use --server_type external against such a provider, or run "
             "without --use_batch_api."
         )
-    with open(jsonl_path, "rb") as f:
-        uploaded = client.files.create(file=f, purpose="batch")
-    logger.info(f"Uploaded batch input file: {uploaded.id}")
-    batch = batch_client.create(
-        input_file_id=uploaded.id,
-        endpoint="/v1/chat/completions",
-        completion_window=completion_window,
-        metadata={"description": f"llmog auto_label: {len(requests)} box(es)"},
-    )
+    if batch_client is None and style != "inline":
+        style = "inline"
+
+    uploaded_id = None
+    used_inline = style == "inline"
+    batch = None
+    if style in ("auto", "file"):
+        try:
+            with open(jsonl_path, "rb") as f:
+                uploaded = client.files.create(file=f, purpose="batch")
+            uploaded_id = uploaded.id
+            logger.info(f"Uploaded batch input file: {uploaded.id}")
+            batch = batch_client.create(
+                input_file_id=uploaded.id,
+                endpoint="/v1/chat/completions",
+                completion_window=completion_window,
+                metadata={"description": f"llmog auto_label: {len(requests)} box(es)"},
+            )
+        except Exception as e:
+            if style == "file" or not _is_inline_required_error(e):
+                raise
+            # The provider ignored input_file_id and wants the requests in the
+            # body. Drop the file reference so the job is recorded as inline.
+            logger.warning(
+                "Provider rejected the uploaded-file reference "
+                f"({getattr(e, 'message', None) or e}); retrying with the requests "
+                "inlined in the create body (batch_submit_style=inline)."
+            )
+            batch = None
+    if batch is None:
+        used_inline = True
+        batch = _create_batch_inline(client, requests, model_name)
+    batch_id = _batch_field(batch, "id")
+    batch_status = _batch_field(batch, "status", "?")
     logger.info(
-        f"Batch submitted: id={batch.id} status={batch.status} "
+        f"Batch submitted: id={batch_id} status={batch_status} "
         f"({len(requests)} request(s), window={completion_window}). "
         "Batch API bills at ~50% of sync chat-completions rates on OpenAI."
     )
     job = {
         "phase": "submitted",
-        "batch_id": batch.id,
-        "input_file_id": uploaded.id,
+        "batch_id": batch_id,
+        "input_file_id": uploaded_id,
         "output_file_id": None,
+        "submit_style": "inline" if used_inline else "file",
         "model": model_name,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "completion_window": completion_window,
@@ -310,15 +477,25 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
     interval = max(5, int(poll_interval or 60))
     timeout = float(poll_timeout or 0)
     start = time.monotonic()
+    inline_mode = job.get("submit_style") == "inline"
     logger.info(
         f"Polling batch {batch_id} every {interval}s "
         + ("(no timeout)." if not timeout else f"(timeout {timeout:.0f}s).")
     )
     try:
         while True:
-            batch = client.batches.retrieve(batch_id)
-            status = getattr(batch, "status", "?")
-            counts = getattr(batch, "request_counts", None)
+            if inline_mode:
+                batch = _retrieve_batch_inline(client, batch_id)
+            else:
+                batch = client.batches.retrieve(batch_id)
+            status = _batch_field(batch, "status", "?")
+            counts = _batch_field(batch, "request_counts")
+            if inline_mode and counts is None:
+                counts = {
+                    k: v
+                    for k, v in _batch_field(batch, "request_counts", {}).items()
+                    if v is not None
+                } or None
             logger.info(f"Batch {batch_id}: status={status} counts={counts}")
             if status == _TERMINAL_OK:
                 return batch
@@ -384,19 +561,16 @@ def finalize_batch_job(
     from auto_annotation.checkpoint import next_free_id as _next_free_id
 
     batch_id = job["batch_id"]
-    batch = client.batches.retrieve(batch_id)
-    if getattr(batch, "status", None) != _TERMINAL_OK:
+    if job.get("submit_style") == "inline":
+        batch = _retrieve_batch_inline(client, batch_id)
+    else:
+        batch = client.batches.retrieve(batch_id)
+    if _batch_field(batch, "status") != _TERMINAL_OK:
         raise RuntimeError(
-            f"Cannot finalize batch {batch_id}: status={getattr(batch, 'status', '?')} "
+            f"Cannot finalize batch {batch_id}: status={_batch_field(batch, 'status', '?')} "
             "(expected 'completed')."
         )
-    output_file_id = getattr(batch, "output_file_id", None)
-    if not output_file_id:
-        raise RuntimeError(
-            f"Batch {batch_id} is completed but has no output file. "
-            "Check the provider dashboard."
-        )
-    error_file_id = getattr(batch, "error_file_id", None)
+    error_file_id = _batch_field(batch, "error_file_id")
     if error_file_id:
         try:
             err_text = _download_text(client, error_file_id)
@@ -408,11 +582,24 @@ def finalize_batch_job(
         except Exception as e:
             logger.warning(f"Could not download batch error file: {e}")
 
-    text = _download_text(client, output_file_id)
-    out_lines = [ln for ln in text.splitlines() if ln.strip()]
-    logger.info(
-        f"Downloaded {len(out_lines)} batch result line(s) for batch {batch_id}."
-    )
+    inline = _inline_results(batch)
+    output_file_id = None
+    if inline is not None:
+        # OpenRouter-style: results ride along in the retrieve response.
+        result_items = [item for item in inline if isinstance(item, dict)]
+        logger.info(f"Batch {batch_id} returned {len(result_items)} inlined result(s).")
+    else:
+        output_file_id = _batch_field(batch, "output_file_id")
+        if not output_file_id:
+            raise RuntimeError(
+                f"Batch {batch_id} is completed but has neither an output file "
+                "nor inlined results. Check the provider dashboard."
+            )
+        text = _download_text(client, output_file_id)
+        result_items = [ln for ln in text.splitlines() if ln.strip()]
+        logger.info(
+            f"Downloaded {len(result_items)} batch result line(s) for batch {batch_id}."
+        )
 
     params = job.get("params", {})
     class_mode = str(params.get("class_mode", "hybrid") or "hybrid")
@@ -433,27 +620,31 @@ def finalize_batch_job(
     # sent custom_id -> parsed model result (or failure marker)
     results = {}
     n_failed = 0
-    for ln in out_lines:
-        try:
-            row = json.loads(ln)
-        except ValueError:
+    for item in result_items:
+        if isinstance(item, str):
             try:
-                row = json_repair.loads(ln)
-            except Exception:
-                logger.warning(f"Unparseable batch output line, skipping: {ln[:160]}")
-                continue
+                row = json.loads(item)
+            except ValueError:
+                try:
+                    row = json_repair.loads(item)
+                except Exception:
+                    logger.warning(
+                        f"Unparseable batch output line, skipping: {item[:160]}"
+                    )
+                    continue
+        else:
+            row = item
         if not isinstance(row, dict) or "custom_id" not in row:
             continue
         cid = row["custom_id"]
-        resp = row.get("response") or {}
-        if resp.get("status_code") != 200 or not resp.get("body"):
-            err = row.get("error") or resp
+        content = _result_content_text(row)
+        if not content:
+            err = row.get("error") or row.get("result") or row.get("response") or row
             logger.warning(f"Batch request {cid} failed at provider: {str(err)[:200]}")
             results[cid] = None
             n_failed += 1
             continue
         try:
-            content = resp["body"]["choices"][0]["message"]["content"]
             parsed = json_repair.loads(content)
             results[cid] = parsed if isinstance(parsed, dict) else None
         except Exception as e:
@@ -760,6 +951,7 @@ def run_batch_api_flow(
             class_map,
             params,
             completion_window=getattr(args, "batch_completion_window", "24h") or "24h",
+            submit_style=getattr(args, "batch_submit_style", "auto") or "auto",
         )
         if mode == "submit":
             logger.info(

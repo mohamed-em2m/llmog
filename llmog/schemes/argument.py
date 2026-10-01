@@ -204,6 +204,12 @@ class PipelineConfig(BaseModel):
     batch_completion_window: Literal["24h"] = "24h"
     # Poll/finalize a specific provider batch id instead of the saved job.
     batch_job_id: Optional[str] = None
+    # How the batch requests reach the provider:
+    #   file   -- OpenAI's way: upload the .jsonl, pass input_file_id.
+    #   inline -- embed the requests in the create body, for hosts whose
+    #             /v1/batches ignores input_file_id.
+    #   auto   -- try file, fall back to inline on that specific 400.
+    batch_submit_style: Literal["auto", "file", "inline"] = "auto"
 
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False

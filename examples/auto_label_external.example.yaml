@@ -117,6 +117,15 @@ batch_poll_interval: 60
 batch_poll_timeout: 0 # 0 = wait forever; re-run with batch_mode poll to resume
 batch_completion_window: 24h
 # batch_job_id: null # poll a specific provider batch id instead of the saved job
+#
+# batch_submit_style controls how the requests reach the provider:
+#   file   -- upload batch_requests.jsonl and pass input_file_id (OpenAI).
+#   inline -- embed the requests in the create body and poll with raw HTTP.
+#             Use this for hosts whose /batches ignores input_file_id, e.g.
+#             OpenRouter (https://openrouter.ai/api/v1), which also returns
+#             results inline instead of via an output file.
+#   auto   -- try file, fall back to inline on that specific 400 (default).
+batch_submit_style: auto
 
 # --- Provider-specific params (optional) --------------------------------------
 # Forwarded verbatim as extra_body=... on every classify call. Omit (or leave

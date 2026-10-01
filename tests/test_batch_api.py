@@ -41,11 +41,17 @@ class _FakeFiles:
 
 
 class _FakeBatches:
-    def __init__(self, status="completed"):
+    def __init__(self, status="completed", reject_file_ref=False):
         self.status = status
         self.created = []
+        self.reject_file_ref = reject_file_ref
 
     def create(self, **kwargs):
+        if self.reject_file_ref:
+            raise RuntimeError(
+                "Error code: 400 - {'error': {'message': 'Batch body ended "
+                "before a `requests` array was found.', 'code': 400}}"
+            )
         self.created.append(kwargs)
         return SimpleNamespace(id="batch-1", status="in_progress")
 
@@ -60,9 +66,94 @@ class _FakeBatches:
 
 
 class FakeClient:
-    def __init__(self, output_text="", status="completed"):
+    def __init__(self, output_text="", status="completed", reject_file_ref=False):
         self.files = _FakeFiles(output_text)
-        self.batches = _FakeBatches(status)
+        self.batches = _FakeBatches(status, reject_file_ref)
+        self.base_url = "https://provider.test/v1/"
+        self.api_key = "sk-test"
+
+
+# --------------------------------------------------------------------------
+# Fake httpx transport for the inline (OpenRouter-style) path
+# --------------------------------------------------------------------------
+class _FakeResponse:
+    def __init__(self, payload, status_code=200):
+        self._payload = payload
+        self.status_code = status_code
+        self.text = json.dumps(payload) if not isinstance(payload, str) else payload
+
+    def json(self):
+        return self._payload
+
+
+class _FakeHttpx:
+    """Stand-in for httpx.Client that records posts/gets and replays payloads."""
+
+    def __init__(self, posted, retrieved, status_code=200):
+        self.posted = posted
+        self.retrieved = retrieved
+        self.status_code = status_code
+
+    def __call__(self, *a, **kw):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def post(self, url, headers=None, json=None):
+        self.posted.append({"url": url, "headers": headers, "json": json})
+        return _FakeResponse({"id": "batch-inline", "status": "in_progress"}, 200)
+
+    def get(self, url, headers=None):
+        self.retrieved.append({"url": url, "headers": headers})
+        return _FakeResponse(self.retrieved[-1].setdefault("payload", {}))
+
+
+@pytest.fixture()
+def inline_httpx(monkeypatch):
+    """Patch httpx.Client inside batch_api with a recording fake.
+
+    Usage: ``posted, _ = inline_httpx()`` for create-only tests, or
+    ``inline_httpx(get_payload={...})`` when poll/finalize must read a
+    provider response.
+    """
+    import auto_annotation.batch_api as ba
+
+    def _install(get_payload=None):
+        posted, retrieved = [], []
+        fake = _FakeHttpx(posted, retrieved)
+        fake.get = lambda url, headers=None: _append_retrieve(
+            retrieved, url, headers, get_payload
+        )
+        monkeypatch.setattr(ba.httpx, "Client", fake)
+        monkeypatch.setattr(ba.httpx, "Timeout", lambda *a, **k: None)
+        return posted, retrieved
+
+    return _install
+
+
+def _inline_result(custom_id, cls="hole", conf=90, status_code=200):
+    """One OpenRouter-style inlined result entry (results ride in retrieve)."""
+    if status_code != 200:
+        return {"custom_id": custom_id, "error": {"message": "boom"}}
+    return {
+        "custom_id": custom_id,
+        "result": {
+            "status_code": status_code,
+            "body": {
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({"class": cls, "confidence": conf})
+                        }
+                    }
+                ]
+            },
+        },
+    }
 
 
 def _result_line(custom_id, cls="hole", conf=90, status_code=200):
@@ -228,6 +319,146 @@ def test_submit_rejects_non_batch_client(dataset, tmp_path):
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
     with pytest.raises(RuntimeError, match="Batches API"):
         submit_batch_job(object(), str(tmp_path), reqs, stems, "m", {}, _params())
+
+
+def test_submit_auto_falls_back_to_inline(dataset, tmp_path, inline_httpx):
+    """A host that rejects input_file_id gets the requests inlined over httpx."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    posted, _ = inline_httpx()
+    client = FakeClient(reject_file_ref=True)
+    job = submit_batch_job(
+        client, str(tmp_path), reqs, stems, "deepseek/x", {}, _params()
+    )
+    assert job["submit_style"] == "inline"
+    assert job["batch_id"] == "batch-inline"
+    assert client.batches.created == []  # file path was attempted, not accepted
+    # the fallback POSTs to /batches with an inline requests array
+    assert posted[0]["url"] == "https://provider.test/v1/batches"
+    assert posted[0]["json"]["model"] == "deepseek/x"
+    assert len(posted[0]["json"]["requests"]) == len(reqs)
+    first = posted[0]["json"]["requests"][0]
+    assert first["custom_id"] == reqs[0]["custom_id"]
+    # per-request body is byte-identical to the sync-path body
+    assert first["body"] == reqs[0]["body"]
+
+
+def test_submit_inline_style_skips_file_upload(dataset, tmp_path, inline_httpx):
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    posted, _ = inline_httpx()
+    client = FakeClient()
+    job = submit_batch_job(
+        client,
+        str(tmp_path),
+        reqs,
+        stems,
+        "m",
+        {},
+        _params(),
+        submit_style="inline",
+    )
+    assert job["submit_style"] == "inline"
+    assert client.files.uploaded == []  # never uploaded
+    assert len(posted) == 1
+
+
+def test_submit_file_style_does_not_fall_back(dataset, tmp_path, inline_httpx):
+    """Explicit --batch_submit_style file must surface the provider error."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    posted, _ = inline_httpx()
+    with pytest.raises(RuntimeError, match="requests"):
+        submit_batch_job(
+            FakeClient(reject_file_ref=True),
+            str(tmp_path),
+            reqs,
+            stems,
+            "m",
+            {},
+            _params(),
+            submit_style="file",
+        )
+    assert posted == []
+
+
+def test_poll_inline_uses_httpx_and_completes(inline_httpx):
+    _, retrieved = inline_httpx(get_payload={"id": "b", "status": "completed"})
+    batch = poll_batch_job(
+        FakeClient(),
+        {"batch_id": "b", "submit_style": "inline"},
+        poll_interval=5,
+        poll_timeout=30,
+    )
+    assert batch["status"] == "completed"
+    assert retrieved[0]["url"] == "https://provider.test/v1/batches/b"
+
+
+def _append_retrieve(retrieved, url, headers, payload):
+    retrieved.append({"url": url, "headers": headers})
+    return _FakeResponse(payload or {})
+
+
+def test_finalize_reads_inlined_results(dataset, tmp_path, inline_httpx):
+    """OpenRouter-style: results live in the retrieve response, no output file."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    inline_httpx(
+        get_payload={
+            "id": "b",
+            "status": "completed",
+            "results": [_inline_result(r["custom_id"]) for r in reqs],
+        }
+    )
+    job = {
+        "phase": "submitted",
+        "batch_id": "b",
+        "submit_style": "inline",
+        "input_file_id": None,
+        "class_map": {"hole": 0},
+        "params": _params(),
+        "stems": stems,
+    }
+    (tmp_path / ".batch_job.json").write_text(json.dumps(job), encoding="utf-8")
+
+    stats = RunStats()
+    finalized = finalize_batch_job(
+        FakeClient(), load_job(str(tmp_path)), str(tmp_path), stats
+    )
+    assert finalized == len(stems)
+    labels = tmp_path / "labels" / "batches" / "batch_0000"
+    assert (labels / "big.txt").is_file()
+    assert stats.boxes_classified == len(reqs)
+
+
+def test_result_content_text_shape_tolerance():
+    from auto_annotation.batch_api import _result_content_text
+
+    # OpenAI file-based shape
+    assert (
+        _result_content_text(
+            {
+                "response": {
+                    "status_code": 200,
+                    "body": {"choices": [{"message": {"content": "A"}}]},
+                }
+            }
+        )
+        == "A"
+    )
+    # OpenRouter inline shape
+    assert (
+        _result_content_text(
+            {"result": {"body": {"choices": [{"message": {"content": "B"}}]}}}
+        )
+        == "B"
+    )
+    # Flat shape with text instead of message
+    assert _result_content_text({"result": {"choices": [{"text": "C"}]}}) == "C"
+    # Failures and empties
+    assert _result_content_text({"error": {"message": "boom"}}) is None
+    assert _result_content_text({"result": {"status_code": 400}}) is None
+    assert _result_content_text({"result": {"body": {"choices": []}}}) is None
 
 
 def test_poll_returns_when_completed():

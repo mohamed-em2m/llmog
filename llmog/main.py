@@ -537,6 +537,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Provider completion window for the batch job.",
     )
     p.add_argument(
+        "--batch_submit_style",
+        choices=["auto", "file", "inline"],
+        default="auto",
+        help="How the batch requests reach the provider. 'file' uploads the "
+        "JSONL and passes input_file_id (OpenAI). 'inline' embeds the requests "
+        "in the create body, for OpenAI-compatible hosts whose /v1/batches "
+        "ignores input_file_id. 'auto' (default) tries file, then inline.",
+    )
+    p.add_argument(
         "--batch_job_id",
         default=None,
         help="Poll/finalize a specific provider batch id instead of the job "

@@ -17,6 +17,11 @@ versioning follows [Semantic Versioning](https://semver.org/).
   lists them in `<output>/skipped_small_images.txt` for exclusion from
   training, instead of an empty `.txt` that would train as background.
   `--keep_small_images` restores legacy empty-file semantics.
+- `--batch_submit_style auto|file|inline` for the Batch API path. Hosts like
+  OpenRouter implement `/batches` but ignore `input_file_id` and return results
+  inlined in the retrieve response; `inline` submits the requests in the create
+  body over plain HTTP and reads results from either shape. `auto` (default)
+  tries the file reference and falls back to inline on that specific 400.
 - OpenAI Batch API flow for `auto_label` (~50% cheaper than sync):
   `--use_batch_api` submits one `/v1/chat/completions` request per box as a
   batch job and finalizes results into YOLO labels with online-path semantics
