@@ -614,6 +614,23 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
                     problems = _inline_error_summary(batch, limit=3)
                     if problems:
                         detail = " Per-request errors: " + " | ".join(problems)
+                    else:
+                        # Failed but no parseable per-request errors: dump the
+                        # raw payload shape (truncated) so the provider's
+                        # actual schema can be mapped.
+                        try:
+                            raw = json.dumps(batch, default=str)
+                        except Exception:
+                            raw = str(batch)
+                        keys = (
+                            sorted(batch.keys())
+                            if isinstance(batch, dict)
+                            else type(batch).__name__
+                        )
+                        logger.error(
+                            f"Batch {batch_id} payload keys: {keys}. Raw "
+                            f"payload (truncated): {raw[:2000]}"
+                        )
                 raise RuntimeError(
                     f"Batch {batch_id} ended with status={status} "
                     f"(counts={counts}).{detail} Check the provider dashboard; "
