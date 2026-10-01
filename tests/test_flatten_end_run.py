@@ -29,6 +29,22 @@ def _make_legacy_output(tmp_path):
 
 
 class TestFlattenBatchesToLabels:
+    def test_missing_labels_dir_without_staging_creates_empty(self, tmp_path):
+        """Totally failed run: no labels/, no staging -> no error, empty dir."""
+        out = flatten_batches_to_labels(tmp_path)
+        assert out.is_dir()
+        assert list(out.glob("*.txt")) == []
+
+    def test_missing_labels_dir_with_staging_still_raises(self, tmp_path):
+        """Staged labels but no labels/ is genuinely unexpected -> raise."""
+        import pytest
+
+        staging = tmp_path / "batches" / "batch_0000"
+        staging.mkdir(parents=True)
+        (staging / "img1.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+        with pytest.raises(FileNotFoundError, match="labels dir missing"):
+            flatten_batches_to_labels(tmp_path)
+
     def test_best_copy_wins(self, tmp_path):
         _, b0, b1 = _make_output(tmp_path)
         (b0 / "img1.txt").write_text("")  # empty copy loses

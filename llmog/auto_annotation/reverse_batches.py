@@ -231,6 +231,20 @@ def flatten_batches_to_labels(
     output = Path(output_folder)
     labels_dir = output / labels_dirname
     if not labels_dir.is_dir():
+        staging = output / STAGING_DIRNAME
+        has_staged = staging.is_dir() and any(
+            p.is_file() for p in staging.rglob("*.txt")
+        )
+        if not has_staged:
+            # Totally failed run (e.g. provider batch failed): nothing was
+            # staged, so there is nothing to flatten -- create the empty
+            # labels dir and return instead of raising a confusing error.
+            labels_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(
+                f"No staged labels and {labels_dir} missing (nothing was "
+                "processed) -- created the empty labels dir, nothing to flatten."
+            )
+            return labels_dir
         raise FileNotFoundError(f"labels dir missing: {labels_dir}")
     by_stem = group_staged_by_stem(output, labels_dirname, STAGING_DIRNAME)
     if dry_run:
