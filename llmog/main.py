@@ -483,6 +483,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
         "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
     )
+    p.add_argument(
+        "--drop_small_images",
+        dest="drop_small_images",
+        action="store_true",
+        default=True,
+        help="When small_box_action=drop leaves an image with zero writable boxes "
+        "only because of the small-box filter, write NO label file and list the "
+        "image in skipped_small_images.txt instead of an empty .txt (an empty file "
+        "would train as a false negative). Exclude those images from training. (default ON).",
+    )
+    p.add_argument(
+        "--keep_small_images",
+        "--no_drop_small_images",
+        dest="drop_small_images",
+        action="store_false",
+        help="Write the empty YOLO file even when every box was removed by the "
+        "small-box filter (legacy drop semantics).",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(

@@ -497,6 +497,24 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
     )
     parser.add_argument(
+        "--drop_small_images",
+        dest="drop_small_images",
+        action="store_true",
+        default=True,
+        help="When small_box_action=drop leaves an image with zero writable boxes "
+        "only because of the small-box filter, write NO label file and list the "
+        "image in skipped_small_images.txt instead of an empty .txt (an empty file "
+        "would train as a false negative). Exclude those images from training.",
+    )
+    parser.add_argument(
+        "--keep_small_images",
+        "--no_drop_small_images",
+        dest="drop_small_images",
+        action="store_false",
+        help="Write the empty YOLO file even when every box was removed by the "
+        "small-box filter (legacy drop semantics).",
+    )
+    parser.add_argument(
         "--init_class_map",
         action="store_true",
         help="Initialize the class map from the YAML file.",
@@ -747,6 +765,8 @@ def parse_args(argv=None) -> argparse.Namespace:
             args.small_box_action = "keep"
         else:
             parser.error("--small_box_action must be 'keep' or 'drop'")
+    if getattr(args, "drop_small_images", None) is None:
+        args.drop_small_images = True
 
     # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
     if getattr(args, "max_consecutive_failures", None) is None:

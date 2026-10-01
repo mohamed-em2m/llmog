@@ -60,6 +60,10 @@ min_box_size: 0
 # What to do with small boxes: "keep" writes the original YOLO line verbatim
 # (no LLM call); "drop" skips the box entirely (no YOLO line).
 small_box_action: keep # "keep" | "drop"
+# Image-level false-negative guard: when "drop" empties an image purely via
+# the size filter, write NO label file and list it in skipped_small_images.txt
+# (exclude those images from training) instead of an empty .txt.
+drop_small_images: true
 
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null

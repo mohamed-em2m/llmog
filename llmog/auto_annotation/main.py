@@ -383,6 +383,7 @@ def main(args=None):
             extra_body=getattr(args, "extra_body", None),
             min_box_size=getattr(args, "min_box_size", 0) or 0,
             small_box_action=getattr(args, "small_box_action", "keep") or "keep",
+            drop_small_images=getattr(args, "drop_small_images", True),
         )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

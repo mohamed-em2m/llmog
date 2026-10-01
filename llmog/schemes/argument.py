@@ -176,6 +176,16 @@ class PipelineConfig(BaseModel):
     # verbatim (original class id + coords, no LLM call, no class_map
     # mutation); "drop" skips the box entirely (no YOLO line).
     small_box_action: Literal["keep", "drop"] = "keep"
+    # Image-level guard against false negatives: when True (default) and
+    # small_box_action="drop", an image that ends up with ZERO writable
+    # boxes only because the small-box filter removed them gets NO label
+    # file at all (and its stem is appended to skipped_small_images.txt in
+    # the output folder) instead of an empty .txt -- an empty file would
+    # teach the detector "no objects here" for an image that does contain
+    # defects. Remove those images from the training set (see the manifest)
+    # so they don't train as background. When False, the empty file is
+    # written (legacy drop semantics).
+    drop_small_images: bool = True
 
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False

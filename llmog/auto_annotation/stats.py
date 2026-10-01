@@ -30,6 +30,7 @@ class RunStats:
         self.boxes_skipped_small = 0
         self.boxes_kept_small = 0
         self.boxes_dropped_small = 0
+        self.images_skipped_all_small = 0
         self.classes_discovered = []
 
     def incr(self, field, n=1):
@@ -62,6 +63,7 @@ class RunStats:
             f"{self.images_done} processed | "
             f"{self.images_skipped_resume} skipped (--resume / auto-resume) | "
             f"{self.images_skipped_no_label} skipped (no label file) | "
+            f"{self.images_skipped_all_small} skipped (all boxes too small, see skipped_small_images.txt) | "
             f"{self.images_failed_read} failed to read | "
             f"{self.images_failed_server} failed (server down/OOM, retry on resume)",
             f"Boxes: {self.boxes_seen} seen | "
