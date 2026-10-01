@@ -401,6 +401,7 @@ def main(args=None):
                 min_box_size=getattr(args, "min_box_size", 0) or 0,
                 small_box_action=getattr(args, "small_box_action", "keep") or "keep",
                 drop_small_images=getattr(args, "drop_small_images", True),
+                crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

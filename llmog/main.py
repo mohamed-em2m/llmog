@@ -502,6 +502,18 @@ def build_parser() -> argparse.ArgumentParser:
         "small-box filter (legacy drop semantics).",
     )
     p.add_argument(
+        "--crop_padding_pct",
+        "--crop-padding-pct",
+        dest="crop_padding_pct",
+        type=float,
+        default=0.0,
+        help="Context padding for the crop sent to the VLM: each box is expanded "
+        "by this %% of its own width/height per side (50 = half a box-width of "
+        "context on every side), clamped to the image. 0 = exact-box crop "
+        "(default). The size filter still measures the original box, and "
+        "output YOLO coords are never padded.",
+    )
+    p.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",

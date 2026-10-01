@@ -515,6 +515,17 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "small-box filter (legacy drop semantics).",
     )
     parser.add_argument(
+        "--crop_padding_pct",
+        "--crop-padding-pct",
+        dest="crop_padding_pct",
+        type=float,
+        default=0.0,
+        help="Context padding for the crop sent to the VLM: each box is expanded "
+        "by this %% of its own width/height per side (50 = half a box-width of "
+        "context on every side), clamped to the image. 0 = exact-box crop "
+        "(default).",
+    )
+    parser.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",
@@ -841,6 +852,10 @@ def parse_args(argv=None) -> argparse.Namespace:
             parser.error("--small_box_action must be 'keep' or 'drop'")
     if getattr(args, "drop_small_images", None) is None:
         args.drop_small_images = True
+    if getattr(args, "crop_padding_pct", None) is None:
+        args.crop_padding_pct = 0.0
+    if getattr(args, "crop_padding_pct", 0.0) < 0:
+        parser.error("--crop_padding_pct must be >= 0 (0 = exact-box crop)")
     if getattr(args, "batch_mode", None) not in ("auto", "submit", "poll"):
         if getattr(args, "batch_mode", None) is None:
             args.batch_mode = "auto"

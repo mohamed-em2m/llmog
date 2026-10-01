@@ -186,6 +186,12 @@ class PipelineConfig(BaseModel):
     # so they don't train as background. When False, the empty file is
     # written (legacy drop semantics).
     drop_small_images: bool = True
+    # Context padding for the crop sent to the VLM: each box is expanded by
+    # this % of its own width/height per side (50 = half a box-width of
+    # context on every side), clamped to the image. 0 (default) keeps the
+    # legacy exact-box crop. The size filter above still measures the
+    # ORIGINAL box, and output YOLO coords are never padded.
+    crop_padding_pct: float = 0.0
 
     # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
     # Submit one /v1/chat/completions request per box as a batch job, then
@@ -309,6 +315,13 @@ class PipelineConfig(BaseModel):
     def _check_min_box_size(cls, v: int) -> int:
         if v < 0:
             raise ValueError("--min_box_size must be >= 0 (0 disables the filter)")
+        return v
+
+    @field_validator("crop_padding_pct")
+    @classmethod
+    def _check_crop_padding_pct(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("--crop_padding_pct must be >= 0 (0 = exact-box crop)")
         return v
 
     @field_validator("batch_poll_interval")

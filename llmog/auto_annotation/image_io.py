@@ -21,6 +21,41 @@ def encode_crop_to_data_uri(crop_rgb):
     return f"data:image/jpeg;base64,{b64}"
 
 
+def pad_box(x1, y1, x2, y2, img_w, img_h, pad_pct=0.0):
+    """Expand a pixel box by pct% of its own width/height per side.
+
+    E.g. ``pad_pct=50`` adds half a box-width to the left AND right (and
+    half a box-height above AND below). The result is clamped to
+    ``[0, img_w] x [0, img_h]``; ``pad_pct<=0`` returns the box unchanged,
+    and a degenerate result falls back to the clamped original box.
+    Returns ``(x1, y1, x2, y2)`` ints.
+    """
+    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+    try:
+        pct = float(pad_pct or 0.0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    if pct <= 0.0:
+        return x1, y1, x2, y2
+    bw, bh = x2 - x1, y2 - y1
+    if bw <= 0 or bh <= 0:
+        return x1, y1, x2, y2
+    dx = bw * pct / 100.0
+    dy = bh * pct / 100.0
+    nx1 = max(0, int(round(x1 - dx)))
+    ny1 = max(0, int(round(y1 - dy)))
+    nx2 = min(int(img_w), int(round(x2 + dx)))
+    ny2 = min(int(img_h), int(round(y2 + dy)))
+    if nx2 <= nx1 or ny2 <= ny1:
+        return (
+            max(0, min(int(img_w), x1)),
+            max(0, min(int(img_h), y1)),
+            max(0, min(int(img_w), x2)),
+            max(0, min(int(img_h), y2)),
+        )
+    return nx1, ny1, nx2, ny2
+
+
 def _coerce_extra_body(extra_body):
     """Normalize an extra_body value to a dict ({} when unset).
 

@@ -36,7 +36,7 @@ import numpy as np
 from PIL import Image
 
 from auto_annotation.logging_utils import logger
-from auto_annotation.image_io import build_classify_body, find_labeled_images
+from auto_annotation.image_io import build_classify_body, find_labeled_images, pad_box
 from auto_annotation.single_image import _normalize_label, _parse_none_labels
 from free_detection.image_preprocessing import preprocess_custom_resize
 
@@ -123,6 +123,7 @@ def collect_batch_requests(
     min_box_size=0,
     small_box_action="keep",
     known_names=(),
+    crop_padding_pct=0.0,
 ):
     """Build one batch request per classifiable box.
 
@@ -140,11 +141,20 @@ def collect_batch_requests(
     action = str(small_box_action or "keep").lower().strip()
     if action not in ("keep", "drop"):
         action = "keep"
+    try:
+        _crop_pad = float(crop_padding_pct or 0.0)
+    except (TypeError, ValueError):
+        _crop_pad = 0.0
     logger.info(
         f"Small-box filter: min_box_size={min_side}px "
         f"({'DISABLED' if min_side <= 0 else 'boxes with w<MIN or h<MIN are filtered'}), "
         f"small_box_action={action}, drop_small_images will be applied at finalize."
     )
+    if _crop_pad > 0:
+        logger.info(
+            f"Crop padding: boxes expanded by {_crop_pad}% of their own "
+            "width/height per side (clamped to image) before the VLM crop."
+        )
 
     image_names = find_labeled_images(train_image, train_label, image_extensions)
     eligible_total = len(image_names)
@@ -243,6 +253,8 @@ def collect_batch_requests(
                     entry["skipped_small"] += 1
                 continue
 
+            if _crop_pad > 0:
+                x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
             crop = img[y1:y2, x1:x2]
             if crop.size == 0:
                 logger.warning(
@@ -1159,6 +1171,7 @@ def run_batch_api_flow(
             min_box_size=getattr(args, "min_box_size", 0) or 0,
             small_box_action=getattr(args, "small_box_action", "keep") or "keep",
             known_names=with_class_map_lock,
+            crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
         )
         stats.images_total = len(stems)
         n_kept = sum(len(e["kept"]) for e in stems.values())

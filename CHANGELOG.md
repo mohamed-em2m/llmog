@@ -7,6 +7,11 @@ versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `--crop_padding_pct` (CLI + YAML, default 0): expand each auto_label box by
+  this % of its own width/height per side (clamped to the image) before the
+  VLM crop, giving the classifier surrounding context. Applies identically to
+  the sync and batch-build paths; the small-box filter still measures the
+  original box and output YOLO coords are never padded.
 - `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
   crop JPEGs to a public host and rewrite inline batch request bodies to the
   URLs before submit, since inline hosts (e.g. OpenRouter) reject base64 /

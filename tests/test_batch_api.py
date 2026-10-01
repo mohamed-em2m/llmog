@@ -611,6 +611,7 @@ def test_poll_tolerates_transient_404_then_completes(monkeypatch):
 
 
 def test_poll_gives_up_on_persistent_404(monkeypatch):
+    """A batch that never appears is a wrong id -- fail with guidance."""
     import auto_annotation.batch_api as ba
 
     _inline_client(
@@ -964,4 +965,76 @@ def test_batch_flow_rejects_local_server():
             1024,
             1024,
             "",
+        )
+
+
+# --------------------------------------------------------------------------
+# Crop padding (reclassification context)
+# --------------------------------------------------------------------------
+def test_pad_box_identity_and_math():
+    from auto_annotation.image_io import pad_box
+
+    assert pad_box(10, 20, 30, 60, 100, 100, 0) == (10, 20, 30, 60)
+    assert pad_box(10, 20, 30, 60, 100, 100, -5) == (10, 20, 30, 60)
+    # 20x40 box at 50%: +10px horizontally, +20px vertically per side
+    assert pad_box(10, 20, 30, 60, 100, 100, 50) == (0, 0, 40, 80)
+    # clamped to image bounds
+    assert pad_box(0, 0, 20, 20, 30, 30, 100) == (0, 0, 30, 30)
+    # degenerate input passes through
+    assert pad_box(5, 5, 5, 5, 100, 100, 50) == (5, 5, 5, 5)
+
+
+def _pad_fixture(tmp_path):
+    """200x200 image, black left half / white right half, box in the black."""
+    import numpy as np
+
+    img_dir = tmp_path / "pimgs"
+    lbl_dir = tmp_path / "plbls"
+    img_dir.mkdir()
+    lbl_dir.mkdir()
+    img = np.full((200, 200, 3), 255, dtype=np.uint8)
+    img[:, :100] = 0
+    cv2.imwrite(str(img_dir / "half.jpg"), img)
+    # box ending exactly at the black/white boundary: padding reaches white
+    (lbl_dir / "half.txt").write_text("0 0.4 0.5 0.2 0.2\n")
+    return img_dir, lbl_dir
+
+
+def _body_image_bytes(body):
+    import base64
+
+    uri = body["messages"][0]["content"][1]["image_url"]["url"]
+    assert uri.startswith("data:image/jpeg;base64,")
+    return base64.b64decode(uri.split(",", 1)[1])
+
+
+def test_collect_padding_changes_crop_pixels(tmp_path):
+    """Padded crops include surrounding context (exact vs padded differ)."""
+    img_dir, lbl_dir = _pad_fixture(tmp_path)
+    plain, _ = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    padded, _ = collect_batch_requests(
+        str(img_dir), str(lbl_dir), known_names=[], crop_padding_pct=100
+    )
+    assert len(plain) == len(padded) == 1
+    assert _body_image_bytes(plain[0]["body"]) != _body_image_bytes(padded[0]["body"])
+
+
+def test_crop_padding_pct_config_validation():
+    from schemes import PipelineConfig
+
+    cfg = PipelineConfig(
+        task="auto_label",
+        train_image="i",
+        train_label="l",
+        yaml_path="x.yaml",
+        crop_padding_pct=50,
+    )
+    assert cfg.crop_padding_pct == 50
+    with pytest.raises(Exception):
+        PipelineConfig(
+            task="auto_label",
+            train_image="i",
+            train_label="l",
+            yaml_path="x.yaml",
+            crop_padding_pct=-1,
         )

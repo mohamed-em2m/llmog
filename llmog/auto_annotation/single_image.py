@@ -10,7 +10,7 @@ from PIL import Image
 
 from free_detection.image_preprocessing import preprocess_custom_resize
 from auto_annotation.logging_utils import logger
-from auto_annotation.image_io import detect_defect
+from auto_annotation.image_io import detect_defect, pad_box
 from auto_annotation.server_guard import (
     ServerDownError,
     is_server_error,
@@ -64,6 +64,7 @@ def process_one_image(
     min_box_size: int = 0,
     small_box_action: str = "keep",
     drop_small_images: bool = True,
+    crop_padding_pct: float = 0.0,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -127,6 +128,14 @@ def process_one_image(
         return None
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w, _ = img.shape
+
+    # Context padding for the VLM crop (box-relative %, clamped to the image;
+    # 0 = legacy exact-box crop). Applied AFTER the small-box filter, which
+    # always measures the original box, and never touches output YOLO coords.
+    try:
+        _crop_pad = float(crop_padding_pct or 0.0)
+    except (TypeError, ValueError):
+        _crop_pad = 0.0
 
     try:
         with open(label_path, "r") as f:
@@ -232,6 +241,8 @@ def process_one_image(
                 )
             continue
 
+        if _crop_pad > 0:
+            x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
         crop_image = img[y1:y2, x1:x2]
         if crop_image.size == 0:
             logger.warning(

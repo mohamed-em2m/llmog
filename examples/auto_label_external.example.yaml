@@ -68,6 +68,11 @@ small_box_action: keep # "keep" | "drop"
 # the size filter, write NO label file and list it in skipped_small_images.txt
 # (exclude those images from training) instead of an empty .txt.
 drop_small_images: true
+# Context padding for the VLM crop: each box expanded by this % of its own
+# width/height per side (50 = half a box-width of context each side),
+# clamped to the image. 0 = exact-box crop. Filter above still measures the
+# original box; output YOLO coords are never padded.
+crop_padding_pct: 0
 
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null
