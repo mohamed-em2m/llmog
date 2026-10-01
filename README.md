@@ -2,11 +2,11 @@
 
 **A library for object detection tasks using LLMs.**
 
-![Preview](assets/image.png)
+![Preview](https://raw.githubusercontent.com/mohamed-em2m/llmog/main/assets/image.png)
 
 This project implements an iterative **Detector-Judge pipeline**: a VLM "detector" agent proposes bounding boxes, a VLM "judge" agent critiques them against the original image, and the loop repeats with structured feedback until the annotations meet a quality threshold or the round limit is reached.
 
-![Detection Demo](assets/results.gif)
+![Detection Demo](https://raw.githubusercontent.com/mohamed-em2m/llmog/main/assets/results.gif)
 
 ## Table of Contents
 
@@ -86,8 +86,8 @@ This project implements an iterative **Detector-Judge pipeline**: a VLM "detecto
 **Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv), and (optionally) a CUDA-capable GPU for local inference.
 
 ```bash
-git clone https://github.com/mohamed-em2m/llm-object-grounding.git
-cd llm-object-grounding
+git clone https://github.com/mohamed-em2m/llmog.git
+cd llmog
 
 uv sync
 ```
@@ -314,7 +314,7 @@ uv run detection-gui --port 7861 --share
 
 ### 5. YAML Config + CLI Overrides
 
-Any field on `PipelineConfig` can live in a YAML file loaded by `--config`. A fully-commented example is at [`examples/config.example.yaml`](examples/config.example.yaml).
+Any field on `PipelineConfig` can live in a YAML file loaded by `--config`. A fully-commented example is at [`examples/config.example.yaml`](https://github.com/mohamed-em2m/llmog/blob/main/examples/config.example.yaml).
 
 ```yaml
 # pipeline.yaml
@@ -381,5 +381,5 @@ out/
 
 ---
 
-*Repository: [mohamed-em2m/llm-object-grounding](https://github.com/mohamed-em2m/llm-object-grounding) — a framework for testing LLMs on object grounding.*
-*Docs: [github.com/mohamed-em2m/llm-object-grounding/tree/main/docs](https://github.com/mohamed-em2m/llm-object-grounding/tree/main/docs)*
+*Repository: [mohamed-em2m/llmog](https://github.com/mohamed-em2m/llmog) — a framework for testing LLMs on object grounding.*
+*Docs: [github.com/mohamed-em2m/llmog/tree/main/docs](https://github.com/mohamed-em2m/llmog/tree/main/docs)*

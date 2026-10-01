@@ -52,6 +52,12 @@ docs = [
     "mkdocstrings-python>=1.11",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mohamed-em2m/llmog"
+Repository = "https://github.com/mohamed-em2m/llmog"
+Documentation = "https://github.com/mohamed-em2m/llmog/tree/main/docs"
+Changelog = "https://github.com/mohamed-em2m/llmog/blob/main/CHANGELOG.md"
+
 
 [project.scripts]
 # Unified entry point: dispatch via --task (free_detection / auto_label / classify)
@@ -122,7 +128,3 @@ llama-cpp-python = [{ index = "llama-cpp-python-cuda" }]
 # that hatchling silently ignores, and hatchling misdetects this layout.
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
-
-[project.urls]
-Homepage = "https://github.com/mohamed-em2m/llmog"
-Repository = "https://github.com/mohamed-em2m/llmog"
