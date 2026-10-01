@@ -192,6 +192,11 @@ class PipelineConfig(BaseModel):
     # legacy exact-box crop. The size filter above still measures the
     # ORIGINAL box, and output YOLO coords are never padded.
     crop_padding_pct: float = 0.0
+    # What the VLM sees per box: "crop" sends the (optionally padded) crop;
+    # "full_som" sends the FULL scene with the box highlighted/numbered and a
+    # directive to classify only the marked box. Full images cost more tokens
+    # per request -- relevant for batch payload sizes on metered providers.
+    recls_context: Literal["crop", "full_som"] = "crop"
 
     # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
     # Submit one /v1/chat/completions request per box as a batch job, then

@@ -1038,3 +1038,61 @@ def test_crop_padding_pct_config_validation():
             yaml_path="x.yaml",
             crop_padding_pct=-1,
         )
+
+
+# --------------------------------------------------------------------------
+# Full-image SoM context (reclassification)
+# --------------------------------------------------------------------------
+def test_draw_som_context_marks_box():
+    from auto_annotation.image_io import draw_som_context
+    from PIL import Image
+    import numpy as np
+
+    base = Image.fromarray(np.full((100, 120, 3), 50, dtype=np.uint8))
+    out = draw_som_context(base, 10, 20, 40, 70)
+    assert out.size == base.size
+    # input not mutated
+    assert np.array(base)[25, 15].tolist() == [50, 50, 50]
+    arr = np.array(out)
+    lime = (arr[:, :, 0] == 57) & (arr[:, :, 1] == 255) & (arr[:, :, 2] == 20)
+    # box border + filled number badge both drawn in lime
+    assert lime.sum() > 50
+
+
+def test_collect_full_som_sends_annotated_scene(tmp_path):
+    """full_som bodies carry the directive and scene pixels, not the crop."""
+    img_dir, lbl_dir = _pad_fixture(tmp_path)
+    crop_reqs, _ = collect_batch_requests(
+        str(img_dir), str(lbl_dir), known_names=[], recls_context="crop"
+    )
+    som_reqs, _ = collect_batch_requests(
+        str(img_dir), str(lbl_dir), known_names=[], recls_context="full_som"
+    )
+    assert len(crop_reqs) == len(som_reqs) == 1
+    crop_body, som_body = crop_reqs[0]["body"], som_reqs[0]["body"]
+    som_text = som_body["messages"][0]["content"][0]["text"]
+    crop_text = crop_body["messages"][0]["content"][0]["text"]
+    assert "marked box" in som_text
+    assert "marked box" not in crop_text
+    assert _body_image_bytes(som_body) != _body_image_bytes(crop_body)
+
+
+def test_recls_context_config_validation():
+    from schemes import PipelineConfig
+
+    cfg = PipelineConfig(
+        task="auto_label",
+        train_image="i",
+        train_label="l",
+        yaml_path="x.yaml",
+        recls_context="full_som",
+    )
+    assert cfg.recls_context == "full_som"
+    with pytest.raises(Exception):
+        PipelineConfig(
+            task="auto_label",
+            train_image="i",
+            train_label="l",
+            yaml_path="x.yaml",
+            recls_context="bogus",
+        )

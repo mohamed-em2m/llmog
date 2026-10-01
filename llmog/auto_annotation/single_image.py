@@ -10,7 +10,7 @@ from PIL import Image
 
 from free_detection.image_preprocessing import preprocess_custom_resize
 from auto_annotation.logging_utils import logger
-from auto_annotation.image_io import detect_defect, pad_box
+from auto_annotation.image_io import detect_defect, draw_som_context, pad_box
 from auto_annotation.server_guard import (
     ServerDownError,
     is_server_error,
@@ -65,6 +65,7 @@ def process_one_image(
     small_box_action: str = "keep",
     drop_small_images: bool = True,
     crop_padding_pct: float = 0.0,
+    recls_context: str = "crop",
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -136,6 +137,12 @@ def process_one_image(
         _crop_pad = float(crop_padding_pct or 0.0)
     except (TypeError, ValueError):
         _crop_pad = 0.0
+    _som_mode = str(recls_context or "crop").lower().strip() == "full_som"
+    if _som_mode:
+        logger.info(
+            f"{img_file}: reclassification context=full_som -- sending the "
+            "full scene with the box highlighted instead of the crop."
+        )
 
     try:
         with open(label_path, "r") as f:
@@ -241,33 +248,54 @@ def process_one_image(
                 )
             continue
 
-        if _crop_pad > 0:
-            x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
-        crop_image = img[y1:y2, x1:x2]
-        if crop_image.size == 0:
-            logger.warning(
-                f"Empty crop in {img_file} for box ({x}, {y}, {bw}, {bh}), skipping box."
-            )
-            stats.incr("boxes_empty_crop")
-            continue
+        if _som_mode:
+            # Full-scene context: highlight the ORIGINAL box (padding is a
+            # crop-mode concept) and send the whole annotated image, fitted
+            # to the target size so batch payloads stay bounded.
+            try:
+                som_view = draw_som_context(Image.fromarray(img), x1, y1, x2, y2)
+                som_view, _ = preprocess_custom_resize(
+                    som_view,
+                    target_height=target_height,
+                    target_width=target_width,
+                )
+                crop_image = np.array(som_view)
+            except Exception as e:
+                logger.error(
+                    f"Error building SoM context in {img_file} for box ({x}, {y}): {e}"
+                )
+                stats.incr("boxes_empty_crop")
+                continue
+        else:
+            if _crop_pad > 0:
+                x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
+            crop_image = img[y1:y2, x1:x2]
+            if crop_image.size == 0:
+                logger.warning(
+                    f"Empty crop in {img_file} for box ({x}, {y}, {bw}, {bh}), skipping box."
+                )
+                stats.incr("boxes_empty_crop")
+                continue
+
+            # preprocess_custom_resize works on PIL.Image, not numpy arrays
+            pil_crop = Image.fromarray(crop_image)
+            try:
+                pil_crop, _ = preprocess_custom_resize(
+                    pil_crop, target_height=target_height, target_width=target_width
+                )
+                crop_image = np.array(pil_crop)
+            except Exception as e:
+                logger.error(
+                    f"Error resizing crop in {img_file} for box ({x}, {y}): {e}"
+                )
+                stats.incr("boxes_empty_crop")
+                continue
 
         if dry_run:
             logger.info(
                 f"[dry run] {img_file}: would classify box at ({x}, {y}, {bw}, {bh})."
             )
             stats.incr("boxes_dry_run")
-            continue
-
-        # preprocess_custom_resize works on PIL.Image, not numpy arrays
-        pil_crop = Image.fromarray(crop_image)
-        try:
-            pil_crop, _ = preprocess_custom_resize(
-                pil_crop, target_height=target_height, target_width=target_width
-            )
-            crop_image = np.array(pil_crop)
-        except Exception as e:
-            logger.error(f"Error resizing crop in {img_file} for box ({x}, {y}): {e}")
-            stats.incr("boxes_empty_crop")
             continue
 
         # class_map is read here for the prompt before we know if this call
@@ -288,6 +316,7 @@ def process_one_image(
                 none_labels=none_labels,
                 drop_none=drop_none,
                 extra_body=extra_body,
+                region_context="full_som" if _som_mode else "crop",
             )
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")

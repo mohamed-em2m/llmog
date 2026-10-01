@@ -67,6 +67,9 @@ drop_small_images: true
 # Context padding for the VLM crop: each box expanded by this % of its own
 # width/height per side, clamped to the image. 0 = exact-box crop.
 crop_padding_pct: 0
+# What the VLM sees per box: "crop" sends the (padded) crop; "full_som" sends
+# the FULL scene with the box highlighted/numbered (more tokens per request).
+recls_context: crop # "crop" | "full_som"
 
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null

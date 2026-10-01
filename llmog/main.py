@@ -514,6 +514,17 @@ def build_parser() -> argparse.ArgumentParser:
         "output YOLO coords are never padded.",
     )
     p.add_argument(
+        "--recls_context",
+        "--recls-context",
+        dest="recls_context",
+        choices=["crop", "full_som"],
+        default="crop",
+        help="What the VLM sees per auto_label box: 'crop' sends the (padded) "
+        "crop; 'full_som' sends the full scene with the box highlighted and "
+        "numbered, asking the model to classify only the marked box (more "
+        "tokens per request).",
+    )
+    p.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",

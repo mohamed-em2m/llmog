@@ -12,6 +12,10 @@ versioning follows [Semantic Versioning](https://semver.org/).
   VLM crop, giving the classifier surrounding context. Applies identically to
   the sync and batch-build paths; the small-box filter still measures the
   original box and output YOLO coords are never padded.
+- `--recls_context crop|full_som` (CLI + YAML, default `crop`): `full_som`
+  sends the FULL scene with the box highlighted/numbered (shared
+  `draw_som_context` helper) plus a directive to classify only the marked
+  box, instead of the crop. Full images cost more tokens per request.
 - `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
   crop JPEGs to a public host and rewrite inline batch request bodies to the
   URLs before submit, since inline hosts (e.g. OpenRouter) reject base64 /

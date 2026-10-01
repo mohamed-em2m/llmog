@@ -36,7 +36,12 @@ import numpy as np
 from PIL import Image
 
 from auto_annotation.logging_utils import logger
-from auto_annotation.image_io import build_classify_body, find_labeled_images, pad_box
+from auto_annotation.image_io import (
+    build_classify_body,
+    draw_som_context,
+    find_labeled_images,
+    pad_box,
+)
 from auto_annotation.single_image import _normalize_label, _parse_none_labels
 from free_detection.image_preprocessing import preprocess_custom_resize
 
@@ -124,6 +129,7 @@ def collect_batch_requests(
     small_box_action="keep",
     known_names=(),
     crop_padding_pct=0.0,
+    recls_context="crop",
 ):
     """Build one batch request per classifiable box.
 
@@ -154,6 +160,12 @@ def collect_batch_requests(
         logger.info(
             f"Crop padding: boxes expanded by {_crop_pad}% of their own "
             "width/height per side (clamped to image) before the VLM crop."
+        )
+    _som_mode = str(recls_context or "crop").lower().strip() == "full_som"
+    if _som_mode:
+        logger.info(
+            "Reclassification context=full_som: sending the full scene with "
+            "the box highlighted instead of the crop (more tokens/request)."
         )
 
     image_names = find_labeled_images(train_image, train_label, image_extensions)
@@ -253,26 +265,42 @@ def collect_batch_requests(
                     entry["skipped_small"] += 1
                 continue
 
-            if _crop_pad > 0:
-                x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
-            crop = img[y1:y2, x1:x2]
-            if crop.size == 0:
-                logger.warning(
-                    f"Empty crop in {img_file} for box ({x}, {y}), skipping."
-                )
-                continue
-            try:
-                pil_crop, _ = preprocess_custom_resize(
-                    Image.fromarray(crop),
-                    target_height=target_height,
-                    target_width=target_width,
-                )
-                crop = np.array(pil_crop)
-            except Exception as e:
-                logger.error(
-                    f"Error resizing crop in {img_file} for box ({x}, {y}): {e}"
-                )
-                continue
+            if _som_mode:
+                try:
+                    som_view = draw_som_context(Image.fromarray(img), x1, y1, x2, y2)
+                    som_view, _ = preprocess_custom_resize(
+                        som_view,
+                        target_height=target_height,
+                        target_width=target_width,
+                    )
+                    crop = np.array(som_view)
+                except Exception as e:
+                    logger.error(
+                        f"Error building SoM context in {img_file} for box "
+                        f"({x}, {y}): {e}"
+                    )
+                    continue
+            else:
+                if _crop_pad > 0:
+                    x1, y1, x2, y2 = pad_box(x1, y1, x2, y2, w, h, _crop_pad)
+                crop = img[y1:y2, x1:x2]
+                if crop.size == 0:
+                    logger.warning(
+                        f"Empty crop in {img_file} for box ({x}, {y}), skipping."
+                    )
+                    continue
+                try:
+                    pil_crop, _ = preprocess_custom_resize(
+                        Image.fromarray(crop),
+                        target_height=target_height,
+                        target_width=target_width,
+                    )
+                    crop = np.array(pil_crop)
+                except Exception as e:
+                    logger.error(
+                        f"Error resizing crop in {img_file} for box ({x}, {y}): {e}"
+                    )
+                    continue
 
             custom_id = make_custom_id(stem, line_no)
             body = build_classify_body(
@@ -284,6 +312,7 @@ def collect_batch_requests(
                 none_labels=none_labels,
                 drop_none=drop_none,
                 extra_body=extra_body,
+                region_context="full_som" if _som_mode else "crop",
             )
             meta = {
                 "stem": stem,
@@ -1172,6 +1201,7 @@ def run_batch_api_flow(
             small_box_action=getattr(args, "small_box_action", "keep") or "keep",
             known_names=with_class_map_lock,
             crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
+            recls_context=getattr(args, "recls_context", "crop") or "crop",
         )
         stats.images_total = len(stems)
         n_kept = sum(len(e["kept"]) for e in stems.values())

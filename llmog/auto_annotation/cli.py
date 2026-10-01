@@ -526,6 +526,16 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "(default).",
     )
     parser.add_argument(
+        "--recls_context",
+        "--recls-context",
+        dest="recls_context",
+        type=str,
+        default="crop",
+        choices=["crop", "full_som"],
+        help="What the VLM sees per box: 'crop' sends the (padded) crop; "
+        "'full_som' sends the full scene with the box highlighted/numbered.",
+    )
+    parser.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",
@@ -856,6 +866,11 @@ def parse_args(argv=None) -> argparse.Namespace:
         args.crop_padding_pct = 0.0
     if getattr(args, "crop_padding_pct", 0.0) < 0:
         parser.error("--crop_padding_pct must be >= 0 (0 = exact-box crop)")
+    if getattr(args, "recls_context", None) not in ("crop", "full_som"):
+        if getattr(args, "recls_context", None) is None:
+            args.recls_context = "crop"
+        else:
+            parser.error("--recls_context must be 'crop' or 'full_som'")
     if getattr(args, "batch_mode", None) not in ("auto", "submit", "poll"):
         if getattr(args, "batch_mode", None) is None:
             args.batch_mode = "auto"

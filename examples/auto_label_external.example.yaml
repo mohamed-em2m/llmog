@@ -73,6 +73,10 @@ drop_small_images: true
 # clamped to the image. 0 = exact-box crop. Filter above still measures the
 # original box; output YOLO coords are never padded.
 crop_padding_pct: 0
+# What the VLM sees per box: "crop" sends the (padded) crop; "full_som" sends
+# the FULL scene with the box highlighted/numbered and a directive to classify
+# only the marked box (more tokens per request -- mind batch payload sizes).
+recls_context: crop # "crop" | "full_som"
 
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null

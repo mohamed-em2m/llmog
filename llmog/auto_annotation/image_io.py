@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import cv2
 import json_repair
+from PIL import ImageDraw, ImageFont
 
 from auto_annotation.logging_utils import logger
 from free_detection.agent.prompts import render_auto_label_prompt
@@ -56,6 +57,36 @@ def pad_box(x1, y1, x2, y2, img_w, img_h, pad_pct=0.0):
     return nx1, ny1, nx2, ny2
 
 
+def draw_som_context(pil_image, x1, y1, x2, y2, label="1"):
+    """Copy a full-scene image with one region highlighted, SoM-style.
+
+    Draws a thick lime box plus a filled number badge at the top-left corner
+    so a VLM asked to "classify the marked box" can locate it unambiguously.
+    The input image is never mutated; a new ``PIL.Image`` is returned.
+    """
+    annotated = pil_image.convert("RGB").copy()
+    draw = ImageDraw.Draw(annotated)
+    w, h = annotated.size
+    line = max(2, min(w, h) // 300)
+    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+    for off in range(line):
+        draw.rectangle([x1 + off, y1 + off, x2 - off, y2 - off], outline=(57, 255, 20))
+    try:
+        font = ImageFont.load_default(size=max(14, min(w, h) // 40))
+    except Exception:
+        font = ImageFont.load_default()
+    text = str(label)
+    tb = draw.textbbox((0, 0), text, font=font)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    pad = max(2, line)
+    bx1, by1 = x1, max(0, y1 - th - 2 * pad)
+    draw.rectangle(
+        [bx1, by1, bx1 + tw + 2 * pad, by1 + th + 2 * pad], fill=(57, 255, 20)
+    )
+    draw.text((bx1 + pad, by1 + pad), text, font=font, fill=(0, 0, 0))
+    return annotated
+
+
 def _coerce_extra_body(extra_body):
     """Normalize an extra_body value to a dict ({} when unset).
 
@@ -96,11 +127,17 @@ def build_classify_body(
     none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
     extra_body=None,
+    region_context: str = "crop",
 ):
     """Build the chat-completions request body for one crop.
 
     Shared by the online path (:func:`detect_defect`) and the Batch API path
     (:mod:`auto_annotation.batch_api`), so both send byte-identical prompts.
+
+    ``region_context="full_som"`` means the image is the FULL scene with the
+    candidate region marked by a highlighted box labeled "1" (see
+    :func:`draw_som_context`); a directive is prepended so the model
+    classifies only the marked box and reads "crop" below as that region.
     """
     data_uri = encode_crop_to_data_uri(crop_image)
     prompt = render_auto_label_prompt(
@@ -110,6 +147,15 @@ def build_classify_body(
         none_labels=none_labels,
         drop_none=drop_none,
     )
+    if str(region_context or "crop").lower().strip() == "full_som":
+        prompt = (
+            "CONTEXT MODE: the attached image is the FULL scene, not a crop. "
+            "The candidate region is marked with a highlighted bounding box "
+            'labeled "1". Classify ONLY the object/defect inside that marked '
+            "box; treat the rest of the scene as surrounding context. Where "
+            'the instructions below say "crop", read it as "the marked box '
+            'region".\n\n' + prompt
+        )
     body = {
         "model": model_name,
         "messages": [
@@ -139,6 +185,7 @@ def detect_defect(
     none_labels="none,no_detection,nodetection,no_defect,background,unknown,negative,normal",
     drop_none: bool = True,
     extra_body=None,
+    region_context: str = "crop",
 ):
     """
     Ask the model to classify a cropped defect region.
@@ -170,6 +217,7 @@ def detect_defect(
         none_labels=none_labels,
         drop_none=drop_none,
         extra_body=extra_body,
+        region_context=region_context,
     )
     response = client.chat.completions.create(**create_kwargs)
     if not response.choices or not response.choices[0].message:
