@@ -4,6 +4,40 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-10-01
+
+### Added
+- Seed sampling diagnostics for `auto_label`: every run logs whether the seed
+  shuffled ALL eligible images before slicing, the eligible-vs-chosen counts
+  and the first chosen stems. Warns when `--seed` is set but `--shuffle` is
+  off (seed ignored, same first N picked every run), when `--num_samples >=`
+  eligible images (no seed can change the set), and when a saved
+  `.batch_job.json` is resumed (current shuffle/seed flags do not re-select).
+- OpenRouter inline-batch robustness: tolerate transient retrieve failures
+  during provider registration lag (HTTP 404, HTTP-200 `{"error": ...}`
+  bodies, non-JSON/non-dict payloads, missing `status`) within a grace window
+  instead of crashing on the first poll; fail with guidance afterwards.
+- Per-request error surfacing: a failed inline batch appends up to 3
+  `custom_id: message` pairs from the inlined results; batches with no
+  parseable errors log payload keys + truncated raw JSON for schema mapping.
+- `:batch` model-suffix normalization: the Batch API takes the base slug
+  (OpenRouter resolves `:batch` itself), so a trailing `:batch` is stripped
+  from the batch-level model and matching per-request bodies before submit.
+- End-of-run flatten tolerates a missing `labels/` dir when nothing was
+  staged (failed runs) instead of raising a second error.
+- PyPI publishing: `setuptools.build_meta` backend (hatchling cannot build
+  this layout), `[tool.setuptools.package-data]` for
+  `detection_viewer/static/*` and `interface/console.css|js` (both are read
+  at runtime; missing files break PyPI installs), and a fixed
+  `.github/workflows/publish.yml` (trusted publishing on release).
+
+### Fixed
+- `TestTabServer` deadlock: tests held the non-reentrant
+  `state.server_lock` across calls that re-acquire it; the calls now run
+  outside the lock.
+- Small-box per-image filter log raised from DEBUG to INFO so the
+  `min_box_size` filter firing is visible in normal runs.
+
 ## [1.2.0] - 2026-10-01
 
 ### Added
