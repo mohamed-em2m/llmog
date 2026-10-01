@@ -210,6 +210,14 @@ class PipelineConfig(BaseModel):
     #             /v1/batches ignores input_file_id.
     #   auto   -- try file, fall back to inline on that specific 400.
     batch_submit_style: Literal["auto", "file", "inline"] = "auto"
+    # Inline batch hosts (e.g. OpenRouter) accept images as public http(s)
+    # URLs only. When True, crop JPEGs are uploaded to --image_host and the
+    # request bodies rewritten to the public URLs before an inline submit
+    # (hash-cached in <output>/.uploaded_images.json, never re-uploaded).
+    # WARNING: uploads are world-readable -- never use for sensitive data;
+    # leave off and either use sync mode or a file-style (OpenAI) batch.
+    batch_public_images: bool = False
+    image_host: Literal["catbox"] = "catbox"
 
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False

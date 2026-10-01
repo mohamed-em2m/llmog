@@ -342,6 +342,93 @@ def test_submit_inline_rejects_data_uri_images(dataset, tmp_path, inline_httpx):
         )
 
 
+def test_rewrite_bodies_to_public_urls_uploads_and_caches(dataset, tmp_path):
+    """Data URIs become public URLs; a rerun reuses the hash cache."""
+    from auto_annotation.image_hosting import rewrite_bodies_to_public_urls
+
+    img_dir, lbl_dir = dataset
+    out = tmp_path / "out"
+    out.mkdir()
+    calls = {"n": 0}
+
+    def fake_upload(jpeg_bytes):
+        calls["n"] += 1
+        assert jpeg_bytes[:2] == b"\xff\xd8"  # real JPEG bytes, not base64 text
+        return f"https://example.com/{calls['n']}.jpg"
+
+    reqs, _ = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    stats = rewrite_bodies_to_public_urls(reqs, str(out), uploader=fake_upload)
+    # uniform-gray fixture crops dedup by content hash -- all 3 covered
+    assert stats["uploaded"] + stats["reused"] == len(reqs) == 3
+    assert stats["uploaded"] >= 1
+    for r in reqs:
+        url = r["body"]["messages"][0]["content"][1]["image_url"]["url"]
+        assert url.startswith("https://example.com/")
+    assert (out / ".uploaded_images.json").is_file()
+
+    # identical crops on a fresh build hit the cache: zero new uploads
+    reqs2, _ = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    stats2 = rewrite_bodies_to_public_urls(reqs2, str(out), uploader=fake_upload)
+    assert stats2 == {"uploaded": 0, "reused": 3}
+    assert calls["n"] == stats["uploaded"]
+
+
+def test_submit_inline_publishes_images_when_enabled(
+    dataset, tmp_path, inline_httpx, monkeypatch
+):
+    """--batch_public_images rewrites bodies before the inline POST."""
+    import auto_annotation.image_hosting as ih
+
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    posted, _ = inline_httpx()
+    monkeypatch.setattr(
+        ih,
+        "rewrite_bodies_to_public_urls",
+        lambda requests, output_folder: (
+            _as_url_images(requests),
+            {"uploaded": len(requests), "reused": 0},
+        )[1],
+    )
+    job = submit_batch_job(
+        FakeClient(),
+        str(tmp_path),
+        reqs,
+        stems,
+        "m",
+        {},
+        _params(),
+        submit_style="inline",
+        public_images=True,
+    )
+    assert job["submit_style"] == "inline"
+    bodies = posted[0]["json"]["requests"]
+    assert all(
+        r["body"]["messages"][0]["content"][1]["image_url"]["url"].startswith(
+            "https://"
+        )
+        for r in bodies
+    )
+
+
+def test_submit_inline_rejects_unknown_image_host(dataset, tmp_path):
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    with pytest.raises(ValueError, match="image_host"):
+        submit_batch_job(
+            FakeClient(),
+            str(tmp_path),
+            reqs,
+            stems,
+            "m",
+            {},
+            _params(),
+            submit_style="inline",
+            public_images=True,
+            image_host="imgur",
+        )
+
+
 def test_submit_inline_key_order_requests_last(dataset, tmp_path, inline_httpx):
     """OpenRouter stream-parses the create body: metadata first, requests last."""
     img_dir, lbl_dir = dataset

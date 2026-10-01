@@ -551,6 +551,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Poll/finalize a specific provider batch id instead of the job "
         "saved in <output_folder>/.batch_job.json.",
     )
+    p.add_argument(
+        "--batch_public_images",
+        action="store_true",
+        help="Upload crop JPEGs to a public host (--image_host) and rewrite "
+        "batch request bodies to the public URLs before an inline submit. "
+        "Needed because inline hosts (e.g. OpenRouter) reject base64 images. "
+        "WARNING: uploads are world-readable; never use for sensitive data.",
+    )
+    p.add_argument(
+        "--image_host",
+        choices=["catbox"],
+        default="catbox",
+        help="Anonymous public image host used with --batch_public_images.",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(

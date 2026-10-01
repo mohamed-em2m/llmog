@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
+  crop JPEGs to a public host and rewrite inline batch request bodies to the
+  URLs before submit, since inline hosts (e.g. OpenRouter) reject base64 /
+  data-URI images on every provider. Hash-cached in
+  `<output>/.uploaded_images.json` (resumes never re-upload); upload failures
+  fail fast. WARNING: uploads are world-readable -- never use for sensitive
+  data; sync mode keeps base64 private per request.
+
+### Fixed
+- Inline submit now fails fast with guidance when request bodies still embed
+  `data:`-URI images instead of billing a batch that fails 100% of requests.
+- Failed inline batches also report the batch-level `error.message`, and the
+  poll loop tolerates malformed payloads / missing `status` during provider
+  registration lag.
+
 ## [1.3.0] - 2026-10-01
 
 ### Added

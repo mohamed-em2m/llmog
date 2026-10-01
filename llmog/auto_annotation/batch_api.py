@@ -498,6 +498,8 @@ def submit_batch_job(
     params,
     completion_window="24h",
     submit_style="auto",
+    public_images=False,
+    image_host="catbox",
 ):
     """Write the JSONL, upload it, create the batch, persist the job file.
 
@@ -509,6 +511,11 @@ def submit_batch_job(
     ``submit_style``: ``file`` (OpenAI's uploaded-JSONL reference), ``inline``
     (requests embedded in the create body -- for hosts whose /v1/batches
     ignores ``input_file_id``), or ``auto`` (try file, fall back to inline).
+
+    ``public_images``: when the submit resolves to inline, upload crop JPEGs
+    to ``image_host`` and rewrite data-URI parts to public URLs first
+    (inline hosts reject base64 images). Without it, data-URI bodies fail
+    fast inside ``_create_batch_inline`` instead of billing a dead batch.
     """
     # OpenRouter-style hosts resolve the ``:batch`` catalog entry themselves:
     # the Batch API takes the BASE model slug (their own example submits
@@ -592,6 +599,14 @@ def submit_batch_job(
             batch = None
     if batch is None:
         used_inline = True
+        if public_images:
+            if image_host != "catbox":
+                raise ValueError(f"--image_host must be catbox, got {image_host!r}.")
+            from auto_annotation.image_hosting import (
+                rewrite_bodies_to_public_urls,
+            )
+
+            rewrite_bodies_to_public_urls(requests, output_folder)
         batch = _create_batch_inline(client, requests, model_name)
     batch_id = _batch_field(batch, "id")
     batch_status = _batch_field(batch, "status", "?")
@@ -1197,6 +1212,8 @@ def run_batch_api_flow(
             params,
             completion_window=getattr(args, "batch_completion_window", "24h") or "24h",
             submit_style=getattr(args, "batch_submit_style", "auto") or "auto",
+            public_images=getattr(args, "batch_public_images", False),
+            image_host=getattr(args, "image_host", "catbox") or "catbox",
         )
         if mode == "submit":
             logger.info(
