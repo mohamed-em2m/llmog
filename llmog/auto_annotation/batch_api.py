@@ -457,6 +457,23 @@ def submit_batch_job(
     (requests embedded in the create body -- for hosts whose /v1/batches
     ignores ``input_file_id``), or ``auto`` (try file, fall back to inline).
     """
+    # OpenRouter-style hosts resolve the ``:batch`` catalog entry themselves:
+    # the Batch API takes the BASE model slug (their own example submits
+    # "openai/gpt-6-luna", never "openai/gpt-6-luna:batch"). A suffixed slug
+    # passes submit-time validation but fails every request at execution.
+    # Normalize both the batch-level model and any per-request body model.
+    batch_model = str(model_name or "")
+    if batch_model.endswith(":batch"):
+        batch_model = batch_model[: -len(":batch")]
+        logger.info(
+            f"Batch model {model_name!r} -> {batch_model!r}: :batch is a "
+            "catalog/pricing suffix, the Batch API wants the base slug."
+        )
+        for req in requests:
+            body = req.get("body")
+            if isinstance(body, dict) and body.get("model") == model_name:
+                body["model"] = batch_model
+    model_name = batch_model
     os.makedirs(output_folder, exist_ok=True)
     jsonl_path = Path(output_folder) / "batch_requests.jsonl"
     with open(jsonl_path, "w", encoding="utf-8") as f:

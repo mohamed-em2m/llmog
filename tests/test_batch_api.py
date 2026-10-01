@@ -299,6 +299,30 @@ def test_collect_keep_stages_lines(dataset):
     assert stems["big"]["kept"] == ["0 0.2 0.2 0.05 0.05"]
 
 
+def test_submit_strips_batch_suffix_from_model(dataset, tmp_path, inline_httpx):
+    """OpenRouter-style hosts want the base slug; :batch fails every request."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    for r in reqs:
+        r["body"]["model"] = "openai/gpt-6-luna:batch"
+    posted, _ = inline_httpx()
+    client = FakeClient()
+    job = submit_batch_job(
+        client,
+        str(tmp_path),
+        reqs,
+        stems,
+        "openai/gpt-6-luna:batch",
+        {},
+        _params(),
+        submit_style="inline",
+    )
+    assert job["submit_style"] == "inline"
+    payload = posted[0]["json"]
+    assert payload["model"] == "openai/gpt-6-luna"
+    assert all(r["body"]["model"] == "openai/gpt-6-luna" for r in payload["requests"])
+
+
 def test_submit_persists_job(dataset, tmp_path):
     img_dir, lbl_dir = dataset
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
