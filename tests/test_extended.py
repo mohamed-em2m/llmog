@@ -435,11 +435,16 @@ class TestTabServer:
         with state.server_lock:
             old = state.server_manager
             state.server_manager = None
+        try:
+            # NOTE: call outside the lock -- the function acquires
+            # state.server_lock itself (threading.Lock is not re-entrant).
             logs, badge, html = tab_server.get_server_status_and_logs()
             assert "No server" in logs
             assert "STOPPED" in badge
             assert "No local server" in html
-            state.server_manager = old
+        finally:
+            with state.server_lock:
+                state.server_manager = old
 
     def test_get_server_status_and_logs_healthy(self):
         from interface import tab_server
@@ -467,11 +472,16 @@ class TestTabServer:
         with state.server_lock:
             old = state.server_manager
             state.server_manager = mgr
+        try:
+            # NOTE: call outside the lock -- the function acquires
+            # state.server_lock itself (threading.Lock is not re-entrant).
             logs, badge, html = tab_server.get_server_status_and_logs()
             assert "healthy" in logs.lower()
             assert "RUNNING" in badge
             assert "111" in html
-            state.server_manager = old
+        finally:
+            with state.server_lock:
+                state.server_manager = old
 
     def test_clear_and_download_logs(self, tmp_path):
         from interface import tab_server
@@ -484,6 +494,9 @@ class TestTabServer:
         with state.server_lock:
             old = state.server_manager
             state.server_manager = mgr
+        try:
+            # NOTE: calls outside the lock -- these functions acquire
+            # state.server_lock themselves (threading.Lock is not re-entrant).
             # clear
             logs, html = tab_server.clear_server_logs()
             assert "[UI] Logs cleared" in logs
@@ -493,16 +506,21 @@ class TestTabServer:
             content = Path(path).read_text(encoding="utf-8")
             assert "Logs cleared" in content or "LLM Server Logs" in content
             Path(path).unlink(missing_ok=True)
-            state.server_manager = old
+        finally:
+            with state.server_lock:
+                state.server_manager = old
 
         # no server
         with state.server_lock:
             old = state.server_manager
             state.server_manager = None
+        try:
             path2 = tab_server.download_server_logs()
             assert Path(path2).exists()
             Path(path2).unlink(missing_ok=True)
-            state.server_manager = old
+        finally:
+            with state.server_lock:
+                state.server_manager = old
 
 
 # ---------------------------------------------------------------------------

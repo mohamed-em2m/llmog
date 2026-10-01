@@ -116,11 +116,34 @@ def collect_batch_requests(
     action = str(small_box_action or "keep").lower().strip()
     if action not in ("keep", "drop"):
         action = "keep"
+    logger.info(
+        f"Small-box filter: min_box_size={min_side}px "
+        f"({'DISABLED' if min_side <= 0 else 'boxes with w<MIN or h<MIN are filtered'}), "
+        f"small_box_action={action}, drop_small_images will be applied at finalize."
+    )
 
     image_names = find_labeled_images(train_image, train_label, image_extensions)
+    eligible_total = len(image_names)
     if shuffle:
         random.seed(seed)
         random.shuffle(image_names)
+        logger.info(
+            f"Sample selection: shuffled ALL {eligible_total} eligible image(s) "
+            f"with seed={seed}, then slicing (the seed decides WHICH images "
+            "are picked, not just their order)."
+        )
+    elif seed is not None and int(seed) != 42:
+        logger.warning(
+            f"--seed {seed} was given but --shuffle is OFF: images stay in label "
+            "file order, the seed is ignored, and the same first N images are "
+            "picked every run. Pass --shuffle (or set shuffle: true in --config) "
+            "to let the seed choose a random subset."
+        )
+    else:
+        logger.info(
+            "Sample selection: --shuffle is off -- images are processed in "
+            "label file order (--seed has no effect)."
+        )
     if start_index is not None or end_index is not None:
         start = start_index or 0
         end = end_index if end_index is not None else len(image_names)
@@ -136,7 +159,21 @@ def collect_batch_requests(
             )
             image_names = image_names[start:end]
     if num_samples is not None:
+        if num_samples >= eligible_total:
+            logger.warning(
+                f"--num_samples {num_samples} >= {eligible_total} eligible "
+                "image(s): EVERY eligible image is selected, so no seed/shuffle "
+                "can change the set. Lower --num_samples or add more labeled "
+                "images to get a varying sample."
+            )
         image_names = image_names[:num_samples]
+    if eligible_total:
+        preview = ", ".join(Path(n).stem for n in image_names[:5])
+        logger.info(
+            f"Selected {len(image_names)} of {eligible_total} eligible image(s) "
+            f"(shuffle={'on, seed=' + str(seed) if shuffle else 'off'}); "
+            f"first: {preview}{'...' if len(image_names) > 5 else ''}"
+        )
 
     requests = []
     stems = {}
@@ -880,6 +917,13 @@ def run_batch_api_flow(
             f"or remove {JOB_FILENAME} to submit a fresh one."
         )
         exit(1)
+    if job is not None:
+        logger.info(
+            f"Resuming saved batch job {job.get('batch_id')} (phase="
+            f"{job.get('phase')}) -- requests were built earlier, so the current "
+            "--shuffle/--seed/--num_samples flags do NOT re-select images. To "
+            f"build a fresh sample, remove {output_folder}/{JOB_FILENAME} first."
+        )
     if job is None:
         # ---- Build ------------------------------------------------------
         with_class_map_lock = list(class_map.keys())
@@ -917,6 +961,15 @@ def run_batch_api_flow(
             f"({n_kept} small box(es) kept as-is, {n_small} small box(es) filtered, "
             f"{all_small_stems} image(s) with nothing to send)."
         )
+        _min_side_cfg = int(getattr(args, "min_box_size", 0) or 0)
+        if _min_side_cfg > 0 and n_small == 0 and n_kept == 0:
+            logger.warning(
+                f"min_box_size={_min_side_cfg}px is set but no box fell below it in "
+                "this run. The filter IS active -- the boxes are simply all larger "
+                f"than {_min_side_cfg}px. Lower min_box_size (or check it against your "
+                "image resolution: the threshold is in ORIGINAL pixel units, so a "
+                "value tuned for 1024px images will rarely trigger on 4000px ones)."
+            )
         if args.dry_run:
             logger.info(
                 "[dry run] batch YOU would submit "

@@ -202,6 +202,13 @@ def process_one_image(
         if _min_side > 0 and ((x2 - x1) < _min_side or (y2 - y1) < _min_side):
             stats.incr("boxes_skipped_small")
             small_skipped_this_image += 1
+            # INFO (not DEBUG): the user needs to see the filter firing to trust
+            # it, and the box dimensions to calibrate min_box_size.
+            logger.info(
+                f"{img_file}: small box filtered "
+                f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
+                f"action={_action})."
+            )
             if dry_run:
                 logger.info(
                     f"[dry run] {img_file}: would skip small box "

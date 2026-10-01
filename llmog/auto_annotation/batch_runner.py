@@ -156,10 +156,28 @@ def read_images_with_labels(
             f"images: '{train_image}', extensions: {image_extensions})."
         )
         return None
+    eligible_total = len(image_names)
 
     if shuffle:
         random.seed(seed)
         random.shuffle(image_names)
+        logger.info(
+            f"Sample selection: shuffled ALL {len(image_names)} eligible "
+            f"image(s) with seed={seed}, then slicing (the seed decides WHICH "
+            "images are picked, not just their order)."
+        )
+    elif seed is not None and int(seed) != 42:
+        logger.warning(
+            f"--seed {seed} was given but --shuffle is OFF: images stay in label "
+            "file order, the seed is ignored, and the same first N images are "
+            "picked every run. Pass --shuffle (or set shuffle: true in --config) "
+            "to let the seed choose a random subset."
+        )
+    else:
+        logger.info(
+            "Sample selection: --shuffle is off -- images are processed in "
+            "label file order (--seed has no effect)."
+        )
 
     if start_index is not None or end_index is not None:
         start = start_index or 0
@@ -178,7 +196,21 @@ def read_images_with_labels(
             image_names = sliced
 
     if num_samples is not None:
+        if num_samples >= len(image_names):
+            logger.warning(
+                f"--num_samples {num_samples} >= {len(image_names)} eligible "
+                "image(s): EVERY eligible image is selected, so no seed/shuffle "
+                "can change the set. Lower --num_samples or add more labeled "
+                "images to get a varying sample."
+            )
         image_names = image_names[:num_samples]
+    if eligible_total:
+        preview = ", ".join(Path(n).stem for n in image_names[:5])
+        logger.info(
+            f"Selected {len(image_names)} of {eligible_total} eligible image(s) "
+            f"(shuffle={'on, seed=' + str(seed) if shuffle else 'off'}); "
+            f"first: {preview}{'...' if len(image_names) > 5 else ''}"
+        )
 
     stats.images_total = len(image_names)
 
