@@ -305,6 +305,7 @@ def test_submit_strips_batch_suffix_from_model(dataset, tmp_path, inline_httpx):
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
     for r in reqs:
         r["body"]["model"] = "openai/gpt-6-luna:batch"
+    _as_url_images(reqs)
     posted, _ = inline_httpx()
     client = FakeClient()
     job = submit_batch_job(
@@ -323,10 +324,29 @@ def test_submit_strips_batch_suffix_from_model(dataset, tmp_path, inline_httpx):
     assert all(r["body"]["model"] == "openai/gpt-6-luna" for r in payload["requests"])
 
 
+def test_submit_inline_rejects_data_uri_images(dataset, tmp_path, inline_httpx):
+    """Inline hosts are URL-only: base64 crops must fail fast, pre-submit."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    inline_httpx()
+    with pytest.raises(RuntimeError, match="public .* URLs only"):
+        submit_batch_job(
+            FakeClient(),
+            str(tmp_path),
+            reqs,
+            stems,
+            "m",
+            {},
+            _params(),
+            submit_style="inline",
+        )
+
+
 def test_submit_inline_key_order_requests_last(dataset, tmp_path, inline_httpx):
     """OpenRouter stream-parses the create body: metadata first, requests last."""
     img_dir, lbl_dir = dataset
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    _as_url_images(reqs)
     posted, _ = inline_httpx()
     submit_batch_job(
         FakeClient(),
@@ -341,6 +361,21 @@ def test_submit_inline_key_order_requests_last(dataset, tmp_path, inline_httpx):
     payload = posted[0]["json"]
     assert list(payload.keys()) == ["endpoint", "model", "requests"]
     assert all(list(r.keys()) == ["custom_id", "body"] for r in payload["requests"])
+
+
+def _as_url_images(reqs, url="https://example.com/crop.jpg"):
+    """Rewrite data-URI image parts to public URLs (inline hosts are URL-only)."""
+    for req in reqs:
+        for msg in req["body"].get("messages", []):
+            content = msg.get("content")
+            parts = content if isinstance(content, list) else []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                iu = part.get("image_url")
+                if isinstance(iu, dict) and str(iu.get("url", "")).startswith("data:"):
+                    iu["url"] = url
+    return reqs
 
 
 def test_submit_persists_job(dataset, tmp_path):
@@ -369,6 +404,7 @@ def test_submit_auto_falls_back_to_inline(dataset, tmp_path, inline_httpx):
     """A host that rejects input_file_id gets the requests inlined over httpx."""
     img_dir, lbl_dir = dataset
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    _as_url_images(reqs)
     posted, _ = inline_httpx()
     client = FakeClient(reject_file_ref=True)
     job = submit_batch_job(
@@ -390,6 +426,7 @@ def test_submit_auto_falls_back_to_inline(dataset, tmp_path, inline_httpx):
 def test_submit_inline_style_skips_file_upload(dataset, tmp_path, inline_httpx):
     img_dir, lbl_dir = dataset
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    _as_url_images(reqs)
     posted, _ = inline_httpx()
     client = FakeClient()
     job = submit_batch_job(

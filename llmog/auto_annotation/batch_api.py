@@ -312,6 +312,23 @@ def _inline_requests(requests):
     return [{"custom_id": req["custom_id"], "body": req["body"]} for req in requests]
 
 
+def _has_data_uri_images(requests) -> bool:
+    """True when any request embeds a base64/data: URI image part."""
+    for req in requests or []:
+        body = (req or {}).get("body") or {}
+        for msg in body.get("messages", []) or []:
+            content = (msg or {}).get("content")
+            parts = content if isinstance(content, list) else []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                iu = part.get("image_url")
+                url = iu.get("url") if isinstance(iu, dict) else iu
+                if isinstance(url, str) and url.startswith("data:"):
+                    return True
+    return False
+
+
 def _create_batch_inline(client, requests, model_name, timeout=120.0):
     """POST /batches with the requests inline instead of an uploaded file id.
 
@@ -319,6 +336,18 @@ def _create_batch_inline(client, requests, model_name, timeout=120.0):
     response into its strict ``Batch`` model, which rejects the non-standard
     status enums and shapes these hosts return. Plain JSON keeps them working.
     """
+    if _has_data_uri_images(requests):
+        # OpenRouter-style batch is URL-only for multimodal input: base64 /
+        # data: URI images are rejected on every provider, so every request
+        # would fail after submit. Fail here instead of billing a dead batch.
+        raise RuntimeError(
+            "Inline batch hosts (e.g. OpenRouter) accept images as public "
+            "http(s) URLs only -- base64 / data: URI images are rejected on "
+            "every provider, so this batch would fail 100% of its requests. "
+            "Either serve the crops at public URLs, or run without "
+            "--use_batch_api (sync chat/completions accepts base64 data URIs, "
+            "at full price instead of the ~50% batch discount)."
+        )
     payload = {
         "endpoint": "/v1/chat/completions",
         "model": model_name,
@@ -673,22 +702,33 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
                     if problems:
                         detail = " Per-request errors: " + " | ".join(problems)
                     else:
-                        # Failed but no parseable per-request errors: dump the
-                        # raw payload shape (truncated) so the provider's
-                        # actual schema can be mapped.
-                        try:
-                            raw = json.dumps(batch, default=str)
-                        except Exception:
-                            raw = str(batch)
-                        keys = (
-                            sorted(batch.keys())
-                            if isinstance(batch, dict)
-                            else type(batch).__name__
-                        )
-                        logger.error(
-                            f"Batch {batch_id} payload keys: {keys}. Raw "
-                            f"payload (truncated): {raw[:2000]}"
-                        )
+                        top = _batch_field(batch, "error")
+                        top_msg = None
+                        if isinstance(top, dict):
+                            top_msg = top.get("message") or top.get("code")
+                        elif isinstance(top, str):
+                            top_msg = top
+                        if top_msg:
+                            # Providers report batch-level failures here
+                            # (e.g. rejected multimodal content).
+                            detail = f" Batch error: {str(top_msg)[:300]}"
+                        else:
+                            # Failed but no parseable errors at all: dump the
+                            # raw payload shape (truncated) so the provider's
+                            # actual schema can be mapped.
+                            try:
+                                raw = json.dumps(batch, default=str)
+                            except Exception:
+                                raw = str(batch)
+                            keys = (
+                                sorted(batch.keys())
+                                if isinstance(batch, dict)
+                                else type(batch).__name__
+                            )
+                            logger.error(
+                                f"Batch {batch_id} payload keys: {keys}. Raw "
+                                f"payload (truncated): {raw[:2000]}"
+                            )
                 raise RuntimeError(
                     f"Batch {batch_id} ended with status={status} "
                     f"(counts={counts}).{detail} Check the provider dashboard; "
