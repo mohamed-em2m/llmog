@@ -61,6 +61,8 @@ def process_one_image(
     failure_tracker=None,
     abort_on_server_down: bool = True,
     extra_body=None,
+    min_box_size: int = 0,
+    small_box_action: str = "keep",
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -179,6 +181,42 @@ def process_one_image(
 
         if x2 <= x1 or y2 <= y1:
             logger.warning(f"Invalid box in {img_file}: {values}")
+            continue
+
+        # --- Small-box filter (measured on ORIGINAL image pixels) -----------
+        # Tiny boxes produce crops the VLM cannot classify reliably, so they
+        # are never sent to the model. "keep" preserves the original YOLO
+        # line verbatim; "drop" omits the box from the output entirely.
+        try:
+            _min_side = int(min_box_size or 0)
+        except (TypeError, ValueError):
+            _min_side = 0
+        _action = str(small_box_action or "keep").lower().strip()
+        if _action not in ("keep", "drop"):
+            _action = "keep"
+        if _min_side > 0 and ((x2 - x1) < _min_side or (y2 - y1) < _min_side):
+            stats.incr("boxes_skipped_small")
+            if dry_run:
+                logger.info(
+                    f"[dry run] {img_file}: would skip small box "
+                    f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
+                    f"action={_action})."
+                )
+                continue
+            if _action == "keep":
+                new_label_lines.append(line.strip())
+                stats.incr("boxes_kept_small")
+                logger.debug(
+                    f"{img_file}: keeping small box "
+                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
+                    f"without LLM call: '{line.strip()}'."
+                )
+            else:
+                stats.incr("boxes_dropped_small")
+                logger.debug(
+                    f"{img_file}: dropping small box "
+                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px)."
+                )
             continue
 
         crop_image = img[y1:y2, x1:x2]

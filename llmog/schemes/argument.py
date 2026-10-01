@@ -167,6 +167,16 @@ class PipelineConfig(BaseModel):
     # labels are kept as regular classes (legacy behavior).
     drop_none: bool = True
 
+    # --- Small-box reclassification filter (auto_label) --------------------
+    # Boxes whose pixel size on the ORIGINAL image is smaller than
+    # min_box_size in either dimension (w < min OR h < min) are never sent
+    # to the LLM -- tiny crops are usually unclassifiable noise. 0 disables.
+    min_box_size: int = 0
+    # What to do with small boxes: "keep" writes the original YOLO line
+    # verbatim (original class id + coords, no LLM call, no class_map
+    # mutation); "drop" skips the box entirely (no YOLO line).
+    small_box_action: Literal["keep", "drop"] = "keep"
+
     # --- Preprocessing -----------------------------------------------------
     prep_enabled: bool = False
     prep_short_edge: int = 1024
@@ -250,6 +260,13 @@ class PipelineConfig(BaseModel):
     def _check_consecutive_failures(cls, v: int) -> int:
         if v < 1:
             raise ValueError("--max_consecutive_failures must be >= 1")
+        return v
+
+    @field_validator("min_box_size")
+    @classmethod
+    def _check_min_box_size(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("--min_box_size must be >= 0 (0 disables the filter)")
         return v
 
     @field_validator("gpu_memory_utilization")

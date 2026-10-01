@@ -27,6 +27,9 @@ class RunStats:
         self.boxes_classified = 0
         self.boxes_low_confidence = 0
         self.boxes_dropped_none = 0
+        self.boxes_skipped_small = 0
+        self.boxes_kept_small = 0
+        self.boxes_dropped_small = 0
         self.classes_discovered = []
 
     def incr(self, field, n=1):
@@ -64,6 +67,8 @@ class RunStats:
             f"Boxes: {self.boxes_seen} seen | "
             f"{self.boxes_classified} classified | "
             f"{self.boxes_dropped_none} dropped (none/no-detection -> empty YOLO) | "
+            f"{self.boxes_skipped_small} skipped (small < min_box_size: "
+            f"{self.boxes_kept_small} kept as-is, {self.boxes_dropped_small} dropped) | "
             f"{self.boxes_malformed_line} malformed label lines | "
             f"{self.boxes_empty_crop} empty crops | "
             f"{self.boxes_dry_run} dry-run (not sent to model)",

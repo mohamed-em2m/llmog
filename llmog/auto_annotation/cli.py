@@ -476,6 +476,27 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Keep none-like predictions as regular classes instead of dropping them.",
     )
     parser.add_argument(
+        "--min_box_size",
+        "--min-box-size",
+        dest="min_box_size",
+        type=int,
+        default=0,
+        help="Minimum box side in pixels for reclassification: boxes with "
+        "width < MIN or height < MIN (measured on the original image) are never sent "
+        "to the LLM. 0 disables the filter (default). "
+        "Small-box fate is set by --small_box_action.",
+    )
+    parser.add_argument(
+        "--small_box_action",
+        "--small-box-action",
+        dest="small_box_action",
+        type=str,
+        default="keep",
+        choices=["keep", "drop"],
+        help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
+        "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
+    )
+    parser.add_argument(
         "--init_class_map",
         action="store_true",
         help="Initialize the class map from the YAML file.",
@@ -715,6 +736,17 @@ def parse_args(argv=None) -> argparse.Namespace:
         )
     if getattr(args, "drop_none", None) is None:
         args.drop_none = True
+
+    # ── Defaults for small-box filter (hand-built Namespaces) ─────────────
+    if getattr(args, "min_box_size", None) is None:
+        args.min_box_size = 0
+    if getattr(args, "min_box_size", 0) < 0:
+        parser.error("--min_box_size must be >= 0 (0 disables the filter)")
+    if getattr(args, "small_box_action", None) not in ("keep", "drop"):
+        if getattr(args, "small_box_action", None) is None:
+            args.small_box_action = "keep"
+        else:
+            parser.error("--small_box_action must be 'keep' or 'drop'")
 
     # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
     if getattr(args, "max_consecutive_failures", None) is None:

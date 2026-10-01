@@ -463,6 +463,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Keep none-like predictions as regular classes instead of dropping them.",
     )
+    p.add_argument(
+        "--min_box_size",
+        "--min-box-size",
+        dest="min_box_size",
+        type=int,
+        default=0,
+        help="Minimum box side in pixels for auto_label reclassification: boxes with "
+        "width < MIN or height < MIN (measured on the original image) are never sent "
+        "to the LLM. 0 disables the filter (default). "
+        "Small-box fate is set by --small_box_action.",
+    )
+    p.add_argument(
+        "--small_box_action",
+        "--small-box-action",
+        dest="small_box_action",
+        choices=["keep", "drop"],
+        default="keep",
+        help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
+        "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
+    )
 
     # --- Preprocessing -----------------------------------------------------
     p.add_argument(

@@ -53,6 +53,14 @@ none_labels:
   - normal
 drop_none: true # Strips background/none predictions from the final YOLO .txt files
 
+# --- Small-box reclassification filter ------------------------------------
+# Boxes with width < min_box_size OR height < min_box_size (pixels, measured
+# on the ORIGINAL image) are never sent to the LLM. 0 disables the filter.
+min_box_size: 0
+# What to do with small boxes: "keep" writes the original YOLO line verbatim
+# (no LLM call); "drop" skips the box entirely (no YOLO line).
+small_box_action: keep # "keep" | "drop"
+
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null
 shuffle: false
