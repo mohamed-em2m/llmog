@@ -45,7 +45,7 @@ SKIPPED_MANIFEST = "skipped_small_images.txt"
 
 _TERMINAL_OK = "completed"
 _TERMINAL_BAD = ("failed", "expired", "cancelled")
-_IN_PROGRESS = ("validating", "in_progress", "finalizing")
+_IN_PROGRESS = ("validating", "in_progress", "finalizing", "cancelling")
 # A freshly submitted batch may 404 on GET for a while (provider-side
 # registration lag -- seen on OpenRouter: create returns the id, the next
 # retrieve 1s later is "not found"). Tolerate consecutive 404s this long
@@ -463,7 +463,12 @@ def _inline_error_summary(batch, limit=3):
         err = item.get("error")
         msg = None
         if isinstance(err, dict):
-            msg = err.get("message") or err.get("code") or str(err)[:200]
+            msg = (
+                err.get("message")
+                or err.get("code")
+                or err.get("type")
+                or str(err)[:200]
+            )
         elif isinstance(err, str):
             msg = err[:200]
         if msg is None:
