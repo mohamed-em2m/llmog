@@ -323,6 +323,26 @@ def test_submit_strips_batch_suffix_from_model(dataset, tmp_path, inline_httpx):
     assert all(r["body"]["model"] == "openai/gpt-6-luna" for r in payload["requests"])
 
 
+def test_submit_inline_key_order_requests_last(dataset, tmp_path, inline_httpx):
+    """OpenRouter stream-parses the create body: metadata first, requests last."""
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    posted, _ = inline_httpx()
+    submit_batch_job(
+        FakeClient(),
+        str(tmp_path),
+        reqs,
+        stems,
+        "m",
+        {},
+        _params(),
+        submit_style="inline",
+    )
+    payload = posted[0]["json"]
+    assert list(payload.keys()) == ["endpoint", "model", "requests"]
+    assert all(list(r.keys()) == ["custom_id", "body"] for r in payload["requests"])
+
+
 def test_submit_persists_job(dataset, tmp_path):
     img_dir, lbl_dir = dataset
     reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
