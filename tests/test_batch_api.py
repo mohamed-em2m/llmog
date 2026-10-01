@@ -467,7 +467,6 @@ def test_poll_tolerates_transient_404_then_completes(monkeypatch):
 
 
 def test_poll_gives_up_on_persistent_404(monkeypatch):
-    """A batch that never appears is a wrong id -- fail with guidance."""
     import auto_annotation.batch_api as ba
 
     _inline_client(
@@ -475,13 +474,42 @@ def test_poll_gives_up_on_persistent_404(monkeypatch):
         lambda url: _FakeResponse({"error": {"message": "not found"}}, 404),
     )
     monkeypatch.setattr(ba, "_NOT_FOUND_GRACE_S", 0)
-    with pytest.raises(RuntimeError, match="still not found"):
+    with pytest.raises(RuntimeError, match="still not readable"):
         poll_batch_job(
             FakeClient(),
             {"batch_id": "b", "submit_style": "inline"},
             poll_interval=5,
             poll_timeout=60,
         )
+
+
+def test_poll_tolerates_200_error_body_then_completes(monkeypatch):
+    """OpenRouter answers 'not found' as HTTP 200 + {"error": ...}."""
+    calls = {"n": 0}
+
+    def _flaky_get(url):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return _FakeResponse(
+                {
+                    "error": {
+                        "message": "Batch job b not found.",
+                        "code": 404,
+                    }
+                },
+                200,
+            )
+        return _FakeResponse({"id": "b", "status": "completed"})
+
+    _inline_client(monkeypatch, _flaky_get)
+    batch = poll_batch_job(
+        FakeClient(),
+        {"batch_id": "b", "submit_style": "inline"},
+        poll_interval=5,
+        poll_timeout=60,
+    )
+    assert batch["status"] == "completed"
+    assert calls["n"] == 3
 
 
 def test_poll_failed_batch_surfaces_inline_errors(monkeypatch):

@@ -53,9 +53,23 @@ _IN_PROGRESS = ("validating", "in_progress", "finalizing")
 _NOT_FOUND_GRACE_S = 900
 
 
-def _is_not_found_error(err) -> bool:
+def _is_transient_retrieve_error(err) -> bool:
+    """True when a retrieve failure likely means 'still initializing'.
+
+    Covers the provider's registration lag right after submit: 404s, empty
+    or non-JSON bodies, and payloads that are not a batch object (yet).
+    Anything else (auth, real 4xx/5xx with a body) still raises immediately.
+    """
+    if isinstance(err, ValueError):
+        # json.JSONDecodeError from resp.json() subclasses ValueError.
+        return True
     msg = str(err).lower()
-    return "not found" in msg or " 404" in msg or msg.startswith("404")
+    return (
+        "not found" in msg
+        or " 404" in msg
+        or msg.startswith("404")
+        or "unexpected batch payload" in msg
+    )
 
 
 def batch_job_path(output_folder) -> Path:
@@ -343,6 +357,16 @@ def _retrieve_batch_inline(client, batch_id, timeout=60.0):
     data = resp.json()
     if not isinstance(data, dict):
         raise RuntimeError(f"Unexpected batch payload from {url}: {resp.text[:400]}")
+    err = data.get("error")
+    if err is not None:
+        # OpenRouter answers "not found" as HTTP 200 + {"error": {...}}, not
+        # as HTTP 404 -- surface it as an error so the poll loop can treat
+        # "not found" as still-initializing while other errors fail fast.
+        if isinstance(err, dict):
+            detail = err.get("message") or err.get("code") or str(err)[:300]
+        else:
+            detail = str(err)[:300]
+        raise RuntimeError(f"Batch {batch_id} error at {url}: {detail}")
     return data
 
 
@@ -587,21 +611,21 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
                     batch = _retrieve_batch_inline(client, batch_id)
                 else:
                     batch = client.batches.retrieve(batch_id)
-            except RuntimeError as e:
-                if inline_mode and _is_not_found_error(e):
+            except (RuntimeError, ValueError) as e:
+                if inline_mode and _is_transient_retrieve_error(e):
                     if not_found_since is None:
                         not_found_since = time.monotonic()
                     waited = time.monotonic() - not_found_since
                     if waited > _NOT_FOUND_GRACE_S:
                         raise RuntimeError(
-                            f"Batch {batch_id} still not found after "
-                            f"{waited:.0f}s of polling. The id is probably wrong "
-                            "(provider-scoped) -- pass the right --batch_job_id "
-                            "or re-run with --batch_mode submit."
+                            f"Batch {batch_id} still not readable after "
+                            f"{waited:.0f}s of polling ({e}). The id is probably "
+                            "wrong (provider-scoped) -- pass the right "
+                            "--batch_job_id or re-run with --batch_mode submit."
                         ) from e
                     logger.warning(
-                        f"Batch {batch_id} not yet visible at the provider "
-                        f"(404, {waited:.0f}s) -- still registering; will keep "
+                        f"Batch {batch_id} not yet readable at the provider "
+                        f"({e}; {waited:.0f}s) -- still initializing; will keep "
                         "polling."
                     )
                     if timeout and (time.monotonic() - start) > timeout:
@@ -614,14 +638,31 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
                     continue
                 raise
             not_found_since = None
+            if isinstance(batch, dict) and "status" not in batch:
+                # Initializing (or wrapped) payload with no status yet: we
+                # hold a batch id, so keep polling instead of failing.
+                keys = sorted(batch.keys())
+                logger.warning(
+                    f"Batch {batch_id} returned no status yet (keys: {keys}) "
+                    "-- still initializing; will keep polling."
+                )
+                if timeout and (time.monotonic() - start) > timeout:
+                    raise TimeoutError(
+                        f"Batch {batch_id} still has no status after "
+                        f"{timeout:.0f}s. Re-run with --batch_mode poll to "
+                        "resume waiting later."
+                    )
+                time.sleep(interval)
+                continue
             status = _batch_field(batch, "status", "?")
             counts = _batch_field(batch, "request_counts")
-            if inline_mode and counts is None:
-                counts = {
-                    k: v
-                    for k, v in _batch_field(batch, "request_counts", {}).items()
-                    if v is not None
-                } or None
+            if inline_mode and not isinstance(counts, dict):
+                raw_counts = _batch_field(batch, "request_counts", {})
+                counts = (
+                    {k: v for k, v in raw_counts.items() if v is not None}
+                    if isinstance(raw_counts, dict)
+                    else None
+                ) or None
             logger.info(f"Batch {batch_id}: status={status} counts={counts}")
             if status == _TERMINAL_OK:
                 return batch
