@@ -394,6 +394,39 @@ def _result_content_text(item):
     return content if isinstance(content, str) else None
 
 
+def _inline_error_summary(batch, limit=3):
+    """Summarize per-request errors from inlined results (failed batches).
+
+    Shapes vary: ``{"custom_id", "error": {"message": ...}}``,
+    ``{"custom_id", "error": "..."}``, or a non-200 ``result.status_code``.
+    Returns up to ``limit`` ``"custom_id: message"`` strings.
+    """
+    results = _inline_results(batch) or []
+    problems = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        cid = item.get("custom_id", "?")
+        err = item.get("error")
+        msg = None
+        if isinstance(err, dict):
+            msg = err.get("message") or err.get("code") or str(err)[:200]
+        elif isinstance(err, str):
+            msg = err[:200]
+        if msg is None:
+            node = item.get("result")
+            if isinstance(node, dict) and node.get("status_code") not in (
+                None,
+                200,
+            ):
+                msg = f"status_code={node.get('status_code')}"
+        if msg:
+            problems.append(f"{cid}: {msg}")
+        if len(problems) >= limit:
+            break
+    return problems
+
+
 def _is_inline_required_error(err) -> bool:
     """True when a 400 means the provider wants an inline ``requests`` array."""
     text = f"{getattr(err, 'message', '') or ''} {err}".lower()
@@ -576,9 +609,14 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
             if status == _TERMINAL_OK:
                 return batch
             if status in _TERMINAL_BAD:
+                detail = ""
+                if inline_mode:
+                    problems = _inline_error_summary(batch, limit=3)
+                    if problems:
+                        detail = " Per-request errors: " + " | ".join(problems)
                 raise RuntimeError(
                     f"Batch {batch_id} ended with status={status} "
-                    f"(counts={counts}). Check the provider dashboard; "
+                    f"(counts={counts}).{detail} Check the provider dashboard; "
                     "re-run with --batch_mode submit to build a fresh job."
                 )
             if status not in _IN_PROGRESS:

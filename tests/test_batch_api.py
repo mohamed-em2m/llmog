@@ -460,6 +460,36 @@ def test_poll_gives_up_on_persistent_404(monkeypatch):
         )
 
 
+def test_poll_failed_batch_surfaces_inline_errors(monkeypatch):
+    """A failed inline batch should report WHY (per-request errors)."""
+    _inline_client(
+        monkeypatch,
+        lambda url: _FakeResponse(
+            {
+                "id": "b",
+                "status": "failed",
+                "request_counts": {"total": 3, "completed": 0, "failed": 3},
+                "results": [
+                    {"custom_id": "a:0", "error": {"message": "model_blah"}},
+                    {"custom_id": "a:1", "error": "plain-string-boom"},
+                    {"custom_id": "a:2", "result": {"status_code": 400}},
+                ],
+            }
+        ),
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        poll_batch_job(
+            FakeClient(),
+            {"batch_id": "b", "submit_style": "inline"},
+            poll_interval=5,
+            poll_timeout=60,
+        )
+    msg = str(excinfo.value)
+    assert "model_blah" in msg
+    assert "plain-string-boom" in msg
+    assert "status_code=400" in msg
+
+
 def test_finalize_reads_inlined_results(dataset, tmp_path, inline_httpx):
     """OpenRouter-style: results live in the retrieve response, no output file."""
     img_dir, lbl_dir = dataset
