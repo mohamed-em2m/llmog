@@ -29,6 +29,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
   data; sync mode keeps base64 private per request.
 
 ### Fixed
+- Upload cache now persists incrementally, so an interrupted public-image
+  upload run resumes without re-uploading; the on-disk `batch_requests.jsonl`
+  is re-written after URL rewriting so the artifact matches what was sent.
 - Inline submit now fails fast with guidance when request bodies still embed
   `data:`-URI images instead of billing a batch that fails 100% of requests.
 - Failed inline batches also report the batch-level `error.message`, and the

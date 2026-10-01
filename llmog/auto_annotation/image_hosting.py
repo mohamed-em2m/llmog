@@ -68,6 +68,7 @@ def _load_cache(output_folder) -> dict:
 
 
 def _save_cache(output_folder, cache: dict) -> None:
+    os.makedirs(str(output_folder), exist_ok=True)
     p = os.path.join(str(output_folder), CACHE_FILENAME)
     tmp = p + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -94,7 +95,6 @@ def rewrite_bodies_to_public_urls(
     )
     cache = _load_cache(output_folder)
     uploaded = reused = 0
-    dirty = False
     for req in requests or []:
         body = (req or {}).get("body") or {}
         for msg in body.get("messages", []) or []:
@@ -124,11 +124,12 @@ def rewrite_bodies_to_public_urls(
                 else:
                     public = uploader(jpeg_bytes)
                     cache[digest] = public
-                    dirty = True
                     uploaded += 1
+                    # Persist incrementally: uploads are slow network calls, so
+                    # a cheap JSON write each time means an interrupted run
+                    # resumes without re-uploading what already succeeded.
+                    _save_cache(output_folder, cache)
                 iu["url"] = public
-    if dirty:
-        _save_cache(output_folder, cache)
     _log.info(
         f"Image hosting: {uploaded} crop(s) uploaded, {reused} reused from "
         f"cache ({CACHE_FILENAME})."

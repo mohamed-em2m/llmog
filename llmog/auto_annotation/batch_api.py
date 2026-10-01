@@ -604,20 +604,24 @@ def submit_batch_job(
     model_name = batch_model
     os.makedirs(output_folder, exist_ok=True)
     jsonl_path = Path(output_folder) / "batch_requests.jsonl"
-    with open(jsonl_path, "w", encoding="utf-8") as f:
-        for req in requests:
-            f.write(
-                json.dumps(
-                    {
-                        "custom_id": req["custom_id"],
-                        "method": "POST",
-                        "url": "/v1/chat/completions",
-                        "body": req["body"],
-                    }
+
+    def _write_jsonl():
+        with open(jsonl_path, "w", encoding="utf-8") as f:
+            for req in requests:
+                f.write(
+                    json.dumps(
+                        {
+                            "custom_id": req["custom_id"],
+                            "method": "POST",
+                            "url": "/v1/chat/completions",
+                            "body": req["body"],
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-    logger.info(f"Wrote {len(requests)} batch request(s) to {jsonl_path}.")
+        logger.info(f"Wrote {len(requests)} batch request(s) to {jsonl_path}.")
+
+    _write_jsonl()
 
     style = (submit_style or "auto").strip().lower()
     if style not in ("auto", "file", "inline"):
@@ -675,6 +679,9 @@ def submit_batch_job(
             )
 
             rewrite_bodies_to_public_urls(requests, output_folder)
+            # Re-write so the on-disk JSONL matches exactly what is submitted
+            # (bodies were mutated from data URIs to public URLs above).
+            _write_jsonl()
         batch = _create_batch_inline(client, requests, model_name)
     batch_id = _batch_field(batch, "id")
     batch_status = _batch_field(batch, "status", "?")
