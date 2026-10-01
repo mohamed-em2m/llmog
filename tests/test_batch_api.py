@@ -1096,3 +1096,73 @@ def test_recls_context_config_validation():
             yaml_path="x.yaml",
             recls_context="bogus",
         )
+
+
+# --------------------------------------------------------------------------
+# Ratio resize (reclassification)
+# --------------------------------------------------------------------------
+def test_resize_crop_ratio_math_and_cap():
+    from auto_annotation.image_io import resize_crop_ratio
+    from PIL import Image
+    import numpy as np
+
+    im = Image.fromarray(np.full((50, 100, 3), 128, dtype=np.uint8))
+    assert resize_crop_ratio(im, 2.0).size == (200, 100)
+    assert resize_crop_ratio(im, 0.5).size == (50, 25)
+    # long-edge cap: 200x100 @3.0 -> 600x300, capped at 150 -> 150x75
+    assert resize_crop_ratio(im, 3.0, max_long_edge=150).size == (150, 75)
+    # identity ratio returns an equal copy
+    out = resize_crop_ratio(im, 1.0)
+    assert out.size == (100, 50) and out is not im
+    with pytest.raises(ValueError):
+        resize_crop_ratio(im, 0)
+    with pytest.raises(ValueError):
+        resize_crop_ratio(im, -2)
+    with pytest.raises(ValueError):
+        resize_crop_ratio(im, "big")
+
+
+def test_collect_ratio_resize_sets_crop_pixels(tmp_path):
+    """Ratio resize replaces the fixed letterbox: decoded dims prove it."""
+    img_dir, lbl_dir = _pad_fixture(tmp_path)
+    fixed, _ = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    scaled, _ = collect_batch_requests(
+        str(img_dir), str(lbl_dir), known_names=[], crop_resize_ratio=2.0
+    )
+    assert len(fixed) == len(scaled) == 1
+
+    def _dims(body):
+        arr = cv2.imdecode(
+            np.frombuffer(_body_image_bytes(body), dtype=np.uint8), cv2.IMREAD_COLOR
+        )
+        return arr.shape[1], arr.shape[0]
+
+    # fixture box is 40x40px; ratio 2.0 -> 80x80 (no letterbox bars)
+    assert _dims(scaled[0]["body"]) == (80, 80)
+    # fixed path letterboxes to the default 1024x1024 target
+    assert _dims(fixed[0]["body"]) == (1024, 1024)
+
+
+def test_crop_resize_ratio_config_validation():
+    from schemes import PipelineConfig
+
+    cfg = PipelineConfig(
+        task="auto_label",
+        train_image="i",
+        train_label="l",
+        yaml_path="x.yaml",
+        crop_resize_ratio=1.5,
+    )
+    assert cfg.crop_resize_ratio == 1.5
+    cfg2 = PipelineConfig(
+        task="auto_label", train_image="i", train_label="l", yaml_path="x.yaml"
+    )
+    assert cfg2.crop_resize_ratio is None
+    with pytest.raises(Exception):
+        PipelineConfig(
+            task="auto_label",
+            train_image="i",
+            train_label="l",
+            yaml_path="x.yaml",
+            crop_resize_ratio=0,
+        )

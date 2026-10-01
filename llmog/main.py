@@ -525,6 +525,17 @@ def build_parser() -> argparse.ArgumentParser:
         "tokens per request).",
     )
     p.add_argument(
+        "--crop_resize_ratio",
+        "--crop-resize-ratio",
+        dest="crop_resize_ratio",
+        type=float,
+        default=None,
+        help="Scale the VLM crop by this ratio (1.5 = 150%%, LANCZOS, aspect "
+        "preserved, no letterbox bars) instead of the fixed --height x "
+        "--width letterbox. Applies to crop mode only; the long edge is "
+        "capped at max(--height, --width). Unset = fixed-size letterbox.",
+    )
+    p.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",

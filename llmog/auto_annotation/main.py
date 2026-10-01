@@ -403,6 +403,7 @@ def main(args=None):
                 drop_small_images=getattr(args, "drop_small_images", True),
                 crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
                 recls_context=getattr(args, "recls_context", "crop") or "crop",
+                crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

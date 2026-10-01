@@ -536,6 +536,16 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "'full_som' sends the full scene with the box highlighted/numbered.",
     )
     parser.add_argument(
+        "--crop_resize_ratio",
+        "--crop-resize-ratio",
+        dest="crop_resize_ratio",
+        type=float,
+        default=None,
+        help="Scale the VLM crop by this ratio (1.5 = 150%%, LANCZOS, aspect "
+        "preserved, no letterbox bars) instead of the fixed height x width "
+        "letterbox. Crop mode only; long edge capped at max(height, width).",
+    )
+    parser.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",
@@ -871,6 +881,9 @@ def parse_args(argv=None) -> argparse.Namespace:
             args.recls_context = "crop"
         else:
             parser.error("--recls_context must be 'crop' or 'full_som'")
+    _ratio = getattr(args, "crop_resize_ratio", None)
+    if _ratio is not None and _ratio <= 0:
+        parser.error("--crop_resize_ratio must be > 0 when set")
     if getattr(args, "batch_mode", None) not in ("auto", "submit", "poll"):
         if getattr(args, "batch_mode", None) is None:
             args.batch_mode = "auto"

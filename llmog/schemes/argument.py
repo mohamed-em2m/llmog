@@ -197,6 +197,12 @@ class PipelineConfig(BaseModel):
     # directive to classify only the marked box. Full images cost more tokens
     # per request -- relevant for batch payload sizes on metered providers.
     recls_context: Literal["crop", "full_som"] = "crop"
+    # Ratio resize for the VLM crop (crop mode only): scale the (padded) crop
+    # by this factor (1.5 = 150%, LANCZOS, aspect preserved, no letterbox
+    # bars) instead of the fixed height x width letterbox. The long edge is
+    # capped at max(height, width) to bound batch payload sizes. None
+    # (default) keeps the fixed-size letterbox.
+    crop_resize_ratio: Optional[float] = None
 
     # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
     # Submit one /v1/chat/completions request per box as a batch job, then
@@ -327,6 +333,13 @@ class PipelineConfig(BaseModel):
     def _check_crop_padding_pct(cls, v: float) -> float:
         if v < 0:
             raise ValueError("--crop_padding_pct must be >= 0 (0 = exact-box crop)")
+        return v
+
+    @field_validator("crop_resize_ratio")
+    @classmethod
+    def _check_crop_resize_ratio(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("--crop_resize_ratio must be > 0 when set")
         return v
 
     @field_validator("batch_poll_interval")

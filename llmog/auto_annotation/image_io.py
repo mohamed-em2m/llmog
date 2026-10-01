@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import cv2
 import json_repair
-from PIL import ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from auto_annotation.logging_utils import logger
 from free_detection.agent.prompts import render_auto_label_prompt
@@ -85,6 +85,29 @@ def draw_som_context(pil_image, x1, y1, x2, y2, label="1"):
     )
     draw.text((bx1 + pad, by1 + pad), text, font=font, fill=(0, 0, 0))
     return annotated
+
+
+def resize_crop_ratio(pil_image, ratio, max_long_edge=None):
+    """Scale a crop by ``ratio`` (aspect preserved, LANCZOS, no padding bars).
+
+    E.g. ``ratio=1.5`` turns a 100x80 crop into 150x120. The long edge is
+    capped at ``max_long_edge`` when given (protects batch request sizes).
+    Raises ``ValueError`` for non-positive ratios. Returns a ``PIL.Image``.
+    """
+    try:
+        r = float(ratio)
+    except (TypeError, ValueError):
+        raise ValueError(f"crop_resize_ratio must be a number, got {ratio!r}.")
+    if r <= 0:
+        raise ValueError(f"crop_resize_ratio must be > 0, got {ratio!r}.")
+    w, h = pil_image.size
+    nw, nh = max(1, round(w * r)), max(1, round(h * r))
+    if max_long_edge and max(nw, nh) > max_long_edge:
+        s = float(max_long_edge) / max(nw, nh)
+        nw, nh = max(1, round(nw * s)), max(1, round(nh * s))
+    if (nw, nh) == (w, h):
+        return pil_image.copy()
+    return pil_image.resize((nw, nh), Image.Resampling.LANCZOS)
 
 
 def _coerce_extra_body(extra_body):

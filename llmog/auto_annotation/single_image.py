@@ -10,7 +10,12 @@ from PIL import Image
 
 from free_detection.image_preprocessing import preprocess_custom_resize
 from auto_annotation.logging_utils import logger
-from auto_annotation.image_io import detect_defect, draw_som_context, pad_box
+from auto_annotation.image_io import (
+    detect_defect,
+    draw_som_context,
+    pad_box,
+    resize_crop_ratio,
+)
 from auto_annotation.server_guard import (
     ServerDownError,
     is_server_error,
@@ -66,6 +71,7 @@ def process_one_image(
     drop_small_images: bool = True,
     crop_padding_pct: float = 0.0,
     recls_context: str = "crop",
+    crop_resize_ratio=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -142,6 +148,18 @@ def process_one_image(
         logger.info(
             f"{img_file}: reclassification context=full_som -- sending the "
             "full scene with the box highlighted instead of the crop."
+        )
+    try:
+        _ratio = float(crop_resize_ratio) if crop_resize_ratio is not None else None
+        if _ratio is not None and _ratio <= 0:
+            _ratio = None
+    except (TypeError, ValueError):
+        _ratio = None
+    if _ratio is not None and not _som_mode:
+        logger.info(
+            f"{img_file}: crop resize ratio={_ratio} (long edge capped at "
+            f"{max(target_height, target_width)}px) instead of the fixed "
+            f"{target_width}x{target_height} letterbox."
         )
 
     try:
@@ -280,9 +298,18 @@ def process_one_image(
             # preprocess_custom_resize works on PIL.Image, not numpy arrays
             pil_crop = Image.fromarray(crop_image)
             try:
-                pil_crop, _ = preprocess_custom_resize(
-                    pil_crop, target_height=target_height, target_width=target_width
-                )
+                if _ratio is not None:
+                    pil_crop = resize_crop_ratio(
+                        pil_crop,
+                        _ratio,
+                        max_long_edge=max(target_height, target_width),
+                    )
+                else:
+                    pil_crop, _ = preprocess_custom_resize(
+                        pil_crop,
+                        target_height=target_height,
+                        target_width=target_width,
+                    )
                 crop_image = np.array(pil_crop)
             except Exception as e:
                 logger.error(

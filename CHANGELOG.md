@@ -16,6 +16,10 @@ versioning follows [Semantic Versioning](https://semver.org/).
   sends the FULL scene with the box highlighted/numbered (shared
   `draw_som_context` helper) plus a directive to classify only the marked
   box, instead of the crop. Full images cost more tokens per request.
+- `--crop_resize_ratio` (CLI + YAML, unset by default): scale the (padded)
+  crop by this factor (LANCZOS, aspect preserved, no letterbox bars) instead
+  of the fixed `height` x `width` letterbox. Crop mode only; the long edge
+  is capped at `max(height, width)` to bound batch payload sizes.
 - `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
   crop JPEGs to a public host and rewrite inline batch request bodies to the
   URLs before submit, since inline hosts (e.g. OpenRouter) reject base64 /

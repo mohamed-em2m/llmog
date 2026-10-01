@@ -77,6 +77,10 @@ crop_padding_pct: 0
 # the FULL scene with the box highlighted/numbered and a directive to classify
 # only the marked box (more tokens per request -- mind batch payload sizes).
 recls_context: crop # "crop" | "full_som"
+# Ratio resize for the VLM crop (crop mode only): scale by this factor (1.5 =
+# 150%, aspect preserved, no letterbox bars) instead of the height x width
+# letterbox above. Long edge capped at max(height, width). Unset = letterbox.
+crop_resize_ratio: null
 
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null

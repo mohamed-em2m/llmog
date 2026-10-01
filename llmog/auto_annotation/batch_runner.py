@@ -97,6 +97,7 @@ def read_images_with_labels(
     drop_small_images: bool = True,
     crop_padding_pct: float = 0.0,
     recls_context: str = "crop",
+    crop_resize_ratio=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -328,6 +329,7 @@ def read_images_with_labels(
                         drop_small_images=drop_small_images,
                         crop_padding_pct=crop_padding_pct,
                         recls_context=recls_context,
+                        crop_resize_ratio=crop_resize_ratio,
                     )
                     if img is not None:
                         last_img = img
@@ -380,6 +382,7 @@ def read_images_with_labels(
                         drop_small_images=drop_small_images,
                         crop_padding_pct=crop_padding_pct,
                         recls_context=recls_context,
+                        crop_resize_ratio=crop_resize_ratio,
                     ): img_file
                     for img_file in batch_images
                 }

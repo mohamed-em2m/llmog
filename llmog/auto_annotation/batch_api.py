@@ -41,6 +41,7 @@ from auto_annotation.image_io import (
     draw_som_context,
     find_labeled_images,
     pad_box,
+    resize_crop_ratio,
 )
 from auto_annotation.single_image import _normalize_label, _parse_none_labels
 from free_detection.image_preprocessing import preprocess_custom_resize
@@ -130,6 +131,7 @@ def collect_batch_requests(
     known_names=(),
     crop_padding_pct=0.0,
     recls_context="crop",
+    crop_resize_ratio=None,
 ):
     """Build one batch request per classifiable box.
 
@@ -166,6 +168,18 @@ def collect_batch_requests(
         logger.info(
             "Reclassification context=full_som: sending the full scene with "
             "the box highlighted instead of the crop (more tokens/request)."
+        )
+    try:
+        _ratio = float(crop_resize_ratio) if crop_resize_ratio is not None else None
+        if _ratio is not None and _ratio <= 0:
+            _ratio = None
+    except (TypeError, ValueError):
+        _ratio = None
+    if _ratio is not None and not _som_mode:
+        logger.info(
+            f"Crop resize ratio={_ratio} (long edge capped at "
+            f"{max(target_height, target_width)}px) instead of the fixed "
+            f"{target_width}x{target_height} letterbox."
         )
 
     image_names = find_labeled_images(train_image, train_label, image_extensions)
@@ -290,11 +304,19 @@ def collect_batch_requests(
                     )
                     continue
                 try:
-                    pil_crop, _ = preprocess_custom_resize(
-                        Image.fromarray(crop),
-                        target_height=target_height,
-                        target_width=target_width,
-                    )
+                    pil_crop = Image.fromarray(crop)
+                    if _ratio is not None:
+                        pil_crop = resize_crop_ratio(
+                            pil_crop,
+                            _ratio,
+                            max_long_edge=max(target_height, target_width),
+                        )
+                    else:
+                        pil_crop, _ = preprocess_custom_resize(
+                            pil_crop,
+                            target_height=target_height,
+                            target_width=target_width,
+                        )
                     crop = np.array(pil_crop)
                 except Exception as e:
                     logger.error(
@@ -1202,6 +1224,7 @@ def run_batch_api_flow(
             known_names=with_class_map_lock,
             crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
             recls_context=getattr(args, "recls_context", "crop") or "crop",
+            crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
         )
         stats.images_total = len(stems)
         n_kept = sum(len(e["kept"]) for e in stems.values())
