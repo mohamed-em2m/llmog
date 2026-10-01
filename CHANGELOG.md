@@ -21,6 +21,12 @@ versioning follows [Semantic Versioning](https://semver.org/).
 - Failed inline batches also report the batch-level `error.message`, and the
   poll loop tolerates malformed payloads / missing `status` during provider
   registration lag.
+- Inline create body key order locked by test (`endpoint`, `model`, then
+  `requests` last) per OpenRouter's stream-parser requirement.
+- Track `cancelling` as an in-progress batch status; read per-request error
+  `type` as a message fallback.
+- README renders on PyPI: absolute asset URLs, corrected repo links, and a
+  `twine check`-clean long description.
 
 ## [1.3.0] - 2026-10-01
 
