@@ -399,6 +399,67 @@ def _append_retrieve(retrieved, url, headers, payload):
     return _FakeResponse(payload or {})
 
 
+def _inline_client(monkeypatch, get):
+    """Install a bare httpx fake whose GET behaves per ``get(url)``."""
+    import auto_annotation.batch_api as ba
+
+    class _Client:
+        def __call__(self, *a, **k):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url, headers=None):
+            return get(url)
+
+    monkeypatch.setattr(ba.httpx, "Client", _Client())
+    monkeypatch.setattr(ba.httpx, "Timeout", lambda *a, **k: None)
+    monkeypatch.setattr(ba.time, "sleep", lambda s: None)
+
+
+def test_poll_tolerates_transient_404_then_completes(monkeypatch):
+    """A fresh batch may 404 on GET until the provider registers it."""
+    calls = {"n": 0}
+
+    def _flaky_get(url):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return _FakeResponse({"error": {"message": "not found"}}, 404)
+        return _FakeResponse({"id": "b", "status": "completed"})
+
+    _inline_client(monkeypatch, _flaky_get)
+    batch = poll_batch_job(
+        FakeClient(),
+        {"batch_id": "b", "submit_style": "inline"},
+        poll_interval=5,
+        poll_timeout=60,
+    )
+    assert batch["status"] == "completed"
+    assert calls["n"] == 3
+
+
+def test_poll_gives_up_on_persistent_404(monkeypatch):
+    """A batch that never appears is a wrong id -- fail with guidance."""
+    import auto_annotation.batch_api as ba
+
+    _inline_client(
+        monkeypatch,
+        lambda url: _FakeResponse({"error": {"message": "not found"}}, 404),
+    )
+    monkeypatch.setattr(ba, "_NOT_FOUND_GRACE_S", 0)
+    with pytest.raises(RuntimeError, match="still not found"):
+        poll_batch_job(
+            FakeClient(),
+            {"batch_id": "b", "submit_style": "inline"},
+            poll_interval=5,
+            poll_timeout=60,
+        )
+
+
 def test_finalize_reads_inlined_results(dataset, tmp_path, inline_httpx):
     """OpenRouter-style: results live in the retrieve response, no output file."""
     img_dir, lbl_dir = dataset

@@ -46,6 +46,16 @@ SKIPPED_MANIFEST = "skipped_small_images.txt"
 _TERMINAL_OK = "completed"
 _TERMINAL_BAD = ("failed", "expired", "cancelled")
 _IN_PROGRESS = ("validating", "in_progress", "finalizing")
+# A freshly submitted batch may 404 on GET for a while (provider-side
+# registration lag -- seen on OpenRouter: create returns the id, the next
+# retrieve 1s later is "not found"). Tolerate consecutive 404s this long
+# before treating the batch id as genuinely wrong.
+_NOT_FOUND_GRACE_S = 900
+
+
+def _is_not_found_error(err) -> bool:
+    msg = str(err).lower()
+    return "not found" in msg or " 404" in msg or msg.startswith("404")
 
 
 def batch_job_path(output_folder) -> Path:
@@ -520,11 +530,40 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
         + ("(no timeout)." if not timeout else f"(timeout {timeout:.0f}s).")
     )
     try:
+        not_found_since = None
         while True:
-            if inline_mode:
-                batch = _retrieve_batch_inline(client, batch_id)
-            else:
-                batch = client.batches.retrieve(batch_id)
+            try:
+                if inline_mode:
+                    batch = _retrieve_batch_inline(client, batch_id)
+                else:
+                    batch = client.batches.retrieve(batch_id)
+            except RuntimeError as e:
+                if inline_mode and _is_not_found_error(e):
+                    if not_found_since is None:
+                        not_found_since = time.monotonic()
+                    waited = time.monotonic() - not_found_since
+                    if waited > _NOT_FOUND_GRACE_S:
+                        raise RuntimeError(
+                            f"Batch {batch_id} still not found after "
+                            f"{waited:.0f}s of polling. The id is probably wrong "
+                            "(provider-scoped) -- pass the right --batch_job_id "
+                            "or re-run with --batch_mode submit."
+                        ) from e
+                    logger.warning(
+                        f"Batch {batch_id} not yet visible at the provider "
+                        f"(404, {waited:.0f}s) -- still registering; will keep "
+                        "polling."
+                    )
+                    if timeout and (time.monotonic() - start) > timeout:
+                        raise TimeoutError(
+                            f"Batch {batch_id} still not visible after "
+                            f"{timeout:.0f}s. Re-run with --batch_mode poll to "
+                            "resume waiting later."
+                        )
+                    time.sleep(interval)
+                    continue
+                raise
+            not_found_since = None
             status = _batch_field(batch, "status", "?")
             counts = _batch_field(batch, "request_counts")
             if inline_mode and counts is None:
