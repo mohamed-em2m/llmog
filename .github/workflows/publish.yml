@@ -23,5 +23,5 @@ jobs:
         run: python -m pip install --upgrade build
       - name: build
         run: python -m build
-      - name: push
+      - name: publish
         run: pypa/gh-action-pypi-publish@release/v1

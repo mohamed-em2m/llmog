@@ -105,3 +105,7 @@ explicit = true
 
 [tool.uv.sources]
 llama-cpp-python = [{ index = "llama-cpp-python-cuda" }]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
