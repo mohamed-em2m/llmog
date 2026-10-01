@@ -100,15 +100,22 @@ max_workers:
   # RPM/TPM rate limits, so raise this only if your provider allows it.
   # On 429s, lower max_workers and/or batch_size and retry.
 
-# --- OpenAI Batch API (optional, ~50% cheaper than sync) -----------------------
+# --- OpenAI Batch API (~50% cheaper than sync) ---------------------------------
 # One /v1/chat/completions request per box is submitted as a batch job, then
 # polled to completion and finalized into YOLO labels. Needs a provider with
-# /v1/batches support (OpenAI, and some OpenAI-compatible hosts).
-# use_batch_api: false
-# batch_mode: auto # "auto" | "submit" (exit after submit) | "poll" (finalize a saved job)
-# batch_poll_interval: 60
-# batch_poll_timeout: 0 # 0 = wait forever; re-run with batch_mode poll to resume
-# batch_completion_window: 24h
+# /v1/batches support (OpenAI, and some OpenAI-compatible hosts) — the local
+# llama.cpp / vLLM servers do not implement it, so keep server_type: external
+# above. max_workers and batch_size are unused on this path.
+#
+# Jobs can take up to 24h. To split the work across sessions:
+#   batch_mode: submit  -> uploads the job, writes <output>/.batch_job.json, exits
+#   batch_mode: poll    -> re-run with the same config later to finalize labels
+#   batch_mode: auto    -> submit + wait + finalize in one run (default)
+use_batch_api: true
+batch_mode: auto # "auto" | "submit" (exit after submit) | "poll" (finalize a saved job)
+batch_poll_interval: 60
+batch_poll_timeout: 0 # 0 = wait forever; re-run with batch_mode poll to resume
+batch_completion_window: 24h
 # batch_job_id: null # poll a specific provider batch id instead of the saved job
 
 # --- Provider-specific params (optional) --------------------------------------
