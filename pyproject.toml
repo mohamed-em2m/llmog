@@ -83,6 +83,16 @@ include = [
 ]
 exclude = ["*.egg-info"]
 
+# Runtime-read data files that MUST ship in the wheel/sdist, otherwise a
+# PyPI install breaks: DetectionViewer reads static/* at use time, and
+# interface/state.py reads console.css/console.js at import time.
+# (prompts/*.md are NOT a package and all loaders have hardcoded
+# fallbacks, so they degrade gracefully -- packaging them needs a
+# prompts package + importlib.resources refactor, left as follow-up.)
+[tool.setuptools.package-data]
+detection_viewer = ["static/*"]
+interface = ["console.css", "console.js"]
+
 [tool.uv]
 package = true
 
@@ -107,5 +117,12 @@ explicit = true
 llama-cpp-python = [{ index = "llama-cpp-python-cuda" }]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# NOTE: setuptools, not hatchling -- the [tool.setuptools] blocks above
+# (package-dir + packages.find + py-modules) are setuptools-only config
+# that hatchling silently ignores, and hatchling misdetects this layout.
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/mohamed-em2m/llmog"
+Repository = "https://github.com/mohamed-em2m/llmog"
