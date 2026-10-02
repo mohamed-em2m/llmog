@@ -163,6 +163,15 @@ def rebuild_checkpoint(
         "class_map": dict(class_map),
         "batches_done": [],
     }
+    # Carry over the run-settings fingerprint when rebuilding over an
+    # existing checkpoint, so a later resume still checks flag changes.
+    if ckpt.exists():
+        try:
+            old = json.loads(ckpt.read_text(encoding="utf-8"))
+            if isinstance(old, dict) and isinstance(old.get("run_settings"), dict):
+                payload["run_settings"] = dict(old["run_settings"])
+        except Exception:
+            pass
     if dry_run:
         logger.info(f"[dry run] would write {ckpt} ({len(by_stem)} completed).")
         return payload

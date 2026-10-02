@@ -102,7 +102,7 @@ def _call_process_one_image(monkeypatch, tmp_path, img_file, fail=None, **kw):
     calls = {"saves": []}
 
     class FakeCheckpoint:
-        def save(self, completed, class_map, batches):
+        def save(self, completed, class_map, batches, run_settings=None):
             calls["saves"].append((set(completed), dict(class_map), set(batches)))
 
     if fail is not None:

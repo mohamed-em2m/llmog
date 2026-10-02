@@ -4,7 +4,9 @@ import json
 
 from auto_annotation.checkpoint import (
     CheckpointManager,
+    build_run_settings,
     next_free_id,
+    run_settings_mismatches,
     validate_checkpoint_data,
 )
 from auto_annotation.yaml_utils import find_renumbered, save_updated_yaml
@@ -83,6 +85,77 @@ class TestCheckpointRoundtrip:
             )
         )
         assert CheckpointManager(tmp_path).load() is None
+
+
+class TestRunSettingsFingerprint:
+    def test_save_load_roundtrip(self, tmp_path):
+        mgr = CheckpointManager(tmp_path)
+        fp = build_run_settings(
+            crop_padding_pct=50,
+            recls_context="crop",
+            crop_resize_ratio=None,
+            min_box_size=0,
+            small_box_action="keep",
+            model="m",
+            height=1024,
+            width=1024,
+            class_mode="hybrid",
+        )
+        mgr.save({"img1"}, {"a": 0}, set(), fp)
+        data = mgr.load()
+        assert data["run_settings"]["crop_padding_pct"] == 50
+        assert data["run_settings"]["crop_resize_ratio"] is None
+
+    def test_old_checkpoint_without_fingerprint_loads(self, tmp_path):
+        p = tmp_path / ".checkpoint.json"
+        p.write_text(
+            json.dumps(
+                {
+                    "completed_images": ["x"],
+                    "class_map": {"a": 0},
+                    "batches_done": [],
+                }
+            )
+        )
+        data = CheckpointManager(tmp_path).load()
+        assert data is not None
+        assert (
+            run_settings_mismatches(
+                data.get("run_settings"), build_run_settings(crop_padding_pct=50)
+            )
+            == []
+        )
+
+    def test_detects_changed_keys(self):
+        saved = build_run_settings(
+            crop_padding_pct=0,
+            recls_context="crop",
+            min_box_size=0,
+            model="m",
+            class_mode="hybrid",
+        )
+        current = build_run_settings(
+            crop_padding_pct=50,
+            recls_context="full_som",
+            min_box_size=0,
+            model="m",
+            class_mode="hybrid",
+        )
+        diffs = run_settings_mismatches(saved, current)
+        assert any(d.startswith("crop_padding_pct:") for d in diffs)
+        assert any(d.startswith("recls_context:") for d in diffs)
+        assert not any(d.startswith("min_box_size:") for d in diffs)
+
+    def test_numeric_string_equivalence(self):
+        saved = {"crop_padding_pct": 0, "height": 1024}
+        current = {"crop_padding_pct": 0.0, "height": "1024"}
+        assert run_settings_mismatches(saved, current) == []
+
+    def test_unset_to_set_detected(self):
+        saved = build_run_settings(crop_resize_ratio=None, model="m")
+        current = build_run_settings(crop_resize_ratio=1.5, model="m")
+        diffs = run_settings_mismatches(saved, current)
+        assert any(d.startswith("crop_resize_ratio:") for d in diffs)
 
 
 class TestYamlGuard:

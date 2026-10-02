@@ -12,6 +12,13 @@ The checkpoint records:
   - batches_done:     batch indices that are fully finished, so a
                        resumed run can skip a whole batch folder without
                        even checking each image inside it individually
+  - run_settings:     fingerprint of the label-affecting settings that
+                       produced the finished labels (crop padding/context/
+                       resize, size filter, model, resolution, class mode).
+                       On resume the current flags are compared against it
+                       and every change is WARNING-logged, so a run that
+                       tweaks e.g. --crop_padding_pct mid-dataset cannot
+                       silently mix labels produced under different settings.
 
 Writes are atomic (write to a temp file, then os.replace) so a crash
 mid-write can never leave a corrupt/partial checkpoint behind.
@@ -81,7 +88,69 @@ def validate_checkpoint_data(data):
                 )
     if not isinstance(batches, list):
         errors.append("batches_done is not a list")
+    rs = data.get("run_settings", None)
+    if rs is not None and not isinstance(rs, dict):
+        warnings.append("run_settings is not an object (settings check skipped)")
     return warnings, errors
+
+
+# Label-affecting settings fingerprinted into the checkpoint so a resume
+# with changed flags warns instead of silently mixing label vintages.
+RUN_SETTINGS_KEYS = (
+    "crop_padding_pct",
+    "recls_context",
+    "crop_resize_ratio",
+    "min_box_size",
+    "small_box_action",
+    "model",
+    "height",
+    "width",
+    "class_mode",
+)
+
+
+def build_run_settings(**values) -> dict:
+    """Build a fingerprint dict with ALL known keys (None when unset).
+
+    Every key is always present so "unset -> set" changes across resumes
+    are detected too; only a wholly-missing fingerprint (pre-upgrade
+    checkpoints) skips the comparison.
+    """
+    return {k: values.get(k) for k in RUN_SETTINGS_KEYS}
+
+
+def _norm_setting(v):
+    """Normalize for comparison: 0 == 0.0 == "0"; strings stripped."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip()
+        try:
+            return float(s)
+        except ValueError:
+            return s
+    return v
+
+
+def run_settings_mismatches(saved, current) -> list:
+    """Compare a saved fingerprint against current settings.
+
+    Returns ["key: was OLD, now NEW", ...] for keys present in the saved
+    fingerprint whose normalized value differs. Keys absent from the saved
+    fingerprint (e.g. pre-upgrade checkpoints) never mismatch.
+    """
+    saved = saved or {}
+    current = current or {}
+    diffs = []
+    for k in RUN_SETTINGS_KEYS:
+        if k not in saved:
+            continue
+        old, new = _norm_setting(saved[k]), _norm_setting(current.get(k))
+        if old != new:
+            diffs.append(f"{k}: checkpoint had {saved[k]!r}, now {current.get(k)!r}")
+    return diffs
 
 
 class CheckpointManager:
@@ -125,14 +194,21 @@ class CheckpointManager:
             )
             return None
 
-    def save(self, completed_images, class_map, batches_done):
-        """completed_images / batches_done: iterables (sets are fine)."""
+    def save(self, completed_images, class_map, batches_done, run_settings=None):
+        """completed_images / batches_done: iterables (sets are fine).
+
+        ``run_settings``: optional fingerprint dict (see
+        :func:`build_run_settings`); omitted when None so old callers and
+        old checkpoint files keep working.
+        """
         with self._lock:
             payload = {
                 "completed_images": sorted(completed_images),
                 "class_map": dict(class_map),
                 "batches_done": sorted(batches_done),
             }
+            if run_settings is not None:
+                payload["run_settings"] = dict(run_settings)
             tmp_path = self.path.with_suffix(".tmp")
             try:
                 with open(tmp_path, "w") as f:

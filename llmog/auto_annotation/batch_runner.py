@@ -11,6 +11,7 @@ import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from auto_annotation.logging_utils import logger
+from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.stats import RunStats
 from auto_annotation.image_io import find_labeled_images, chunk_list
 from auto_annotation.server_guard import (
@@ -135,6 +136,20 @@ def read_images_with_labels(
         completed_images = set()
     if batches_done is None:
         batches_done = set()
+    # Fingerprint of the label-affecting settings, stored in the checkpoint
+    # with every save so a resume with changed flags warns (main.py) instead
+    # of silently mixing label vintages.
+    _run_settings = build_run_settings(
+        crop_padding_pct=crop_padding_pct,
+        recls_context=recls_context,
+        crop_resize_ratio=crop_resize_ratio,
+        min_box_size=min_box_size,
+        small_box_action=small_box_action,
+        model=model_name,
+        height=target_height,
+        width=target_width,
+        class_mode=class_mode,
+    )
     # Staging vs final output: in-progress batches live under
     # <output>/batches/batch_XXXX/; <output>/labels/ is reserved for the final
     # flattened YOLO labels written after all batches finish. Legacy runs
@@ -432,7 +447,10 @@ def read_images_with_labels(
                 with class_map_lock:
                     class_map_snapshot = dict(class_map)
                 checkpoint.save(
-                    completed_snapshot, class_map_snapshot, set(batches_done)
+                    completed_snapshot,
+                    class_map_snapshot,
+                    set(batches_done),
+                    _run_settings,
                 )
             else:
                 batches_done.add(batch_idx)
@@ -441,7 +459,10 @@ def read_images_with_labels(
                 with class_map_lock:
                     class_map_snapshot = dict(class_map)
                 checkpoint.save(
-                    completed_snapshot, class_map_snapshot, set(batches_done)
+                    completed_snapshot,
+                    class_map_snapshot,
+                    set(batches_done),
+                    _run_settings,
                 )
 
     return last_img

@@ -36,6 +36,7 @@ import numpy as np
 from PIL import Image
 
 from auto_annotation.logging_utils import logger
+from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.image_io import (
     build_classify_body,
     draw_som_context,
@@ -568,6 +569,7 @@ def submit_batch_job(
     submit_style="auto",
     public_images=False,
     image_host="catbox",
+    run_settings=None,
 ):
     """Write the JSONL, upload it, create the batch, persist the job file.
 
@@ -584,6 +586,11 @@ def submit_batch_job(
     to ``image_host`` and rewrite data-URI parts to public URLs first
     (inline hosts reject base64 images). Without it, data-URI bodies fail
     fast inside ``_create_batch_inline`` instead of billing a dead batch.
+
+    ``run_settings``: optional fingerprint dict (see
+    ``auto_annotation.checkpoint.build_run_settings``) describing the
+    label-affecting settings that built these requests; stored in the job
+    file so finalize writes it into the checkpoint.
     """
     # OpenRouter-style hosts resolve the ``:batch`` catalog entry themselves:
     # the Batch API takes the BASE model slug (their own example submits
@@ -704,6 +711,8 @@ def submit_batch_job(
         "params": dict(params or {}),
         "stems": stems,
     }
+    if run_settings is not None:
+        job["run_settings"] = dict(run_settings)
     save_job(output_folder, job)
     return job
 
@@ -1109,7 +1118,10 @@ def finalize_batch_job(
         if batches_done is not None and not inplace_saving:
             batches_done.add(0)
         checkpoint.save(
-            set(completed_images), dict(class_map), set(batches_done or set())
+            set(completed_images),
+            dict(class_map),
+            set(batches_done or set()),
+            job.get("run_settings"),
         )
 
     job["phase"] = "done"
@@ -1292,6 +1304,17 @@ def run_batch_api_flow(
             submit_style=getattr(args, "batch_submit_style", "auto") or "auto",
             public_images=getattr(args, "batch_public_images", False),
             image_host=getattr(args, "image_host", "catbox") or "catbox",
+            run_settings=build_run_settings(
+                crop_padding_pct=getattr(args, "crop_padding_pct", 0.0),
+                recls_context=getattr(args, "recls_context", "crop"),
+                crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
+                min_box_size=getattr(args, "min_box_size", 0),
+                small_box_action=getattr(args, "small_box_action", "keep"),
+                model=args.model,
+                height=target_height,
+                width=target_width,
+                class_mode=getattr(args, "class_mode", "hybrid"),
+            ),
         )
         if mode == "submit":
             logger.info(

@@ -16,6 +16,7 @@ from auto_annotation.image_io import (
     pad_box,
     resize_crop_ratio,
 )
+from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.server_guard import (
     ServerDownError,
     is_server_error,
@@ -161,6 +162,20 @@ def process_one_image(
             f"{max(target_height, target_width)}px) instead of the fixed "
             f"{target_width}x{target_height} letterbox."
         )
+    # Fingerprint of the label-affecting settings, stored in the checkpoint
+    # with every save so a resume with changed flags warns (main.py) instead
+    # of silently mixing label vintages.
+    _run_settings = build_run_settings(
+        crop_padding_pct=_crop_pad,
+        recls_context=recls_context,
+        crop_resize_ratio=crop_resize_ratio,
+        min_box_size=min_box_size,
+        small_box_action=small_box_action,
+        model=model_name,
+        height=target_height,
+        width=target_width,
+        class_mode=class_mode,
+    )
 
     try:
         with open(label_path, "r") as f:
@@ -521,7 +536,9 @@ def process_one_image(
             with class_map_lock:
                 class_map_snapshot = dict(class_map)
             batches_snapshot = set(batches_done) if batches_done is not None else set()
-            checkpoint.save(completed_snapshot, class_map_snapshot, batches_snapshot)
+            checkpoint.save(
+                completed_snapshot, class_map_snapshot, batches_snapshot, _run_settings
+            )
         stats.log_progress(img_file)
         return img
 
@@ -581,7 +598,9 @@ def process_one_image(
         with class_map_lock:
             class_map_snapshot = dict(class_map)
         batches_snapshot = set(batches_done) if batches_done is not None else set()
-        checkpoint.save(completed_snapshot, class_map_snapshot, batches_snapshot)
+        checkpoint.save(
+            completed_snapshot, class_map_snapshot, batches_snapshot, _run_settings
+        )
     elif not write_ok:
         # Don't silently mark progress for an image whose label file failed
         # to write -- otherwise a resumed run would skip it forever even

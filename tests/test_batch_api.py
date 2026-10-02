@@ -450,6 +450,31 @@ def test_submit_inline_key_order_requests_last(dataset, tmp_path, inline_httpx):
     assert all(list(r.keys()) == ["custom_id", "body"] for r in payload["requests"])
 
 
+def test_submit_stores_run_settings_in_job(dataset, tmp_path):
+    """The build-time settings fingerprint rides in the job file."""
+    from auto_annotation.checkpoint import build_run_settings
+
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    fp = build_run_settings(crop_padding_pct=50, model="m")
+    submit_batch_job(
+        FakeClient(),
+        str(tmp_path),
+        reqs,
+        stems,
+        "m",
+        {},
+        _params(),
+        run_settings=fp,
+    )
+    assert load_job(str(tmp_path))["run_settings"]["crop_padding_pct"] == 50
+    # omitted when not provided (old callers / file-style jobs)
+    job2 = submit_batch_job(
+        FakeClient(), str(tmp_path), reqs, stems, "m", {}, _params()
+    )
+    assert "run_settings" not in job2
+
+
 def _as_url_images(reqs, url="https://example.com/crop.jpg"):
     """Rewrite data-URI image parts to public URLs (inline hosts are URL-only)."""
     for req in reqs:

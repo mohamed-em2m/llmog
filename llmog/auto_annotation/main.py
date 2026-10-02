@@ -15,7 +15,11 @@ import yaml
 
 from auto_annotation.logging_utils import logger, setup_logging
 from auto_annotation.stats import RunStats
-from auto_annotation.checkpoint import CheckpointManager
+from auto_annotation.checkpoint import (
+    CheckpointManager,
+    build_run_settings,
+    run_settings_mismatches,
+)
 from auto_annotation.server_guard import ServerDownError
 from auto_annotation.image_io import load_or_init_class_map
 from auto_annotation.server_init import build_client
@@ -342,6 +346,38 @@ def main(args=None):
     else:
         target_height = args.height
         target_width = args.width
+
+    # ---- Resume check: run-settings fingerprint ---------------------------
+    # The checkpoint stores the label-affecting settings that produced the
+    # finished labels. If flags changed since (e.g. --crop_padding_pct),
+    # the resumed run would silently mix label vintages -- warn loudly.
+    # Pre-upgrade checkpoints have no fingerprint: nothing to compare.
+    if checkpoint_data:
+        saved_fp = checkpoint_data.get("run_settings")
+        if not isinstance(saved_fp, dict):
+            logger.info(
+                "Resume check: checkpoint has no run-settings fingerprint "
+                "(pre-upgrade); skipping flag-change check."
+            )
+        else:
+            current_fp = build_run_settings(
+                crop_padding_pct=getattr(args, "crop_padding_pct", 0.0),
+                recls_context=getattr(args, "recls_context", "crop"),
+                crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
+                min_box_size=getattr(args, "min_box_size", 0),
+                small_box_action=getattr(args, "small_box_action", "keep"),
+                model=getattr(args, "model", None),
+                height=target_height,
+                width=target_width,
+                class_mode=getattr(args, "class_mode", "hybrid"),
+            )
+            for diff in run_settings_mismatches(saved_fp, current_fp):
+                logger.warning(
+                    f"Resume check: label-affecting setting changed -- {diff}. "
+                    "Already-finished images keep their old labels; only "
+                    "remaining images use the new setting. Re-run with "
+                    "--no_auto_resume for a uniform dataset."
+                )
 
     try:
         if getattr(args, "use_batch_api", False):

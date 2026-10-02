@@ -20,6 +20,12 @@ versioning follows [Semantic Versioning](https://semver.org/).
   crop by this factor (LANCZOS, aspect preserved, no letterbox bars) instead
   of the fixed `height` x `width` letterbox. Crop mode only; the long edge
   is capped at `max(height, width)` to bound batch payload sizes.
+- Run-settings fingerprint: `.checkpoint.json` now records the label-affecting
+  settings (`crop_padding_pct`, `recls_context`, `crop_resize_ratio`,
+  `min_box_size`, `small_box_action`, `model`, `height`/`width`, `class_mode`);
+  resuming with changed flags WARNING-logs every old→new value instead of
+  silently mixing label vintages. Old checkpoints without a fingerprint skip
+  the check; batch jobs carry the fingerprint from submit to finalize.
 - `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
   crop JPEGs to a public host and rewrite inline batch request bodies to the
   URLs before submit, since inline hosts (e.g. OpenRouter) reject base64 /
