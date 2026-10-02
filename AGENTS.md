@@ -11,9 +11,10 @@ Interactive test console for assessing Vision-Language Models (VLMs) on object d
 ## Entry Points
 | Command | Module | Description |
 |---------|--------|-------------|
-| `uv run llmog` | `main:main` | Unified CLI; dispatches by `--task` (`free_detection` / `auto_label`) |
+| `uv run llmog` | `main:main` | Unified CLI; dispatches by `--task` (`free_detection` / `auto_label` / `classify`) |
 | `uv run detection-cli` | `free_detection:main` | Shortcut for `llmog --task free_detection` (detector/judge loop on `--image` paths) |
 | `uv run auto-annotation` | `auto_annotation:main` | Shortcut for `llmog --task auto_label` (batch YOLO relabeling from a `data.yaml`) |
+| `uv run classify-cli` | `image_classification:main` | Shortcut for `llmog --task classify` (whole-image single/multi/top_k) |
 | `uv run detection-gui` | `interface.gui:main` | Launch Gradio console (`app_builder.build_app()`) |
 
 Single source of truth for CLI flags: `llmog/schemes/argument.py:PipelineConfig` (pydantic v2). `llmog/main.py:build_parser` mirrors every field onto `argparse`; `parse_args()` overlays optional `--config <yaml>` and constructs validated `PipelineConfig`.
@@ -21,11 +22,20 @@ Single source of truth for CLI flags: `llmog/schemes/argument.py:PipelineConfig`
 ## Key Directories
 - `llmog/` — Package root (`tool.setuptools.package-dir = {"": "llmog"}`)
 - `llmog/schemes/` — `PipelineConfig` + argparse mirror
-- `llmog/main.py` — Unified CLI dispatcher (`--task free_detection | auto_label`)
+- `llmog/main.py` — Unified CLI dispatcher (`--task free_detection | auto_label | classify`)
 - `llmog/free_detection/` — Detector/Judge pipeline package
 - `llmog/free_detection/agent/` — LangGraph nodes (`preprocess`, `detector`, `crop_verify`, `judge`, `loop`, `finalize`), `pipeline.py`, `state.py`, `visuals.py`, `client_utils.py` (429-aware retry)
 - `llmog/detection_viewer/` — New `DetectionViewer` (gr.HTML) – `__init__.py`, `static/template.html|style.css|script.js`, `py.typed` – client-side canvas, WebP cache with dedup (`_WEBP_URL_CACHE`)
 - `llmog/auto_annotation/` — Batch YOLO relabeling
+  - `batch_api.py` — OpenAI Batch API flow: `collect_batch_requests()` (shuffle→slice→`num_samples`, min-box filter, crop/pad/resize/SoM), `submit_batch_job()` (file/inline/auto styles, `:batch` strip, data-URI guard, public-URL rewrite), `poll_batch_job()` (404/transport tolerance, terminal states), `finalize_batch_job()` (online-path semantics, kept-merge, manifest, checkpoint)
+  - `batch_runner.py` — Online path: `read_images_with_labels()` (selection, `ThreadPoolExecutor`, per-batch checkpoint) → `process_one_image()` per image
+  - `single_image.py` — Per-image relabel: small-box filter → pad/resize/SoM crop → `detect_defect()` → none/strict/drop guards → write + checkpoint
+  - `image_io.py` — Shared crop/body builders: `find_labeled_images()`, `pad_box()`, `draw_som_context()`, `resize_crop_ratio()`, `build_classify_body()` (byte-identical sync/batch), `detect_defect()`
+  - `image_hosting.py` — Public crop upload (catbox, SHA-256 cache `.uploaded_images.json`) for inline hosts
+  - `checkpoint.py` — `CheckpointManager` (atomic writes), `save_under_locks()` (fixed lock order), `build_run_settings()` fingerprint + `run_settings_mismatches()`
+  - `reverse_batches.py` — `flatten_batches_to_labels()` (staging → flat `labels/`, creates missing dir), `rebuild_checkpoint()`, `drop_classes_and_compact()`
+  - `cli.py` — Standalone `auto-annotation` parser (mirrors unified flags + hand-built Namespace defaults)
+- `llmog/image_classification/` — Whole-image classify task
 - `llmog/prompts/` — Markdown templates for detector/judge/realtime (`detector_agent.md`, `realtime_detector.md`, `auto_label_classifier.md`) loaded via DynaPrompt
 - `llmog/servers/` — `LlamaServerManager`/`VllmServerManager` + `servers_factory`
 - `llmog/interface/` — Gradio console
@@ -86,10 +96,17 @@ uv run pytest -q
 - **Rate limiting**: `client_utils._call_with_retries()` handles 429 with `RetryInfo` delay + jitter, caps at 60s, global Gemini 4s interval; tiling `max_workers` capped to 1 for Gemini.
 - **Starlette deprecation**: `gui.py`/`app_builder.py` filter `HTTP_422_UNPROCESSABLE_ENTITY` `StarletteDeprecationWarning` (Gradio 6 routes.py:1379).
 - **Performance**: `viewer_utils.build_prep_config()` single source; lazy grid (`runner.py:333` stores `None` until `explorer.py:79`); 1600px cache cap; WebP dedup (`detection_viewer/__init__.py:34`); realtime downscale to 1280 (`realtime/utils.py:97` JPEG q85), `stream_every=0.12`, `motion_gate` 64×64 diff, video cap 60 frames.
+- **auto_label sampling order**: `find_labeled_images()` (sorted, non-empty labels only) → `shuffle` all with `seed` → `[start:end)` slice → `[:num_samples]`. Seed is ignored without `--shuffle`; same seed = same sample (reproducibility).
+- **Small-box filter**: `width < min_box_size OR height < min_box_size` in ORIGINAL pixels, before padding/resize/SoM. `small_box_action keep` preserves the box (coords byte-identical); its class id stays if free in the map, else mints a FRESH id (`original_class_<old>`) via `resolve_kept_class()` — never silently merges. `drop` omits; `drop_small_images` (default ON) writes no file + manifests `<output>/skipped_small_images.txt` for filter-emptied images.
+- **Reclassification context**: `--crop_padding_pct` (box-relative % per side, both paths), `--recls_context crop|full_som` (`draw_som_context()` full scene + directive), `--crop_resize_ratio` (scale factor replacing fixed letterbox, long-edge capped). Sync and batch bodies are byte-identical by construction (`build_classify_body()`).
+- **Batch API** (`--use_batch_api`, external server only): `batch_mode auto|submit|poll`, job in `<output>/.batch_job.json` (saved job short-circuits rebuild; delete for a fresh sample). `batch_submit_style auto|file|inline` — inline hosts (OpenRouter) need base model slug (`:batch` stripped), metadata-first key order, and reject base64 images (fail-fast guard; `--batch_public_images` uploads crops to catbox with hash cache, world-readable warning). Poll tolerates registration lag; finalize mirrors online semantics into `<output>/batches/batch_0000/` (the layout flatten scans).
+- **Checkpoints**: `.checkpoint.json` holds `completed_images`/`class_map`/`batches_done` + `run_settings` fingerprint; resume WARNINGs on any changed label-affecting flag and drops stale `batches_done` when `--batch_size` changes. Writes go through `save_under_locks()` (fixed lock order) — never snapshot-then-`save()` across threads. Non-server model failures skip write+checkpoint (retry on resume) like server failures.
+- **Packaging**: `setuptools.build_meta` backend (hatchling cannot build this layout); `[tool.setuptools.package-data]` ships `detection_viewer/static/*` + `interface/console.css|js` (both read at runtime); `twine check` must pass on sdist+wheel. `prompts/*.md` are NOT packaged (all loaders have hardcoded fallbacks).
 
 ## Development Notes
-- Test suite: `pytest` 6 tests in `tests/test_detection_graph.py` (graph, json-repair, tiled, multi-round); `pytest.ini` filters `HTTP_422` deprecation.
-- No lint/typecheck enforced but `py.typed` present for `detection_viewer`.
+- Test suite: `pytest` ~160 tests across 9 files (`test_batch_api.py` is the largest: batch flow, selection, filters, poll/finalize, hosting). `pytest.ini` filters `HTTP_422` deprecation. 2 known pre-existing failures (`test_pipeline_execution_tiled`, `test_load_image_variants` — fail on clean tree too).
+- Pre-commit hooks enforced (ruff, ruff-format, commitlint-conventional): keep diffs formatted or commits abort; multi-line `if` conditions get collapsed — check `git status` after a failed commit and recommit.
+- No typecheck enforced but `py.typed` present for `detection_viewer`.
 - Gradio theme: `console_theme.py` + `console.css`/`console.js` loaded in `app_builder.build_app()` via `Blocks(theme=theme, css=custom_css)`; `console.css` includes DetectionViewer dark overrides and `draw-tab-row` responsive.
 - `detection_viewer/static/script.js` is `js_on_load` for `DetectionViewer`; draw canvases use `CustomCanvasController` / `CustomCanvasControllerRT` singletons with id-prefixed HTML for Draw vs Real-Time Draw isolation.
 - Logging: standard `logging` with `[LEVEL] message`; `batch/runner.py` uses `log_capture` tail.
