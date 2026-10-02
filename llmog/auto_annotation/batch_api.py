@@ -1002,7 +1002,24 @@ def finalize_batch_job(
 
         new_label_lines = list(kept)
         if kept:
+            from auto_annotation.yaml_utils import ensure_class_id
+
             stats.incr("boxes_kept_small", len(kept))
+            # Verbatim kept lines are only trainable if their original class
+            # ids exist in the map -- register unknown ones (finalize is
+            # single-threaded, no lock needed).
+            for _kept_line in kept:
+                _parts = _kept_line.split()
+                if not _parts:
+                    continue
+                _kept_name, _kept_added = ensure_class_id(class_map, _parts[0])
+                if _kept_added:
+                    logger.warning(
+                        f"{img_file}: kept small box references class id "
+                        f"{_parts[0]} missing from the class map; registered "
+                        f"as {_kept_name!r} so data.yaml stays trainable."
+                    )
+                    stats.note_new_class(_kept_name)
         if skipped_small:
             stats.incr("boxes_skipped_small", skipped_small)
         low_conf = []

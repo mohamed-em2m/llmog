@@ -23,6 +23,34 @@ def find_renumbered(old_names, class_map):
     return renumbered
 
 
+def ensure_class_id(class_map, cid, prefix="original_class"):
+    """Ensure integer class id ``cid`` exists in ``class_map`` (mutated in place).
+
+    Used by the small-box ``keep`` path, which writes the original YOLO line
+    verbatim: without this, a kept box whose id has no name in the map would
+    produce a label file referencing a nameless id in data.yaml (untrainable).
+    Returns ``(name, added)``; caller must hold the class_map lock when
+    threaded. Never remaps an id that is already taken.
+    """
+    try:
+        cid = int(float(str(cid).strip()))
+    except (TypeError, ValueError):
+        return None, False
+    for name, idx in (class_map or {}).items():
+        try:
+            if int(idx) == cid:
+                return name, False
+        except (TypeError, ValueError):
+            continue
+    name = f"{prefix}_{cid}"
+    i = 0
+    while name in class_map:
+        i += 1
+        name = f"{prefix}_{cid}_{i}"
+    class_map[name] = cid
+    return name, True
+
+
 def save_updated_yaml(yaml_path, output_folder, original_data, class_map):
     if not class_map:
         logger.warning(

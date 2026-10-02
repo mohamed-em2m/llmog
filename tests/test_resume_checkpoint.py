@@ -181,3 +181,28 @@ class TestYamlGuard:
         assert data["nc"] == 2
         out = yaml.safe_load((tmp_path / "data.yaml").read_text())
         assert out["names"] == ["a", "b"]
+
+
+class TestEnsureClassId:
+    def test_existing_id_returns_name(self):
+        from auto_annotation.yaml_utils import ensure_class_id
+
+        assert ensure_class_id({"hole": 0}, 0) == ("hole", False)
+        assert ensure_class_id({"hole": 0}, "0") == ("hole", False)
+
+    def test_unknown_id_registered(self):
+        from auto_annotation.yaml_utils import ensure_class_id
+
+        m = {"hole": 0}
+        assert ensure_class_id(m, 5) == ("original_class_5", True)
+        assert m == {"hole": 0, "original_class_5": 5}
+        # second call finds it
+        assert ensure_class_id(m, 5) == ("original_class_5", False)
+
+    def test_invalid_and_name_collision(self):
+        from auto_annotation.yaml_utils import ensure_class_id
+
+        assert ensure_class_id({}, "abc") == (None, False)
+        m = {"original_class_5": 0}  # name taken by another id
+        name, added = ensure_class_id(m, 5)
+        assert added and name != "original_class_5" and m[name] == 5

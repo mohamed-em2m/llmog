@@ -35,7 +35,10 @@ versioning follows [Semantic Versioning](https://semver.org/).
   data; sync mode keeps base64 private per request.
 
 ### Fixed
-- Upload cache now persists incrementally, so an interrupted public-image
+- Small-box `keep` now registers kept boxes' original class ids in the class
+  map (`original_class_<id>`, with a WARNING) when missing, so kept lines
+  never reference a nameless id in data.yaml (previously untrainable output).
+  Upload cache now persists incrementally, so an interrupted public-image
   upload run resumes without re-uploading; the on-disk `batch_requests.jsonl`
   is re-written after URL rewriting so the artifact matches what was sent.
 - Inline submit now fails fast with guidance when request bodies still embed

@@ -205,6 +205,70 @@ class TestDeadServerSingleImage:
 
 
 # ---------------------------------------------------------------------------
+# small-box keep registers unknown original ids
+# ---------------------------------------------------------------------------
+class TestKeepRegistersUnknownId:
+    def test_foreign_id_kept_and_registered(self, tmp_path, monkeypatch):
+        import threading
+
+        from auto_annotation.single_image import process_one_image
+        from auto_annotation.stats import RunStats
+
+        train_image = tmp_path / "images"
+        train_label = tmp_path / "labels"
+        train_image.mkdir()
+        train_label.mkdir()
+        Image.new("RGB", (100, 100), (128, 128, 128)).save(train_image / "img0.jpg")
+        # 50px box on a 100px image, foreign class id 9
+        (train_label / "img0.txt").write_text("9 0.5 0.5 0.5 0.5\n")
+
+        def _must_not_run(*a, **k):
+            raise AssertionError("kept boxes must never reach the model")
+
+        monkeypatch.setattr("auto_annotation.single_image.detect_defect", _must_not_run)
+
+        out = tmp_path / "out"
+        out.mkdir(exist_ok=True)
+        stats = RunStats()
+        class_map = {}
+        completed = set()
+        saves = []
+
+        class FakeCheckpoint:
+            def save(self, completed, class_map, batches, run_settings=None):
+                saves.append(dict(run_settings or {}))
+
+        process_one_image(
+            "img0.jpg",
+            str(train_image),
+            str(train_label),
+            str(out),
+            class_map,
+            threading.Lock(),
+            object(),
+            "test-model",
+            2,
+            False,
+            False,
+            64,
+            64,
+            stats,
+            False,
+            checkpoint=FakeCheckpoint(),
+            completed_images=completed,
+            completed_lock=threading.Lock(),
+            batches_done=set(),
+            min_box_size=60,
+            small_box_action="keep",
+        )
+        # verbatim line kept AND the unknown id registered for data.yaml
+        assert (out / "img0.txt").read_text() == "9 0.5 0.5 0.5 0.5\n"
+        assert class_map == {"original_class_9": 9}
+        # checkpoint carries the settings fingerprint
+        assert saves and saves[0].get("model") == "test-model"
+
+
+# ---------------------------------------------------------------------------
 # batch_runner aborts the whole run
 # ---------------------------------------------------------------------------
 class TestBatchRunnerAbort:

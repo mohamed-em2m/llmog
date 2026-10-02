@@ -16,6 +16,7 @@ from auto_annotation.image_io import (
     pad_box,
     resize_crop_ratio,
 )
+from auto_annotation.yaml_utils import ensure_class_id
 from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.server_guard import (
     ServerDownError,
@@ -273,6 +274,18 @@ def process_one_image(
                     f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
                     f"without LLM call: '{line.strip()}'."
                 )
+                # The verbatim line is only trainable if its original class
+                # id exists in the map/data.yaml -- register unknown ids so
+                # kept boxes never reference a nameless id.
+                with class_map_lock:
+                    _kept_name, _kept_added = ensure_class_id(class_map, values[0])
+                if _kept_added:
+                    logger.warning(
+                        f"{img_file}: kept small box references class id "
+                        f"{values[0]} missing from the class map; registered "
+                        f"as {_kept_name!r} so data.yaml stays trainable."
+                    )
+                    stats.note_new_class(_kept_name)
             else:
                 stats.incr("boxes_dropped_small")
                 logger.debug(
