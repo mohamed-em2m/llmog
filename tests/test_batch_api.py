@@ -1196,3 +1196,253 @@ def test_crop_resize_ratio_config_validation():
             yaml_path="x.yaml",
             crop_resize_ratio=0,
         )
+
+
+# --------------------------------------------------------------------------
+# run_batch_api_flow driver guards
+# --------------------------------------------------------------------------
+def _flow_args(tmp_path, img_dir, lbl_dir, **over):
+    from types import SimpleNamespace
+
+    kw = dict(
+        server_type="external",
+        base_url="https://provider.test/v1/",
+        output_folder=str(tmp_path),
+        batch_mode="auto",
+        batch_job_id=None,
+        dry_run=False,
+        train_image=str(img_dir),
+        train_label=str(lbl_dir),
+        num_samples=None,
+        shuffle=False,
+        seed=42,
+        start_index=None,
+        end_index=None,
+        model="m",
+        class_mode="hybrid",
+        none_labels="none",
+        drop_none=True,
+        extra_body=None,
+        min_box_size=0,
+        small_box_action="keep",
+        conf_threshold=2,
+        batch_completion_window="24h",
+        batch_submit_style="file",
+        inplace_saving=False,
+        batch_poll_interval=5,
+        batch_poll_timeout=30,
+    )
+    kw.update(over)
+    return SimpleNamespace(**kw)
+
+
+def test_flow_build_skips_completed_images(dataset, tmp_path):
+    """A fresh build must not resubmit checkpoint-completed images."""
+    from auto_annotation.batch_api import load_job, run_batch_api_flow
+
+    img_dir, lbl_dir = dataset
+    args = _flow_args(
+        tmp_path, img_dir, lbl_dir, batch_mode="submit", batch_submit_style="file"
+    )
+    rc = run_batch_api_flow(
+        args,
+        FakeClient(),
+        {},
+        None,
+        {"big"},
+        set(),
+        RunStats(),
+        (".jpg",),
+        1024,
+        1024,
+        "",
+    )
+    assert rc == 0
+    job = load_job(str(tmp_path))
+    assert set(job["stems"]) == {"tiny"}
+    # only tiny's box was submitted (dataset big.jpg has 2 boxes)
+    assert job["n_requests"] == 1
+
+
+def test_flow_dry_run_with_saved_job_does_nothing(tmp_path, monkeypatch):
+    """Dry run + saved job: no poll, no finalize, job untouched."""
+    import auto_annotation.batch_api as ba
+    from auto_annotation.batch_api import load_job, run_batch_api_flow, save_job
+
+    job = {
+        "phase": "submitted",
+        "batch_id": "b",
+        "submit_style": "inline",
+        "stems": {},
+        "class_map": {},
+    }
+    save_job(str(tmp_path), job)
+    before = (tmp_path / ".batch_job.json").read_text()
+
+    def _boom(*a, **k):
+        raise AssertionError("poll must not run on dry run")
+
+    monkeypatch.setattr(ba, "poll_batch_job", _boom)
+    img_dir = tmp_path / "i"
+    lbl_dir = tmp_path / "l"
+    img_dir.mkdir()
+    lbl_dir.mkdir()
+    args = _flow_args(tmp_path, img_dir, lbl_dir, dry_run=True)
+    assert (
+        run_batch_api_flow(
+            args,
+            FakeClient(),
+            {},
+            None,
+            set(),
+            set(),
+            RunStats(),
+            (".jpg",),
+            1024,
+            1024,
+            "",
+        )
+        == 0
+    )
+    assert load_job(str(tmp_path))["phase"] == "submitted"
+    assert (tmp_path / ".batch_job.json").read_text() == before
+
+
+def test_flow_submit_guard_precedes_job_override(tmp_path):
+    """A rejected submit must not mutate the saved job file."""
+    from auto_annotation.batch_api import load_job, run_batch_api_flow, save_job
+
+    job = {"phase": "submitted", "batch_id": "orig", "stems": {}, "class_map": {}}
+    save_job(str(tmp_path), job)
+    img_dir = tmp_path / "i"
+    lbl_dir = tmp_path / "l"
+    img_dir.mkdir()
+    lbl_dir.mkdir()
+    args = _flow_args(
+        tmp_path, img_dir, lbl_dir, batch_mode="submit", batch_job_id="other"
+    )
+    with pytest.raises(SystemExit):
+        run_batch_api_flow(
+            args,
+            FakeClient(),
+            {},
+            None,
+            set(),
+            set(),
+            RunStats(),
+            (".jpg",),
+            1024,
+            1024,
+            "",
+        )
+    kept = load_job(str(tmp_path))
+    assert kept["batch_id"] == "orig" and kept["phase"] == "submitted"
+
+
+def test_poll_retries_transient_http_errors(monkeypatch):
+    """Connection blips during polling are retried, not fatal."""
+    import httpx
+
+    calls = {"n": 0}
+
+    def _flaky_get(url, headers=None):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise httpx.ConnectError("connection reset", request=None)
+        return _FakeResponse({"id": "b", "status": "completed"})
+
+    _inline_client(monkeypatch, _flaky_get)
+    batch = poll_batch_job(
+        FakeClient(),
+        {"batch_id": "b", "submit_style": "inline"},
+        poll_interval=5,
+        poll_timeout=60,
+    )
+    assert batch["status"] == "completed"
+    assert calls["n"] == 3
+
+
+def test_poll_rejects_job_without_batch_id():
+    """A corrupt saved job fails cleanly instead of KeyError."""
+    with pytest.raises(RuntimeError, match="missing its batch_id"):
+        poll_batch_job(FakeClient(), {"phase": "submitted"}, poll_interval=5)
+
+
+def test_finalize_rejects_job_without_batch_id(tmp_path):
+    from auto_annotation.batch_api import finalize_batch_job
+
+    with pytest.raises(RuntimeError, match="missing its batch_id"):
+        finalize_batch_job(
+            FakeClient(),
+            {},
+            str(tmp_path),
+            RunStats(),
+            checkpoint=None,
+            completed_images=set(),
+            batches_done=set(),
+        )
+
+
+def test_finalize_rejects_zero_result_overlap(dataset, tmp_path):
+    """A foreign/dead batch (no result matches any submitted request)
+    raises instead of marking everything failed-and-done."""
+    from auto_annotation.batch_api import finalize_batch_job
+
+    img_dir, lbl_dir = dataset
+    reqs, stems = collect_batch_requests(str(img_dir), str(lbl_dir), known_names=[])
+    client = FakeClient(
+        output_text="\n".join([_result_line("wrong-id-1"), _result_line("wrong-id-2")])
+    )
+    job = submit_batch_job(client, str(tmp_path), reqs, stems, "m", {}, _params())
+    completed = set()
+    with pytest.raises(RuntimeError, match="none match the 3 submitted"):
+        finalize_batch_job(
+            client,
+            job,
+            str(tmp_path),
+            RunStats(),
+            checkpoint=None,
+            completed_images=completed,
+            batches_done=set(),
+        )
+    assert completed == set()
+
+
+def test_done_gate_distinguishes_empty_finalization(tmp_path):
+    """A job finalized with 0 images warns differently than a real one."""
+    from auto_annotation.batch_api import run_batch_api_flow, save_job
+
+    for finalized, phase_note in ((0, "warn"), (2, "info")):
+        out = tmp_path / f"out{finalized}"
+        out.mkdir()
+        save_job(
+            str(out),
+            {
+                "phase": "done",
+                "batch_id": "b",
+                "finalized": finalized,
+                "stems": {},
+                "class_map": {},
+            },
+        )
+        img_dir = tmp_path / "i"
+        lbl_dir = tmp_path / "l"
+        img_dir.mkdir(exist_ok=True)
+        lbl_dir.mkdir(exist_ok=True)
+        args = _flow_args(out, img_dir, lbl_dir, batch_mode="auto")
+        assert (
+            run_batch_api_flow(
+                args,
+                FakeClient(),
+                {},
+                None,
+                set(),
+                set(),
+                RunStats(),
+                (".jpg",),
+                1024,
+                1024,
+                "",
+            )
+            == 0
+        )

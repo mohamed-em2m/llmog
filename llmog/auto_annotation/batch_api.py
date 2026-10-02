@@ -722,7 +722,12 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
 
     Returns the refreshed batch object. ``poll_timeout=0`` polls forever.
     """
-    batch_id = job["batch_id"]
+    batch_id = job.get("batch_id") if isinstance(job, dict) else None
+    if not batch_id:
+        raise RuntimeError(
+            "Saved batch job is missing its batch_id (corrupt or hand-edited "
+            f"{JOB_FILENAME}). Remove it and re-run with --batch_mode submit."
+        )
     interval = max(5, int(poll_interval or 60))
     timeout = float(poll_timeout or 0)
     start = time.monotonic()
@@ -739,8 +744,15 @@ def poll_batch_job(client, job, poll_interval=60, poll_timeout=0):
                     batch = _retrieve_batch_inline(client, batch_id)
                 else:
                     batch = client.batches.retrieve(batch_id)
-            except (RuntimeError, ValueError) as e:
-                if inline_mode and _is_transient_retrieve_error(e):
+            except (RuntimeError, ValueError, httpx.HTTPError) as e:
+                # Network blips (connection/timeout, no HTTP response) are
+                # retried like registration lag; real HTTP errors (4xx/5xx
+                # responses) fail fast with the provider's message.
+                transient = inline_mode and (
+                    _is_transient_retrieve_error(e)
+                    or isinstance(e, (httpx.ConnectError, httpx.TimeoutException))
+                )
+                if transient:
                     if not_found_since is None:
                         not_found_since = time.monotonic()
                     waited = time.monotonic() - not_found_since
@@ -856,6 +868,8 @@ def _download_text(client, file_id) -> str:
     content = client.files.content(file_id)
     if hasattr(content, "text"):
         text = content.text
+        if text is None:
+            return ""
         return (
             text.decode("utf-8", errors="replace") if isinstance(text, bytes) else text
         )
@@ -863,11 +877,15 @@ def _download_text(client, file_id) -> str:
         return content.decode("utf-8", errors="replace")
     if hasattr(content, "read"):
         data = content.read()
+        if data is None:
+            return ""
         return (
             data.decode("utf-8", errors="replace")
             if isinstance(data, bytes)
             else str(data)
         )
+    if content is None:
+        return ""
     return str(content)
 
 
@@ -888,7 +906,12 @@ def finalize_batch_job(
     """
     from auto_annotation.checkpoint import next_free_id as _next_free_id
 
-    batch_id = job["batch_id"]
+    batch_id = job.get("batch_id") if isinstance(job, dict) else None
+    if not batch_id:
+        raise RuntimeError(
+            "Saved batch job is missing its batch_id (corrupt or hand-edited "
+            f"{JOB_FILENAME}). Remove it and re-run with --batch_mode submit."
+        )
     if job.get("submit_style") == "inline":
         batch = _retrieve_batch_inline(client, batch_id)
     else:
@@ -983,6 +1006,21 @@ def finalize_batch_job(
             n_failed += 1
     if n_failed:
         stats.incr("boxes_model_call_failed", n_failed)
+
+    # Sanity: every submitted request must come back with a result row. A
+    # foreign --batch_job_id (or a provider that dropped the output) shows
+    # up here as zero overlap -- fail loudly instead of marking every image
+    # failed and locking the job as done with nothing produced.
+    sent_ids = {
+        cid for entry in (stems or {}).values() for cid in (entry.get("sent") or {})
+    }
+    if sent_ids and not (sent_ids & set(results)):
+        raise RuntimeError(
+            f"Batch {batch_id} returned {len(result_items)} result(s) but none "
+            f"match the {len(sent_ids)} submitted request(s) -- wrong batch id "
+            "(provider-scoped) or a dropped provider output. Not marking "
+            "anything done; re-run with the right --batch_job_id or resubmit."
+        )
 
     if inplace_saving:
         batch_output_folder = Path(train_label)
@@ -1169,6 +1207,7 @@ def finalize_batch_job(
         )
 
     job["phase"] = "done"
+    job["finalized"] = finalized
     job["output_file_id"] = output_file_id
     job["class_map"] = dict(class_map)
     save_job(output_folder, job)
@@ -1217,6 +1256,25 @@ def run_batch_api_flow(
     override_id = getattr(args, "batch_job_id", None) or None
 
     job = load_job(output_folder)
+    if getattr(args, "dry_run", False) and job is not None:
+        # A saved job short-circuits the build (and its detailed dry-run
+        # message), so guard here: polling/finalizing writes labels and
+        # checkpoints, which a dry run must never do.
+        logger.info(
+            f"[dry run] saved batch job {job.get('batch_id')} "
+            f"(phase={job.get('phase')}) exists; nothing polled, finalized, "
+            "or written. Re-run without --dry_run to proceed."
+        )
+        return 0
+    if job is not None and mode == "submit":
+        # Guard BEFORE the --batch_job_id override below mutates anything: a
+        # rejected command must not rewrite the saved job file.
+        logger.error(
+            f"A batch job ({job.get('batch_id')}, phase={job.get('phase')}) is already "
+            f"saved in {output_folder}. Poll/finalize it first (--batch_mode poll) "
+            f"or remove {JOB_FILENAME} to submit a fresh one."
+        )
+        exit(1)
     if override_id:
         if job is None:
             logger.error(
@@ -1240,21 +1298,30 @@ def run_batch_api_flow(
         )
         exit(1)
     if job is not None and job.get("phase") == "done" and mode in ("auto", "poll"):
-        logger.info(
-            f"Saved batch {job.get('batch_id')} is already finalized -- nothing to do. "
-            "To start a fresh batch job, remove "
-            f"{output_folder}/{JOB_FILENAME} (and use --no_auto_resume if you also "
-            "want to redo finished images)."
+        _done_n = job.get("finalized", None)
+        _done_note = (
+            f" ({_done_n} image(s) written)"
+            if isinstance(_done_n, int)
+            else " (finalized before result counts were recorded)"
         )
+        if _done_n == 0:
+            logger.warning(
+                f"Saved batch {job.get('batch_id')} is finalized BUT produced "
+                "0 images -- likely every box failed at the provider. Nothing "
+                "to resume; remove "
+                f"{output_folder}/{JOB_FILENAME} (and use --no_auto_resume if "
+                "you also want to redo finished images) to submit a fresh job."
+            )
+        else:
+            logger.info(
+                f"Saved batch {job.get('batch_id')} is already finalized -- "
+                f"nothing to do{_done_note}. "
+                "To start a fresh batch job, remove "
+                f"{output_folder}/{JOB_FILENAME} (and use --no_auto_resume if "
+                "you also want to redo finished images)."
+            )
         return 0
 
-    if job is not None and mode == "submit":
-        logger.error(
-            f"A batch job ({job.get('batch_id')}, phase={job.get('phase')}) is already "
-            f"saved in {output_folder}. Poll/finalize it first (--batch_mode poll) "
-            f"or remove {JOB_FILENAME} to submit a fresh one."
-        )
-        exit(1)
     if job is not None:
         logger.info(
             f"Resuming saved batch job {job.get('batch_id')} (phase="
@@ -1289,6 +1356,23 @@ def run_batch_api_flow(
             recls_context=getattr(args, "recls_context", "crop") or "crop",
             crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
         )
+        # Auto-resume: never rebuild/resubmit images the checkpoint says are
+        # finished. Without this, deleting .batch_job.json for a fresh sample
+        # (as the resume log suggests) would rebill already-done images.
+        done = set(completed_images or ())
+        if done:
+            skipped = sorted(s for s in stems if s in done)
+            if skipped:
+                logger.info(
+                    f"Auto-resume: skipping {len(skipped)} completed image(s) "
+                    f"from the fresh build ({', '.join(skipped[:5])}"
+                    f"{'...' if len(skipped) > 5 else ''})."
+                )
+                for s in skipped:
+                    del stems[s]
+                requests = [
+                    r for r in requests if (r.get("meta") or {}).get("stem") not in done
+                ]
         stats.images_total = len(stems)
         n_kept = sum(len(e["kept"]) for e in stems.values())
         n_small = sum(e["skipped_small"] for e in stems.values())
@@ -1358,6 +1442,9 @@ def run_batch_api_flow(
                 height=target_height,
                 width=target_width,
                 class_mode=getattr(args, "class_mode", "hybrid"),
+                none_labels=getattr(args, "none_labels", ""),
+                drop_none=getattr(args, "drop_none", True),
+                batch_size=getattr(args, "batch_size", 0),
             ),
         )
         if mode == "submit":

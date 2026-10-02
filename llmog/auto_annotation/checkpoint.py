@@ -96,6 +96,8 @@ def validate_checkpoint_data(data):
 
 # Label-affecting settings fingerprinted into the checkpoint so a resume
 # with changed flags warns instead of silently mixing label vintages.
+# batch_size is included because batches_done stores positional batch
+# indices: changing it re-derives which images old indices point at.
 RUN_SETTINGS_KEYS = (
     "crop_padding_pct",
     "recls_context",
@@ -106,6 +108,9 @@ RUN_SETTINGS_KEYS = (
     "height",
     "width",
     "class_mode",
+    "none_labels",
+    "drop_none",
+    "batch_size",
 )
 
 
@@ -120,13 +125,18 @@ def build_run_settings(**values) -> dict:
 
 
 def _norm_setting(v):
-    """Normalize for comparison: 0 == 0.0 == "0"; strings stripped."""
+    """Normalize for comparison: 0 == 0.0 == "0"; comma lists and YAML
+    lists compare by sorted token tuple ("a,b" == ["a", "b"])."""
     if isinstance(v, bool):
         return v
     if isinstance(v, (int, float)):
         return float(v)
+    if isinstance(v, (list, tuple, set)):
+        return tuple(sorted(str(x).strip().lower() for x in v))
     if isinstance(v, str):
         s = v.strip()
+        if "," in s:
+            return tuple(sorted(p.strip().lower() for p in s.split(",") if p.strip()))
         try:
             return float(s)
         except ValueError:
@@ -200,6 +210,10 @@ class CheckpointManager:
         ``run_settings``: optional fingerprint dict (see
         :func:`build_run_settings`); omitted when None so old callers and
         old checkpoint files keep working.
+
+        NOTE: not atomic across threads by itself -- it only serializes the
+        file write. Threaded callers must use :meth:`save_under_locks` so a
+        stale snapshot cannot overwrite newer progress.
         """
         with self._lock:
             payload = {
@@ -209,13 +223,64 @@ class CheckpointManager:
             }
             if run_settings is not None:
                 payload["run_settings"] = dict(run_settings)
-            tmp_path = self.path.with_suffix(".tmp")
+            self._write_payload(payload)
+
+    def _write_payload(self, payload):
+        tmp_path = self.path.with_suffix(".tmp")
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp_path, self.path)  # atomic on POSIX
+        except Exception as e:
+            logger.error(f"Failed to write checkpoint at {self.path}: {e}")
+
+    def save_under_locks(
+        self,
+        completed_images,
+        completed_lock,
+        class_map,
+        class_map_lock,
+        batches_done,
+        run_settings=None,
+    ):
+        """Snapshot shared run state and persist it atomically.
+
+        Snapshot AND file write happen while holding (in fixed order)
+        completed_lock, class_map_lock, then the manager lock, so a
+        concurrent worker cannot slip a newer snapshot+write in between and
+        get wiped by a stale one (which would lose progress and burn new
+        class ids already written into label files).
+
+        Callers must NOT hold completed_lock/class_map_lock when calling
+        (they are acquired here; re-acquiring would deadlock since
+        threading.Lock is not re-entrant). Locks may be None for
+        single-threaded callers. ``batches_done`` mutations elsewhere must
+        also hold completed_lock for the snapshot to be consistent.
+        """
+        if completed_lock is not None:
+            completed_lock.acquire()
+        try:
+            if class_map_lock is not None:
+                class_map_lock.acquire()
             try:
-                with open(tmp_path, "w") as f:
-                    json.dump(payload, f, indent=2)
-                os.replace(tmp_path, self.path)  # atomic on POSIX
-            except Exception as e:
-                logger.error(f"Failed to write checkpoint at {self.path}: {e}")
+                completed_snapshot = set(completed_images or ())
+                class_map_snapshot = dict(class_map or {})
+                batches_snapshot = set(batches_done or ())
+                with self._lock:
+                    payload = {
+                        "completed_images": sorted(completed_snapshot),
+                        "class_map": class_map_snapshot,
+                        "batches_done": sorted(batches_snapshot),
+                    }
+                    if run_settings is not None:
+                        payload["run_settings"] = dict(run_settings)
+                    self._write_payload(payload)
+            finally:
+                if class_map_lock is not None:
+                    class_map_lock.release()
+        finally:
+            if completed_lock is not None:
+                completed_lock.release()
 
     def clear(self):
         """Remove the checkpoint (used for a deliberate --no_auto_resume fresh run)."""

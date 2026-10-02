@@ -149,6 +149,9 @@ def read_images_with_labels(
         height=target_height,
         width=target_width,
         class_mode=class_mode,
+        none_labels=none_labels,
+        drop_none=drop_none,
+        batch_size=batch_size,
     )
     # Staging vs final output: in-progress batches live under
     # <output>/batches/batch_XXXX/; <output>/labels/ is reserved for the final
@@ -348,7 +351,7 @@ def read_images_with_labels(
                     )
                     if img is not None:
                         last_img = img
-                    if not dry_run:
+                    if not dry_run and auto_save is not None:
                         auto_save()
 
                 except ServerDownError:
@@ -423,7 +426,7 @@ def read_images_with_labels(
                         logger.exception(
                             f"Processing {img_file} raised an exception: {e}"
                         )
-                if not dry_run:
+                if not dry_run and auto_save is not None:
                     auto_save()
 
         # Whole batch finished (every image in it either processed just now
@@ -442,26 +445,25 @@ def read_images_with_labels(
                     "server failure(s) seen -- checkpointing finished images "
                     "but NOT marking the batch done (will be re-entered on resume)."
                 )
-                with completed_lock:
-                    completed_snapshot = set(completed_images)
-                with class_map_lock:
-                    class_map_snapshot = dict(class_map)
-                checkpoint.save(
-                    completed_snapshot,
-                    class_map_snapshot,
-                    set(batches_done),
+                # Snapshot + write happen atomically inside save_under_locks
+                # (live refs passed, locks acquired there in fixed order).
+                checkpoint.save_under_locks(
+                    completed_images,
+                    completed_lock,
+                    class_map,
+                    class_map_lock,
+                    batches_done,
                     _run_settings,
                 )
             else:
-                batches_done.add(batch_idx)
                 with completed_lock:
-                    completed_snapshot = set(completed_images)
-                with class_map_lock:
-                    class_map_snapshot = dict(class_map)
-                checkpoint.save(
-                    completed_snapshot,
-                    class_map_snapshot,
-                    set(batches_done),
+                    batches_done.add(batch_idx)
+                checkpoint.save_under_locks(
+                    completed_images,
+                    completed_lock,
+                    class_map,
+                    class_map_lock,
+                    batches_done,
                     _run_settings,
                 )
 

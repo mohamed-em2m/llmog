@@ -185,11 +185,22 @@ def main(args=None):
     completed_images = set()
     batches_done = set()
     checkpoint_data = None
+    # Legacy --resume skips images whose output file already exists -- but
+    # --no_auto_resume just cleared the checkpoint while leaving
+    # batches/batch_XXXX/ staging behind, so stale files would wrongly skip
+    # fresh work. The combination is contradictory: checkpoint-less wins.
+    _effective_resume = bool(args.resume)
     if not args.auto_resume:
         logger.info(
             "--no_auto_resume set: ignoring/clearing any existing checkpoint, starting fresh."
         )
         checkpoint.clear()
+        if _effective_resume:
+            logger.warning(
+                "--resume has no effect together with --no_auto_resume "
+                "(stale staging files must not skip fresh work); ignoring it."
+            )
+            _effective_resume = False
     else:
         checkpoint_data = checkpoint.load()
         if checkpoint_data is None:
@@ -370,13 +381,28 @@ def main(args=None):
                 height=target_height,
                 width=target_width,
                 class_mode=getattr(args, "class_mode", "hybrid"),
+                none_labels=getattr(args, "none_labels", ""),
+                drop_none=getattr(args, "drop_none", True),
+                batch_size=getattr(args, "batch_size", 0),
             )
-            for diff in run_settings_mismatches(saved_fp, current_fp):
+            _fp_diffs = run_settings_mismatches(saved_fp, current_fp)
+            for diff in _fp_diffs:
                 logger.warning(
                     f"Resume check: label-affecting setting changed -- {diff}. "
                     "Already-finished images keep their old labels; only "
                     "remaining images use the new setting. Re-run with "
                     "--no_auto_resume for a uniform dataset."
+                )
+            if any(d.startswith("batch_size:") for d in _fp_diffs):
+                # batches_done stores positional batch indices derived from
+                # the batch size: a changed size re-derives which images old
+                # indices point at, so whole-batch skipping is unsafe.
+                # Per-image completed_images stays valid -- only the batch
+                # shortcut is dropped (resume re-checks each image instead).
+                batches_done = set()
+                logger.warning(
+                    "Resume check: --batch_size changed since the checkpoint -- "
+                    "ignoring saved batches_done (per-image resume still applies)."
                 )
 
     try:
@@ -411,7 +437,7 @@ def main(args=None):
                 start_index=args.start_index,
                 end_index=args.end_index,
                 dry_run=args.dry_run,
-                resume=args.resume,
+                resume=_effective_resume,
                 image_extensions=image_extensions,
                 max_workers=args.max_workers,
                 target_height=target_height,

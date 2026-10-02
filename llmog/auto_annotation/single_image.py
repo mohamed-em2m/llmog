@@ -109,7 +109,17 @@ def process_one_image(
     # run, per the checkpoint. This is a stronger guarantee than checking
     # whether the output file merely exists (--resume below), since the
     # checkpoint is only updated *after* a label file is fully written.
-    if completed_images is not None and img_stem in completed_images:
+    # The membership read takes the lock when available: concurrent workers
+    # mutate this set, and an unlocked read only risks duplicate work, but
+    # the lock is free here.
+    if completed_lock is not None:
+        with completed_lock:
+            _already_done = (
+                completed_images is not None and img_stem in completed_images
+            )
+    else:
+        _already_done = completed_images is not None and img_stem in completed_images
+    if _already_done:
         logger.info(
             f"Skipping {img_file} (already completed per checkpoint, auto-resume)."
         )
@@ -176,6 +186,8 @@ def process_one_image(
         height=target_height,
         width=target_width,
         class_mode=class_mode,
+        none_labels=none_labels,
+        drop_none=drop_none,
     )
 
     try:
@@ -600,15 +612,17 @@ def process_one_image(
             if completed_lock is not None:
                 with completed_lock:
                     completed_images.add(img_stem)
-                    completed_snapshot = set(completed_images)
             else:
                 completed_images.add(img_stem)
-                completed_snapshot = set(completed_images)
-            with class_map_lock:
-                class_map_snapshot = dict(class_map)
-            batches_snapshot = set(batches_done) if batches_done is not None else set()
-            checkpoint.save(
-                completed_snapshot, class_map_snapshot, batches_snapshot, _run_settings
+            # Snapshot + write atomically (see save_under_locks): a bare
+            # save() here could overwrite a newer worker's progress.
+            checkpoint.save_under_locks(
+                completed_images,
+                completed_lock,
+                class_map,
+                class_map_lock,
+                batches_done,
+                _run_settings,
             )
         stats.log_progress(img_file)
         return img
@@ -663,14 +677,18 @@ def process_one_image(
         return img
 
     if write_ok and checkpoint is not None and completed_images is not None:
-        with completed_lock:
+        if completed_lock is not None:
+            with completed_lock:
+                completed_images.add(img_stem)
+        else:
             completed_images.add(img_stem)
-            completed_snapshot = set(completed_images)
-        with class_map_lock:
-            class_map_snapshot = dict(class_map)
-        batches_snapshot = set(batches_done) if batches_done is not None else set()
-        checkpoint.save(
-            completed_snapshot, class_map_snapshot, batches_snapshot, _run_settings
+        checkpoint.save_under_locks(
+            completed_images,
+            completed_lock,
+            class_map,
+            class_map_lock,
+            batches_done,
+            _run_settings,
         )
     elif not write_ok:
         # Don't silently mark progress for an image whose label file failed

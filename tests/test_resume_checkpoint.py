@@ -213,3 +213,52 @@ class TestResolveKeptClass:
         m = {"original_class_5": 0}  # slot name taken by another id
         name, new_id, how = resolve_kept_class(m, 5)
         assert how == "slot" and name != "original_class_5" and m[name] == 5
+
+
+class TestSaveUnderLocks:
+    def test_concurrent_saves_lose_nothing(self, tmp_path):
+        """8 workers add disjoint stems, then all save: the final file must
+        contain every stem (a stale snapshot overwriting newer progress
+        would drop some). Join timeouts turn a deadlock into a failure."""
+        import threading
+
+        from auto_annotation.checkpoint import CheckpointManager
+
+        mgr = CheckpointManager(tmp_path)
+        completed, class_map = set(), {}
+        completed_lock, class_map_lock = threading.Lock(), threading.Lock()
+        barrier = threading.Barrier(8)
+        errors = []
+
+        def worker(w):
+            try:
+                with completed_lock:
+                    for i in range(25):
+                        completed.add(f"w{w}-img{i}")
+                with class_map_lock:
+                    class_map[f"cls{w}"] = w
+                barrier.wait(timeout=30)
+                mgr.save_under_locks(
+                    completed,
+                    completed_lock,
+                    class_map,
+                    class_map_lock,
+                    set(),
+                    {"model": "m"},
+                )
+            except Exception as e:  # noqa: BLE001 - collected across threads
+                errors.append(e)
+
+        threads = [
+            threading.Thread(target=worker, args=(w,), daemon=True) for w in range(8)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
+        assert not errors
+        assert all(not t.is_alive() for t in threads), "deadlock in save_under_locks"
+        data = mgr.load()
+        assert len(data["completed_images"]) == 8 * 25
+        assert len(data["class_map"]) == 8
+        assert data["run_settings"] == {"model": "m"}

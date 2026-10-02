@@ -105,6 +105,22 @@ def _call_process_one_image(monkeypatch, tmp_path, img_file, fail=None, **kw):
         def save(self, completed, class_map, batches, run_settings=None):
             calls["saves"].append((set(completed), dict(class_map), set(batches)))
 
+        def save_under_locks(
+            self,
+            completed_images,
+            completed_lock,
+            class_map,
+            class_map_lock,
+            batches_done,
+            run_settings=None,
+        ):
+            self.save(
+                set(completed_images or ()),
+                dict(class_map or {}),
+                set(batches_done or ()),
+                run_settings,
+            )
+
     if fail is not None:
 
         def _boom(*a, **k):
@@ -257,6 +273,22 @@ class TestKeepRegistersUnknownId:
         class FakeCheckpoint:
             def save(self, completed, class_map, batches, run_settings=None):
                 saves.append(dict(run_settings or {}))
+
+            def save_under_locks(
+                self,
+                completed_images,
+                completed_lock,
+                class_map,
+                class_map_lock,
+                batches_done,
+                run_settings=None,
+            ):
+                self.save(
+                    set(completed_images or ()),
+                    dict(class_map or {}),
+                    set(batches_done or ()),
+                    run_settings,
+                )
 
         process_one_image(
             "img0.jpg",

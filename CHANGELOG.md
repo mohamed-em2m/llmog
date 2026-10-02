@@ -22,9 +22,11 @@ versioning follows [Semantic Versioning](https://semver.org/).
   is capped at `max(height, width)` to bound batch payload sizes.
 - Run-settings fingerprint: `.checkpoint.json` now records the label-affecting
   settings (`crop_padding_pct`, `recls_context`, `crop_resize_ratio`,
-  `min_box_size`, `small_box_action`, `model`, `height`/`width`, `class_mode`);
-  resuming with changed flags WARNING-logs every old→new value instead of
-  silently mixing label vintages. Old checkpoints without a fingerprint skip
+  `min_box_size`, `small_box_action`, `model`, `height`/`width`, `class_mode`,
+  `none_labels`, `drop_none`, `batch_size`); resuming with changed flags
+  WARNING-logs every old→new value instead of silently mixing label vintages.
+  Changing `--batch_size` additionally drops stale `batches_done` indices
+  (per-image resume still applies). Old checkpoints without a fingerprint skip
   the check; batch jobs carry the fingerprint from submit to finalize.
 - `--batch_public_images` (+ `--image_host`, currently `catbox`): upload
   crop JPEGs to a public host and rewrite inline batch request bodies to the
@@ -44,7 +46,7 @@ versioning follows [Semantic Versioning](https://semver.org/).
   with a WARNING, while coordinates stay byte-identical and the model is
   never called. Free ids keep their original number. Kept boxes log their
   resolved `id ('name')` per box.
-  Upload cache now persists incrementally, so an interrupted public-image
+- Upload cache now persists incrementally, so an interrupted public-image
   upload run resumes without re-uploading; the on-disk `batch_requests.jsonl`
   is re-written after URL rewriting so the artifact matches what was sent.
 - Inline submit now fails fast with guidance when request bodies still embed
@@ -54,6 +56,25 @@ versioning follows [Semantic Versioning](https://semver.org/).
   registration lag.
 - Inline create body key order locked by test (`endpoint`, `model`, then
   `requests` last) per OpenRouter's stream-parser requirement.
+- Batch finalize now stages under `<output>/batches/batch_0000/` (the layout
+  the end-of-run flatten scans); the previous `labels/batches/` location was
+  invisible to flatten, silently losing every batch label. The flatten step
+  also creates a missing `labels/` dir instead of erroring.
+- Images whose every box fails for non-server reasons (auth, bad model,
+  4xx validation, unusable responses) are no longer written as forged-empty
+  labels nor checkpointed -- a resumed run retries them (mirrors the
+  server-failure rule). New `images_failed_unclassified` summary counter.
+- Fresh batch builds skip checkpoint-completed images (no more resubmitting
+  and rebilling finished work); `--dry_run` with a saved job does nothing;
+  a rejected `--batch_mode submit` no longer mutates the saved job file.
+- Checkpoint saves are atomic under load (`save_under_locks` snapshots and
+  writes under one mutex): concurrent workers can no longer wipe each
+  other's progress or burn duplicate class ids. Legacy `--resume` is ignored
+  (with a warning) together with `--no_auto_resume`.
+- Poll tolerates transient connection/timeout blips, validates the saved
+  job's `batch_id` cleanly, and finalize aborts (without marking done) when
+  no result matches any submitted request; empty-result and zero-image
+  finalizations are distinguished in the done-gate messaging.
 - Track `cancelling` as an in-progress batch status; read per-request error
   `type` as a message fallback.
 - README renders on PyPI: absolute asset URLs, corrected repo links, and a
