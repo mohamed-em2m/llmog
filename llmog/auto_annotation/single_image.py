@@ -161,6 +161,11 @@ def process_one_image(
             f"{img_file}: reclassification context=full_som -- sending the "
             "full scene with the box highlighted instead of the crop."
         )
+    if _crop_pad > 0:
+        logger.info(
+            f"{img_file}: crop padding={_crop_pad}% of box dims per side "
+            "(clamped to image) before the VLM crop."
+        )
     try:
         _ratio = float(crop_resize_ratio) if crop_resize_ratio is not None else None
         if _ratio is not None and _ratio <= 0:
