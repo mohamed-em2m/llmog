@@ -493,11 +493,11 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         type=str,
         default="keep",
         choices=["keep", "drop"],
-        help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
-        "original YOLO line verbatim -- the ORIGINAL numeric id is kept and "
-        "reinterpreted under the final class map (never remapped; prefer "
-        "'drop' when relabeling across conventions, e.g. binary into "
-        "multi-class); 'drop' skips the box entirely.",
+        help="What to do with boxes smaller than --min_box_size: 'keep' preserves "
+        "the box with coordinates verbatim (no LLM call) -- a free original id "
+        "is kept, an id already taken in the current map mints a fresh one so "
+        "kept boxes never merge into an unrelated class; 'drop' skips the box "
+        "entirely.",
     )
     parser.add_argument(
         "--drop_small_images",

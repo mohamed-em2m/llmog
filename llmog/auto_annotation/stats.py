@@ -18,6 +18,7 @@ class RunStats:
         self.images_skipped_resume = 0
         self.images_failed_read = 0
         self.images_failed_server = 0
+        self.images_failed_unclassified = 0
         self.boxes_seen = 0
         self.boxes_malformed_line = 0
         self.boxes_empty_crop = 0
@@ -65,7 +66,8 @@ class RunStats:
             f"{self.images_skipped_no_label} skipped (no label file) | "
             f"{self.images_skipped_all_small} skipped (all boxes too small, see skipped_small_images.txt) | "
             f"{self.images_failed_read} failed to read | "
-            f"{self.images_failed_server} failed (server down/OOM, retry on resume)",
+            f"{self.images_failed_server} failed (server down/OOM, retry on resume) | "
+            f"{self.images_failed_unclassified} failed (model errors, retry on resume)",
             f"Boxes: {self.boxes_seen} seen | "
             f"{self.boxes_classified} classified | "
             f"{self.boxes_dropped_none} dropped (none/no-detection -> empty YOLO) | "

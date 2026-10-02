@@ -203,6 +203,26 @@ class TestDeadServerSingleImage:
         assert len(ns["saves"]) == 1
         assert tracker.consecutive == 0
 
+    def test_non_server_errors_forge_nothing(self, tmp_path, monkeypatch):
+        """Auth/config errors (non-server) must not write empty labels or
+        checkpoint the image -- otherwise one wrong flag wipes the dataset
+        and resume skips everything forever."""
+        train_image, train_label, _ = _make_dataset(tmp_path)
+        ns = _call_process_one_image(
+            monkeypatch,
+            tmp_path,
+            "img0.jpg",
+            fail=RuntimeError("401 unauthorized: bad api key"),
+            train_image=train_image,
+            train_label=train_label,
+        )
+        assert ns["result"] is None
+        assert not (ns["out"] / "img0.txt").exists()
+        assert ns["completed"] == set()
+        assert ns["saves"] == []
+        assert ns["stats"].images_failed_unclassified == 1
+        assert ns["stats"].images_failed_server == 0
+
 
 # ---------------------------------------------------------------------------
 # small-box keep registers unknown original ids
@@ -267,10 +287,11 @@ class TestKeepRegistersUnknownId:
         # checkpoint carries the settings fingerprint
         assert saves and saves[0].get("model") == "test-model"
 
-    def test_known_id_kept_verbatim_without_remap(self, tmp_path, monkeypatch):
-        """A kept box keeps its ORIGINAL numeric id even when that id already
-        names a different class in the new map (cross-convention relabeling:
-        old binary id 1 meant 'defect', new map id 1 means 'dog')."""
+    def test_taken_id_remapped_to_fresh(self, tmp_path, monkeypatch):
+        """A kept box whose old id is taken gets a FRESH id (no silent merge
+        into an unrelated class): old binary id 1 meant 'defect', but the new
+        map already has 1 -> 'dog', so the box becomes 2 ('original_class_1').
+        Coordinates stay byte-identical; the model is never called."""
         import threading
 
         from auto_annotation.single_image import process_one_image
@@ -310,8 +331,8 @@ class TestKeepRegistersUnknownId:
             min_box_size=60,
             small_box_action="keep",
         )
-        assert (out / "img0.txt").read_text() == "1 0.5 0.5 0.5 0.5\n"
-        assert class_map == {"cat": 0, "dog": 1}
+        assert (out / "img0.txt").read_text() == "2 0.5 0.5 0.5 0.5\n"
+        assert class_map == {"cat": 0, "dog": 1, "original_class_1": 2}
 
 
 # ---------------------------------------------------------------------------

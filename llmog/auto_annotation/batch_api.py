@@ -1003,31 +1003,49 @@ def finalize_batch_job(
         skipped_small = int(entry.get("skipped_small", 0) or 0)
         stats.incr("boxes_seen", len(sent) + len(kept) + skipped_small)
 
-        new_label_lines = list(kept)
+        new_label_lines = []
         if kept:
-            from auto_annotation.yaml_utils import ensure_class_id
+            from auto_annotation.yaml_utils import resolve_kept_class
 
             stats.incr("boxes_kept_small", len(kept))
-            # Verbatim kept lines are only trainable if their original class
-            # ids exist in the map -- register unknown ones (finalize is
-            # single-threaded, no lock needed).
+            # Kept boxes are never classified: resolve each original id so a
+            # taken id mints a fresh one instead of merging into an unrelated
+            # class (finalize is single-threaded, no lock needed). Only the
+            # class token is rewritten; coordinate text stays verbatim.
             for _kept_line in kept:
                 _parts = _kept_line.split()
                 if not _parts:
                     continue
-                _kept_name, _kept_added = ensure_class_id(class_map, _parts[0])
-                if _kept_added:
+                _kept_name, _kept_id, _kept_how = resolve_kept_class(
+                    class_map, _parts[0]
+                )
+                if _kept_how == "invalid":
+                    logger.warning(
+                        f"{img_file}: kept small box has non-numeric class "
+                        f"{_parts[0]!r}; writing the line verbatim."
+                    )
+                    new_label_lines.append(_kept_line)
+                else:
+                    new_label_lines.append(" ".join([str(_kept_id)] + _parts[1:]))
+                if _kept_how == "remapped":
+                    logger.warning(
+                        f"{img_file}: kept small box original id {_parts[0]} is "
+                        f"taken in the current map -- re-registered as id "
+                        f"{_kept_id} ('{_kept_name}') instead of merging into "
+                        "an unrelated class."
+                    )
+                    stats.note_new_class(_kept_name)
+                elif _kept_how == "slot":
                     logger.warning(
                         f"{img_file}: kept small box references class id "
                         f"{_parts[0]} missing from the class map; registered "
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
-                elif _kept_name is not None:
+                elif _kept_how == "reused":
                     logger.info(
-                        f"{img_file}: keeping small box as id {_parts[0]} "
-                        f"('{_kept_name}') without LLM call -- frozen at its "
-                        "original id under the current class map."
+                        f"{img_file}: keeping small box as id {_kept_id} "
+                        f"('{_kept_name}') without LLM call."
                     )
         if skipped_small:
             stats.incr("boxes_skipped_small", skipped_small)

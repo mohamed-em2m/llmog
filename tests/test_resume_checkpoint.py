@@ -183,26 +183,33 @@ class TestYamlGuard:
         assert out["names"] == ["a", "b"]
 
 
-class TestEnsureClassId:
-    def test_existing_id_returns_name(self):
-        from auto_annotation.yaml_utils import ensure_class_id
-
-        assert ensure_class_id({"hole": 0}, 0) == ("hole", False)
-        assert ensure_class_id({"hole": 0}, "0") == ("hole", False)
-
-    def test_unknown_id_registered(self):
-        from auto_annotation.yaml_utils import ensure_class_id
+class TestResolveKeptClass:
+    def test_free_id_keeps_slot(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
 
         m = {"hole": 0}
-        assert ensure_class_id(m, 5) == ("original_class_5", True)
+        assert resolve_kept_class(m, 5) == ("original_class_5", 5, "slot")
         assert m == {"hole": 0, "original_class_5": 5}
-        # second call finds it
-        assert ensure_class_id(m, 5) == ("original_class_5", False)
+
+    def test_own_registration_reused(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        m = {"hole": 0, "original_class_5": 5}
+        assert resolve_kept_class(m, 5) == ("original_class_5", 5, "reused")
+        assert m == {"hole": 0, "original_class_5": 5}
+
+    def test_taken_id_mints_fresh(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        m = {"cat": 0, "dog": 1}
+        name, new_id, how = resolve_kept_class(m, 1)
+        assert how == "remapped"
+        assert new_id == 2 and m[name] == 2 and name.startswith("original_class_1")
 
     def test_invalid_and_name_collision(self):
-        from auto_annotation.yaml_utils import ensure_class_id
+        from auto_annotation.yaml_utils import resolve_kept_class
 
-        assert ensure_class_id({}, "abc") == (None, False)
-        m = {"original_class_5": 0}  # name taken by another id
-        name, added = ensure_class_id(m, 5)
-        assert added and name != "original_class_5" and m[name] == 5
+        assert resolve_kept_class({}, "abc") == (None, None, "invalid")
+        m = {"original_class_5": 0}  # slot name taken by another id
+        name, new_id, how = resolve_kept_class(m, 5)
+        assert how == "slot" and name != "original_class_5" and m[name] == 5

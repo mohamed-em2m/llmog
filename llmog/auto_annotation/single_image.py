@@ -16,7 +16,7 @@ from auto_annotation.image_io import (
     pad_box,
     resize_crop_ratio,
 )
-from auto_annotation.yaml_utils import ensure_class_id
+from auto_annotation.yaml_utils import resolve_kept_class
 from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.server_guard import (
     ServerDownError,
@@ -202,6 +202,14 @@ def process_one_image(
     # written (that would forge a "no objects" label for an image the server
     # never actually looked at).
     server_failures_this_image = 0
+    # Boxes whose model call failed for NON-server reasons (auth, bad model
+    # name, 4xx validation, unparseable/empty responses). Like server
+    # failures, these must never forge an empty "no objects" label: if no
+    # box on the image produced a usable line, the image is left
+    # un-checkpointed so a resume retries it. Policy outcomes (none-drop,
+    # strict-discard) do NOT count here -- those are deterministic model
+    # decisions, not errors.
+    failed_boxes_this_image = 0
 
     for line in lines:
         stats.incr("boxes_seen")
@@ -267,32 +275,49 @@ def process_one_image(
                 )
                 continue
             if _action == "keep":
-                new_label_lines.append(line.strip())
-                stats.incr("boxes_kept_small")
-                # The verbatim line is only trainable if its original class
-                # id exists in the map/data.yaml -- register unknown ids so
-                # kept boxes never reference a nameless id.
+                # Kept boxes are never classified: their class must not
+                # silently merge into an unrelated map entry (e.g. an old
+                # binary id reinterpreted under a new multi-class map).
+                # resolve_kept_class keeps free ids in place and mints a
+                # fresh id when the original is taken; the written line uses
+                # the RESOLVED id (coords always verbatim).
                 with class_map_lock:
-                    _kept_name, _kept_added = ensure_class_id(class_map, values[0])
-                if _kept_added:
+                    _kept_name, _kept_id, _kept_how = resolve_kept_class(
+                        class_map, values[0]
+                    )
+                if _kept_how == "invalid":
+                    logger.warning(
+                        f"{img_file}: kept small box has non-numeric class "
+                        f"{values[0]!r}; writing the line verbatim."
+                    )
+                    new_label_lines.append(line.strip())
+                else:
+                    # Rewrite only the class token; coordinate text stays
+                    # byte-identical to the input line.
+                    new_label_lines.append(
+                        " ".join([str(_kept_id)] + [v for v in values[1:]])
+                    )
+                stats.incr("boxes_kept_small")
+                if _kept_how == "remapped":
+                    logger.warning(
+                        f"{img_file}: kept small box original id {values[0]} is "
+                        f"taken in the current map -- re-registered as id "
+                        f"{_kept_id} ('{_kept_name}') instead of merging into "
+                        "an unrelated class."
+                    )
+                    stats.note_new_class(_kept_name)
+                elif _kept_how == "slot":
                     logger.warning(
                         f"{img_file}: kept small box references class id "
                         f"{values[0]} missing from the class map; registered "
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
-                elif _kept_name is not None:
+                elif _kept_how == "reused":
                     logger.info(
                         f"{img_file}: keeping small box "
-                        f"({x2 - x1}x{y2 - y1}px) as id {values[0]} "
-                        f"('{_kept_name}') without LLM call -- frozen at its "
-                        "original id under the current class map."
-                    )
-                else:
-                    logger.debug(
-                        f"{img_file}: keeping small box "
-                        f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
-                        f"without LLM call: '{line.strip()}'."
+                        f"({x2 - x1}x{y2 - y1}px) as id {_kept_id} "
+                        f"('{_kept_name}') without LLM call."
                     )
             else:
                 stats.incr("boxes_dropped_small")
@@ -384,10 +409,10 @@ def process_one_image(
         except Exception as e:
             logger.error(f"Model call failed for {img_file}: {e}")
             stats.incr("boxes_model_call_failed")
+            # Server-class failure (dead process, timeout, 5xx, OOM):
+            # counted locally even without a shared tracker so the
+            # image is never marked completed on server trouble.
             if is_server_error(e):
-                # Server-class failure (dead process, timeout, 5xx, OOM):
-                # counted locally even without a shared tracker so the
-                # image is never marked completed on server trouble.
                 server_failures_this_image += 1
                 if failure_tracker is not None:
                     tripped = failure_tracker.record_failure()
@@ -408,6 +433,10 @@ def process_one_image(
                             "written -- fix the server and resume with the same "
                             "command (auto-resume skips finished images)."
                         ) from e
+            else:
+                # Non-server failure (auth, bad model name, 4xx validation):
+                # counts toward the no-usable-lines guard below.
+                failed_boxes_this_image += 1
             continue
 
         if failure_tracker is not None:
@@ -419,6 +448,7 @@ def process_one_image(
                 f"{result!r}, skipping box."
             )
             stats.incr("boxes_bad_response")
+            failed_boxes_this_image += 1
             continue
 
         class_name = result.get("class")
@@ -427,11 +457,13 @@ def process_one_image(
                 f"Invalid or missing class name in response for {img_file}: {result}"
             )
             stats.incr("boxes_bad_response")
+            failed_boxes_this_image += 1
             continue
         class_name = class_name.strip().lower()
         if not class_name:
             logger.warning(f"Empty class name in response for {img_file}: {result}")
             stats.incr("boxes_bad_response")
+            failed_boxes_this_image += 1
             continue
 
         # --- None / no-detection handling -----------------------------------
@@ -514,6 +546,24 @@ def process_one_image(
         if failure_tracker is not None and abort_on_server_down:
             # Another thread may have tripped the breaker meanwhile.
             failure_tracker.check_and_raise(img_file)
+        return None
+
+    if failed_boxes_this_image > 0 and not new_label_lines:
+        # Every box on this image failed for NON-server reasons (auth, bad
+        # model name, 4xx validation, unusable responses): writing an empty
+        # file here would forge a "no objects" label for an image whose
+        # boxes were never classified (e.g. one wrong flag wipes the whole
+        # dataset). Leave disk and checkpoint untouched so a resumed run
+        # retries this image from scratch. Policy outcomes (none-drop,
+        # strict-discard) don't land here -- those are deterministic model
+        # decisions, and kept small boxes count as usable lines above.
+        logger.warning(
+            f"{img_file}: {failed_boxes_this_image} box(es) failed with model "
+            "errors and no boxes classified -> NOT writing a label file and "
+            "NOT marking as completed (fix the cause and resume to retry)."
+        )
+        stats.incr("images_failed_unclassified")
+        stats.log_progress(img_file)
         return None
 
     if not new_label_lines and small_skipped_this_image > 0 and drop_small_images:
