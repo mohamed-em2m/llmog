@@ -1020,6 +1020,12 @@ def finalize_batch_job(
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
+                elif _kept_name is not None:
+                    logger.info(
+                        f"{img_file}: keeping small box as id {_parts[0]} "
+                        f"('{_kept_name}') without LLM call -- frozen at its "
+                        "original id under the current class map."
+                    )
         if skipped_small:
             stats.incr("boxes_skipped_small", skipped_small)
         low_conf = []

@@ -38,6 +38,11 @@ versioning follows [Semantic Versioning](https://semver.org/).
 - Small-box `keep` now registers kept boxes' original class ids in the class
   map (`original_class_<id>`, with a WARNING) when missing, so kept lines
   never reference a nameless id in data.yaml (previously untrainable output).
+  Clarified semantics: `keep` ALWAYS preserves the original numeric id, which
+  is reinterpreted under the final class map -- when relabeling across
+  conventions (e.g. binary ids into a multi-class map) a kept old id silently
+  takes its new-map meaning, so prefer `drop` there. Kept boxes now log
+  their resolved `id ('name')` per box.
   Upload cache now persists incrementally, so an interrupted public-image
   upload run resumes without re-uploading; the on-disk `batch_requests.jsonl`
   is re-written after URL rewriting so the artifact matches what was sent.

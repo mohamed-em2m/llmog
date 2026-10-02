@@ -269,11 +269,6 @@ def process_one_image(
             if _action == "keep":
                 new_label_lines.append(line.strip())
                 stats.incr("boxes_kept_small")
-                logger.debug(
-                    f"{img_file}: keeping small box "
-                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
-                    f"without LLM call: '{line.strip()}'."
-                )
                 # The verbatim line is only trainable if its original class
                 # id exists in the map/data.yaml -- register unknown ids so
                 # kept boxes never reference a nameless id.
@@ -286,6 +281,19 @@ def process_one_image(
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
+                elif _kept_name is not None:
+                    logger.info(
+                        f"{img_file}: keeping small box "
+                        f"({x2 - x1}x{y2 - y1}px) as id {values[0]} "
+                        f"('{_kept_name}') without LLM call -- frozen at its "
+                        "original id under the current class map."
+                    )
+                else:
+                    logger.debug(
+                        f"{img_file}: keeping small box "
+                        f"({x2 - x1}x{y2 - y1}px < {_min_side}px) as-is "
+                        f"without LLM call: '{line.strip()}'."
+                    )
             else:
                 stats.incr("boxes_dropped_small")
                 logger.debug(

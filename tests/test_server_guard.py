@@ -267,6 +267,52 @@ class TestKeepRegistersUnknownId:
         # checkpoint carries the settings fingerprint
         assert saves and saves[0].get("model") == "test-model"
 
+    def test_known_id_kept_verbatim_without_remap(self, tmp_path, monkeypatch):
+        """A kept box keeps its ORIGINAL numeric id even when that id already
+        names a different class in the new map (cross-convention relabeling:
+        old binary id 1 meant 'defect', new map id 1 means 'dog')."""
+        import threading
+
+        from auto_annotation.single_image import process_one_image
+        from auto_annotation.stats import RunStats
+
+        train_image = tmp_path / "images"
+        train_label = tmp_path / "labels"
+        train_image.mkdir()
+        train_label.mkdir()
+        Image.new("RGB", (100, 100), (128, 128, 128)).save(train_image / "img0.jpg")
+        (train_label / "img0.txt").write_text("1 0.5 0.5 0.5 0.5\n")
+
+        def _must_not_run(*a, **k):
+            raise AssertionError("kept boxes must never reach the model")
+
+        monkeypatch.setattr("auto_annotation.single_image.detect_defect", _must_not_run)
+
+        out = tmp_path / "out"
+        out.mkdir(exist_ok=True)
+        class_map = {"cat": 0, "dog": 1}
+        process_one_image(
+            "img0.jpg",
+            str(train_image),
+            str(train_label),
+            str(out),
+            class_map,
+            threading.Lock(),
+            object(),
+            "test-model",
+            2,
+            False,
+            False,
+            64,
+            64,
+            RunStats(),
+            False,
+            min_box_size=60,
+            small_box_action="keep",
+        )
+        assert (out / "img0.txt").read_text() == "1 0.5 0.5 0.5 0.5\n"
+        assert class_map == {"cat": 0, "dog": 1}
+
 
 # ---------------------------------------------------------------------------
 # batch_runner aborts the whole run

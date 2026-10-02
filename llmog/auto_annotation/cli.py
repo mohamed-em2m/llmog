@@ -494,7 +494,10 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         default="keep",
         choices=["keep", "drop"],
         help="What to do with boxes smaller than --min_box_size: 'keep' writes the "
-        "original YOLO line verbatim (no LLM call); 'drop' skips the box entirely.",
+        "original YOLO line verbatim -- the ORIGINAL numeric id is kept and "
+        "reinterpreted under the final class map (never remapped; prefer "
+        "'drop' when relabeling across conventions, e.g. binary into "
+        "multi-class); 'drop' skips the box entirely.",
     )
     parser.add_argument(
         "--drop_small_images",

@@ -175,6 +175,13 @@ class PipelineConfig(BaseModel):
     # What to do with small boxes: "keep" writes the original YOLO line
     # verbatim (original class id + coords, no LLM call, no class_map
     # mutation); "drop" skips the box entirely (no YOLO line).
+    # NOTE on keep: the box keeps its ORIGINAL numeric id, reinterpreted
+    # under the final class map -- it is never remapped or reclassified.
+    # When relabeling ACROSS conventions (e.g. binary defect/no-defect ids
+    # into a multi-class map), a kept old id silently takes its new-map
+    # meaning; prefer "drop" there so tiny boxes don't carry stale ids.
+    # Unknown kept ids are registered as original_class_<id> (with a
+    # WARNING) so data.yaml stays trainable.
     small_box_action: Literal["keep", "drop"] = "keep"
     # Image-level guard against false negatives: when True (default) and
     # small_box_action="drop", an image that ends up with ZERO writable
