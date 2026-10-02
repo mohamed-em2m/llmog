@@ -35,15 +35,13 @@ class TestFlattenBatchesToLabels:
         assert out.is_dir()
         assert list(out.glob("*.txt")) == []
 
-    def test_missing_labels_dir_with_staging_still_raises(self, tmp_path):
-        """Staged labels but no labels/ is genuinely unexpected -> raise."""
-        import pytest
-
+    def test_missing_labels_dir_with_staging_flattens(self, tmp_path):
+        """Staged labels + missing labels/ dir: dir is created, then flatten."""
         staging = tmp_path / "batches" / "batch_0000"
         staging.mkdir(parents=True)
         (staging / "img1.txt").write_text("0 0.5 0.5 0.2 0.2\n")
-        with pytest.raises(FileNotFoundError, match="labels dir missing"):
-            flatten_batches_to_labels(tmp_path)
+        out = flatten_batches_to_labels(tmp_path)
+        assert (out / "img1.txt").read_text() == "0 0.5 0.5 0.2 0.2\n"
 
     def test_best_copy_wins(self, tmp_path):
         _, b0, b1 = _make_output(tmp_path)

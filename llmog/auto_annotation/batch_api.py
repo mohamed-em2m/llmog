@@ -984,11 +984,14 @@ def finalize_batch_job(
     if n_failed:
         stats.incr("boxes_model_call_failed", n_failed)
 
-    labels_folder = Path(output_folder) / "labels"
     if inplace_saving:
         batch_output_folder = Path(train_label)
     else:
-        batch_output_folder = labels_folder / "batches" / "batch_0000"
+        # Stage under <output>/batches/ (NOT labels/): this is the layout
+        # the end-of-run flatten scans. Staging inside labels/ would be
+        # invisible to flatten (labels/batch_* is legacy-only, labels/*.txt
+        # is non-recursive) and the labels would be silently lost.
+        batch_output_folder = Path(output_folder) / "batches" / "batch_0000"
     os.makedirs(batch_output_folder, exist_ok=True)
     manifest_path = Path(output_folder) / SKIPPED_MANIFEST
 

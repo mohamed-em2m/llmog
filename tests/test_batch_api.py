@@ -739,7 +739,7 @@ def test_finalize_reads_inlined_results(dataset, tmp_path, inline_httpx):
         FakeClient(), load_job(str(tmp_path)), str(tmp_path), stats
     )
     assert finalized == len(stems)
-    labels = tmp_path / "labels" / "batches" / "batch_0000"
+    labels = tmp_path / "batches" / "batch_0000"
     assert (labels / "big.txt").is_file()
     assert stats.boxes_classified == len(reqs)
 
@@ -820,13 +820,20 @@ def test_finalize_writes_labels_and_manifest(dataset, tmp_path):
     )
     assert n == 2 and completed == {"big", "tiny"}
     # big: classified line written to staging (flatten-compatible)
-    big_lbl = tmp_path / "labels" / "batches" / "batch_0000" / "big.txt"
+    big_lbl = tmp_path / "batches" / "batch_0000" / "big.txt"
     assert big_lbl.is_file() and "0 0.7 0.7 0.5 0.5" in big_lbl.read_text()
     # tiny: all-small -> NO label file + manifest entry
-    assert not (tmp_path / "labels" / "batches" / "batch_0000" / "tiny.txt").exists()
+    assert not (tmp_path / "batches" / "batch_0000" / "tiny.txt").exists()
     assert "tiny" in (tmp_path / "skipped_small_images.txt").read_text().split()
     assert stats.images_skipped_all_small == 1
     assert stats.boxes_classified == 1
+    # end-to-end: the end-of-run flatten must find the staged labels
+    # (regression: staging inside labels/ was invisible to flatten)
+    from auto_annotation.reverse_batches import flatten_batches_to_labels
+
+    flat = flatten_batches_to_labels(str(tmp_path))
+    assert (flat / "big.txt").is_file()
+    assert "0 0.7 0.7 0.5 0.5" in (flat / "big.txt").read_text()
 
 
 def test_finalize_strict_discards_unknown(dataset, tmp_path):
@@ -862,7 +869,7 @@ def test_finalize_strict_discards_unknown(dataset, tmp_path):
     # big: sent box discarded as strict-unknown + small box filtered ->
     # no lines + skipped_small>0 -> manifest, no label file.
     assert stats.boxes_bad_response >= 1
-    assert not (tmp_path / "labels" / "batches" / "batch_0000" / "big.txt").exists()
+    assert not (tmp_path / "batches" / "batch_0000" / "big.txt").exists()
     assert "big" in (tmp_path / "skipped_small_images.txt").read_text().split()
 
 
@@ -884,10 +891,8 @@ def test_finalize_none_writes_empty_not_manifest(dataset, tmp_path):
         completed_images=set(),
         batches_done=set(),
     )
-    assert (tmp_path / "labels" / "batches" / "batch_0000" / "big.txt").is_file()
-    assert (
-        tmp_path / "labels" / "batches" / "batch_0000" / "big.txt"
-    ).stat().st_size == 0
+    assert (tmp_path / "batches" / "batch_0000" / "big.txt").is_file()
+    assert (tmp_path / "batches" / "batch_0000" / "big.txt").stat().st_size == 0
     assert not (tmp_path / "skipped_small_images.txt").exists()
     assert stats.boxes_dropped_none == 3
 
