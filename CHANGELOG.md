@@ -6,6 +6,8 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-03
+
 ### Added
 - Real-ESRGAN upscaling (`--esr_enabled`, CLI + YAML, default off, all
   tasks): super-resolves VLM-bound pixels with Real-ESRGAN BEFORE the model
