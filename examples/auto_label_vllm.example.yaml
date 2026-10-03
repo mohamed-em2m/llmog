@@ -1,137 +1,146 @@
 # ==============================================================================
 # Auto-label (YOLO relabeling) on vLLM — Fabric Defect Inspection
 # Optimized for Vision-Language Models (e.g., Qwen-VL)
+# Load with: uv run llmog --task auto_label --config examples/auto_label_vllm.example.yaml
+# CLI flags override whatever you set here.
 # ==============================================================================
 
-# --- Task selection -----------------------------------------------------------
 task: auto_label
 
-# --- Logging ------------------------------------------------------------------
-log_level: INFO
-log_file: null
+logging:
+  level: INFO
+  # file: null
 
-# --- Dataset (YOLO format) ----------------------------------------------------
-train_image: ./ZJU-Leaper-8/train/images
-train_label: ./ZJU-Leaper-8/train/labels
-yaml_path: ./ZJU-Leaper-8/data.yaml
-image_extensions: .jpg,.jpeg,.png
-output_folder: ./output
+inputs:
+  train_image: ./ZJU-Leaper-8/train/images
+  train_label: ./ZJU-Leaper-8/train/labels
+  yaml_path: ./ZJU-Leaper-8/data.yaml
+  image_extensions: .jpg,.jpeg,.png
 
-# --- Classes & VLM Prompt Definitions -----------------------------------------
-categories: broken_end, hole, slub_knot, thin_bar, thick_bar, abrasion, stain, none
-init_class_map: true
+output:
+  folder: ./output
 
-definitions: |
-  broken_end: A narrow, discontinuous line running strictly VERTICAL (warp / machine direction) caused by a snapped warp yarn. Appears as an elongated vertical gap or a frayed break in a continuous vertical thread. Distinguish from thin_bar (which runs horizontally).
-  hole: A physical puncture, tear, or void where fabric yarns are completely severed or missing, exposing the underlying background or dark void underneath. Distinguish from broken_end by having a 2D open cavity rather than a single 1D thread break.
-  slub_knot: A localized, raised lump, knot, or tightly tangled clump of yarn fibers on the fabric surface (including neps, yarn snarls, and dense netting clusters). Noticeably thicker, denser, or protruding compared to the flat weave structure.
-  thin_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where yarn density is looser or filling yarns are missing, producing a visibly lighter, translucent, or sparse horizontal streak.
-  thick_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where filling yarns are crowded, double-picked, or denser than surrounding fabric, producing a visibly darker, raised horizontal streak.
-  abrasion: A scuffed, rubbed, or fuzzy surface patch caused by mechanical friction. Surface fibers are fuzzed, roughened, or pilled into a matte, lighter texture patch, but the underlying yarn grid is still intact and no void/hole is present.
-  stain: Any discolored, foreign, or contaminated patch on the fabric surface, including machine oil/grease spots, dirt residue, dye bleed, water marks, or rust marks. Appears as an irregular discolored zone without structural damage to the weave.
-  none: Defect-free fabric. Uniform weave pattern, consistent thread spacing, no structural disruptions, and no foreign stains. Use this label whenever the crop shows clean, normal fabric.
+classes:
+  categories: broken_end, hole, slub_knot, thin_bar, thick_bar, abrasion, stain, none
+  init_class_map: true
+  definitions: |
+    broken_end: A narrow, discontinuous line running strictly VERTICAL (warp / machine direction) caused by a snapped warp yarn. Appears as an elongated vertical gap or a frayed break in a continuous vertical thread. Distinguish from thin_bar (which runs horizontally).
+    hole: A physical puncture, tear, or void where fabric yarns are completely severed or missing, exposing the underlying background or dark void underneath. Distinguish from broken_end by having a 2D open cavity rather than a single 1D thread break.
+    slub_knot: A localized, raised lump, knot, or tightly tangled clump of yarn fibers on the fabric surface (including neps, yarn snarls, and dense netting clusters). Noticeably thicker, denser, or protruding compared to the flat weave structure.
+    thin_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where yarn density is looser or filling yarns are missing, producing a visibly lighter, translucent, or sparse horizontal streak.
+    thick_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where filling yarns are crowded, double-picked, or denser than surrounding fabric, producing a visibly darker, raised horizontal streak.
+    abrasion: A scuffed, rubbed, or fuzzy surface patch caused by mechanical friction. Surface fibers are fuzzed, roughened, or pilled into a matte, lighter texture patch, but the underlying yarn grid is still intact and no void/hole is present.
+    stain: Any discolored, foreign, or contaminated patch on the fabric surface, including machine oil/grease spots, dirt residue, dye bleed, water marks, or rust marks. Appears as an irregular discolored zone without structural damage to the weave.
+    none: Defect-free fabric. Uniform weave pattern, consistent thread spacing, no structural disruptions, and no foreign stains. Use this label whenever the crop shows clean, normal fabric.
+  mode: hybrid # class_mode: "strict" | "hybrid" | "free"
+  # preset: null # fabric_defects | coco | road_traffic | retail_packaging | pcb_defects
+  # Note: confidence here is 1-5 (not 0.0-1.0). Boxes at/below this are ALSO
+  # logged to *_low_confidence.json for manual review.
+  conf_threshold: 2
 
-class_mode: hybrid
-preset: null
+sizing:
+  height: 1024
+  width: 1024
+  # size: null # square override (YOLO-style imgsz): sets height+width
 
-# Note: In most YOLO/VLM pipelines, confidence is [0.0 - 1.0].
-# If your pipeline expects a float, change '2' to 0.20 or 0.25 to prevent dropping valid detections.
-conf_threshold: 2
+reclass:
+  # What the VLM sees per box: "crop" sends the (padded) crop; "full_som" sends
+  # the FULL scene with the box highlighted/numbered (more tokens per request).
+  context: crop # recls_context: "crop" | "full_som"
+  # Context padding: each box expanded by this % of its own width/height per
+  # side, clamped to the image. 0 = exact-box crop. The size filter still
+  # measures the original box; output YOLO coords are never padded.
+  crop_padding_pct: 0
+  # Ratio resize for the VLM crop (crop mode only): scale by this factor
+  # (1.5 = 150%, aspect preserved, no letterbox bars) instead of the height
+  # x width letterbox. Long edge capped at max(height, width). Unset = letterbox.
+  resize_ratio: null # crop_resize_ratio
+  # Boxes with width OR height below this (ORIGINAL pixels) are never sent
+  # to the LLM. 0 disables the filter.
+  min_box_size: 0
+  # "keep" writes the original YOLO line verbatim (no LLM call); "drop" omits it.
+  small_box_action: keep # "keep" | "drop"
+  # When "drop" empties an image purely via the size filter, write NO label
+  # file and list it in skipped_small_images.txt instead of an empty .txt.
+  drop_small_images: true
+  # None-handling: model outputs matching these are "nothing detected".
+  none_labels:
+    - none
+    - no_detection
+    - nodetection
+    - no_defect
+    - background
+    - unknown
+    - negative
+    - normal
+  drop_none: true # strips background/none predictions from final YOLO .txt files
+  # Debug: save each box's exact final VLM-bound image (what the model sees,
+  # letterbox included) as <stem>_box<line_no>.jpg under this dir (sync,
+  # batch and dry runs). Output-only, no checkpoint effect.
+  # dump_crops: null # dump_vlm_crops, e.g. ./output/vlm_crops
 
-# --- Image resolution & None Handling -----------------------------------------
-height: 1024
-width: 1024
-
-none_labels:
-  - none
-  - no_detection
-  - nodetection
-  - no_defect
-  - background
-  - unknown
-  - negative
-  - normal
-drop_none: true # Strips background/none predictions from the final YOLO .txt files
-
-# --- Small-box reclassification filter ------------------------------------
-# Boxes with width < min_box_size OR height < min_box_size (pixels, measured
-# on the ORIGINAL image) are never sent to the LLM. 0 disables the filter.
-min_box_size: 0
-# What to do with small boxes: "keep" writes the original YOLO line verbatim
-# (no LLM call); "drop" skips the box entirely (no YOLO line).
-small_box_action: keep # "keep" | "drop"
-# Image-level false-negative guard: when "drop" empties an image purely via
-# the size filter, write NO label file and list it in skipped_small_images.txt
-# (exclude those images from training) instead of an empty .txt.
-drop_small_images: true
-# Context padding for the VLM crop: each box expanded by this % of its own
-# width/height per side, clamped to the image. 0 = exact-box crop.
-crop_padding_pct: 0
-# What the VLM sees per box: "crop" sends the (padded) crop; "full_som" sends
-# the FULL scene with the box highlighted/numbered (more tokens per request).
-recls_context: crop # "crop" | "full_som"
-# Ratio resize for the VLM crop (crop mode only): scale by this factor (1.5 =
-# 150%, aspect preserved, no letterbox bars) instead of the height x width
-# letterbox. Long edge capped at max(height, width). Unset = letterbox.
-crop_resize_ratio: null
-# Debug: save each box's exact final VLM-bound image (what the model sees,
-# letterbox included) as <stem>_box<line_no>.jpg under this dir (sync,
-# batch and dry runs). Output-only, no checkpoint effect.
-# dump_vlm_crops: null # e.g. ./output/vlm_crops
-
-# --- Real-ESRGAN upscaling (opt-in, all tasks) -------------------------------
-# Super-resolve VLM-bound crops/scenes with Real-ESRGAN before the model
-# sees them. Final YOLO coords always stay in original-image space.
-# Needs: uv pip install -e .[esrgan] (torch, CUDA-only; CPU is refused).
-# Weights auto-download to ~/.cache/llmog/esr on first use.
+# --- Real-ESRGAN upscaling (opt-in) --------------------------------------
+# ESR-THEN-CROP: with esr_enabled, the whole image is super-resolved ONCE
+# and every box crop is cut from the upscaled pixels. Final YOLO coords
+# always stay in original-image space. Needs: uv pip install -e .[esrgan]
+# (torch, CUDA-only; CPU is refused). Weights auto-download on first use.
 # PRECEDENCE: esr_* controls only the INTERMEDIATE image -- height/width
 # above always wins for the final payload, so keep esr_target_long_edge
 # near max(height, width).
-esr_enabled: false
-esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
-esr_target_long_edge: 2048 # working size after ESR (0 = native x4 output)
-esr_max_long_edge: 4096 # VRAM guard: downscale ESR output past this first
-# Whole scenes upscale when esr_enabled is on; per-crop ESR stays OFF
-# unless opted in: esr_for_crops: true
-# esr_model_path: null # explicit local checkpoint (wins over esr_model)
-# esr_compile: false # torch.compile (faster batches, slow first run)
+esr:
+  enabled: false
+  model: general-x4v3 # tiny/fast default; "x4plus" for max quality
+  target_long_edge: 2048 # working size after ESR (0 = native x4 output)
+  max_long_edge: 4096 # VRAM guard: downscale ESR output past this first
+  # Whole scenes upscale when esr_enabled is on; per-crop ESR stays OFF
+  # unless opted in: for_crops: true
+  # model_path: null # explicit local checkpoint (wins over model)
+  # compile: false # torch.compile (faster batches, slow first run)
 
-# --- Sampling / Batching ------------------------------------------------------
-num_samples: null
-shuffle: false
-seed: 42
-start_index: null
-end_index: null
-batch_size: 40
-dry_run: false
+sampling:
+  num_samples: null
+  shuffle: false
+  seed: 42
+  start: null # start_index
+  end: null # end_index
+  batch_size: 40
+  dry_run: false
 
-# --- Checkpointing & Resumption -----------------------------------------------
-resume: true
-auto_resume: true
+checkpoint:
+  resume: true
+  auto_resume: true
 
-# --- vLLM Engine Configuration ------------------------------------------------
-model: Qwen/Qwen3.8-27B-FP8
-server_type: vllm
-api_key: not-needed
-base_url: http://localhost:8080/v1
-port: 8080
-max_workers: 10
+server:
+  type: vllm # server_type
+  url: http://localhost:8080/v1 # base_url
+  key: not-needed # api_key
+  port: 8080
+  workers: 10 # max_workers
+  # Local llama.cpp knobs (llama_cpp / llama_cpp_python server_type only)
+  # enable_thinking: false
+  # use_mtp: true
+  # ctx_size: 20000
+  # parallel_slots: 1
+  # server_batch_size: 1024
+  # ubatch_size: 512
 
-max_model_len: 20000
-gpu_memory_utilization: 0.90
-tensor_parallel_size: 1
-pipeline_parallel_size: 1
-dtype: auto
-quantization: null
-kv_cache_dtype: auto
-max_num_seqs: 10
-enforce_eager: false
-enable_chunked_prefill: true
-enable_prefix_caching: true
-speculative_model: null
-num_speculative_tokens: null
-trust_remote_code: true
-limit_mm_per_prompt: null
-chat_template: null
-download_dir: null
-extra_args: null
+# --- vLLM engine ----------------------------------------------------------
+vllm:
+  max_model_len: 20000
+  gpu_memory_utilization: 0.90
+  tensor_parallel_size: 1
+  pipeline_parallel_size: 1
+  dtype: auto
+  quantization: null
+  kv_cache_dtype: auto
+  max_num_seqs: 10
+  enforce_eager: false
+  enable_chunked_prefill: true
+  enable_prefix_caching: true
+  speculative_model: null
+  num_speculative_tokens: null
+  trust_remote_code: true
+  limit_mm_per_prompt: null
+  chat_template: null
+  download_dir: null
+  # extra_args: null # raw extra tokens forwarded to vLLM (YAML list)

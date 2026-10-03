@@ -6,6 +6,22 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-03
+
+### Added
+- Grouped (nested) `--config` YAML sections: `logging inputs classes
+  classification output sampling checkpoint llm server vllm sizing reclass
+  batch provider esr prep` (`llmog/main.py:_normalize_nested_config`,
+  rule-based with no big table -- uniform families strip their prefix
+  (`esr: {target_long_edge}` -> `esr_target_long_edge`), everything else
+  resolves verbatim or via ~20 short aliases). One level max, flat keys
+  keep working, precedence is `defaults < nested < flat YAML < CLI`.
+  All 4 example YAMLs rewritten in grouped form (values unchanged).
+  `batch.size` is rejected (it would collide with the staging `batch_size`
+  -- use `sampling.batch_size`); unknown sections/keys and cross-section
+  collisions fail fast with suggestions, and near-miss flat keys get
+  did-you-mean errors instead of pydantic `extra="forbid"` noise.
+
 ## [1.4.4] - 2026-10-03
 
 ### Fixed

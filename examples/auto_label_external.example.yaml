@@ -6,170 +6,148 @@
 # CLI flags override whatever you set here.
 # ==============================================================================
 
-# --- Task selection -----------------------------------------------------------
 task: auto_label
 
-# --- Logging ------------------------------------------------------------------
-log_level: INFO
-log_file: null
+logging:
+  level: INFO
+  # file: null
 
-# --- Dataset (YOLO format) ----------------------------------------------------
-train_image: ./ZJU-Leaper-8/train/images
-train_label: ./ZJU-Leaper-8/train/labels
-yaml_path: ./ZJU-Leaper-8/data.yaml
-image_extensions: .jpg,.jpeg,.png
-output_folder: ./output
+inputs:
+  train_image: ./ZJU-Leaper-8/train/images
+  train_label: ./ZJU-Leaper-8/train/labels
+  yaml_path: ./ZJU-Leaper-8/data.yaml
+  image_extensions: .jpg,.jpeg,.png
 
-# --- Classes & VLM Prompt Definitions -----------------------------------------
-# --- Classes & VLM Prompt Definitions -----------------------------------------
-categories: broken_end, hole, slub_knot, thin_bar, thick_bar, abrasion, stain, none
-init_class_map: true
+output:
+  folder: ./output
 
-definitions: |
-  broken_end: A narrow, discontinuous line running strictly VERTICAL (warp / machine direction) caused by a snapped warp yarn. Appears as an elongated vertical gap or a frayed break in a continuous vertical thread. Distinguish from thin_bar (which runs horizontally).
-  hole: A physical puncture, tear, or void where fabric yarns are completely severed or missing, exposing the underlying background or dark void underneath. Distinguish from broken_end by having a 2D open cavity rather than a single 1D thread break.
-  slub_knot: A localized, raised lump, knot, or tightly tangled clump of yarn fibers on the fabric surface (including neps, yarn snarls, and dense netting clusters). Noticeably thicker, denser, or protruding compared to the flat weave structure.
-  thin_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where yarn density is looser or filling yarns are missing, producing a visibly lighter, translucent, or sparse horizontal streak.
-  thick_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where filling yarns are crowded, double-picked, or denser than surrounding fabric, producing a visibly darker, raised horizontal streak.
-  abrasion: A scuffed, rubbed, or fuzzy surface patch caused by mechanical friction. Surface fibers are fuzzed, roughened, or pilled into a matte, lighter texture patch, but the underlying yarn grid is still intact and no void/hole is present.
-  stain: Any discolored, foreign, or contaminated patch on the fabric surface, including machine oil/grease spots, dirt residue, dye bleed, water marks, or rust marks. Appears as an irregular discolored zone without structural damage to the weave.
-  none: Defect-free fabric. Uniform weave pattern, consistent thread spacing, no structural disruptions, and no foreign stains. Use this label whenever the crop shows clean, normal fabric.
+classes:
+  categories: broken_end, hole, slub_knot, thin_bar, thick_bar, abrasion, stain, none
+  init_class_map: true
+  definitions: |
+    broken_end: A narrow, discontinuous line running strictly VERTICAL (warp / machine direction) caused by a snapped warp yarn. Appears as an elongated vertical gap or a frayed break in a continuous vertical thread. Distinguish from thin_bar (which runs horizontally).
+    hole: A physical puncture, tear, or void where fabric yarns are completely severed or missing, exposing the underlying background or dark void underneath. Distinguish from broken_end by having a 2D open cavity rather than a single 1D thread break.
+    slub_knot: A localized, raised lump, knot, or tightly tangled clump of yarn fibers on the fabric surface (including neps, yarn snarls, and dense netting clusters). Noticeably thicker, denser, or protruding compared to the flat weave structure.
+    thin_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where yarn density is looser or filling yarns are missing, producing a visibly lighter, translucent, or sparse horizontal streak.
+    thick_bar: A HORIZONTAL stripe or band running across the fabric width (weft direction) where filling yarns are crowded, double-picked, or denser than surrounding fabric, producing a visibly darker, raised horizontal streak.
+    abrasion: A scuffed, rubbed, or fuzzy surface patch caused by mechanical friction. Surface fibers are fuzzed, roughened, or pilled into a matte, lighter texture patch, but the underlying yarn grid is still intact and no void/hole is present.
+    stain: Any discolored, foreign, or contaminated patch on the fabric surface, including machine oil/grease spots, dirt residue, dye bleed, water marks, or rust marks. Appears as an irregular discolored zone without structural damage to the weave.
+    none: Defect-free fabric. Uniform weave pattern, consistent thread spacing, no structural disruptions, and no foreign stains. Use this label whenever the crop shows clean, normal fabric.
+  mode: strict # class_mode: "strict" | "hybrid" | "free"
+  # preset: null
+  # Note: confidence here is 1-5 (not 0.0-1.0). Boxes at/below this are ALSO
+  # logged to *_low_confidence.json for manual review.
+  conf_threshold: 2
 
-class_mode: strict
-preset: null
+sizing:
+  height: 1024
+  width: 1024
 
-# Note: In most YOLO/VLM pipelines, confidence is [0.0 - 1.0].
-# If your pipeline expects a float, change '2' to 0.20 or 0.25 to prevent dropping valid detections.
-conf_threshold: 2
+reclass:
+  context: crop # recls_context: "crop" | "full_som"
+  crop_padding_pct: 0
+  resize_ratio: null # crop_resize_ratio
+  min_box_size: 0
+  small_box_action: keep # "keep" | "drop"
+  drop_small_images: true
+  none_labels:
+    - none
+    - no_detection
+    - nodetection
+    - no_defect
+    - background
+    - unknown
+    - negative
+    - normal
+  drop_none: true # strips background/none predictions from final YOLO .txt files
+  # Debug: save each box's exact final VLM-bound image (what the model sees,
+  # letterbox included) as <stem>_box<line_no>.jpg under this dir (sync,
+  # batch and dry runs). Output-only, no checkpoint effect.
+  # dump_crops: null # dump_vlm_crops, e.g. ./output/vlm_crops
 
-# --- Image resolution & None Handling -----------------------------------------
-height: 1024
-width: 1024
-
-none_labels:
-  - none
-  - no_detection
-  - nodetection
-  - no_defect
-  - background
-  - unknown
-  - negative
-  - normal
-drop_none: true # Strips background/none predictions from the final YOLO .txt files
-
-# --- Small-box reclassification filter ------------------------------------
-# Boxes with width < min_box_size OR height < min_box_size (pixels, measured
-# on the ORIGINAL image) are never sent to the LLM. 0 disables the filter.
-min_box_size: 0
-# What to do with small boxes: "keep" writes the original YOLO line verbatim
-# (no LLM call); "drop" skips the box entirely (no YOLO line).
-small_box_action: keep # "keep" | "drop"
-# Image-level false-negative guard: when "drop" empties an image purely via
-# the size filter, write NO label file and list it in skipped_small_images.txt
-# (exclude those images from training) instead of an empty .txt.
-drop_small_images: true
-# Context padding for the VLM crop: each box expanded by this % of its own
-# width/height per side (50 = half a box-width of context each side),
-# clamped to the image. 0 = exact-box crop. Filter above still measures the
-# original box; output YOLO coords are never padded.
-crop_padding_pct: 0
-# What the VLM sees per box: "crop" sends the (padded) crop; "full_som" sends
-# the FULL scene with the box highlighted/numbered and a directive to classify
-# only the marked box (more tokens per request -- mind batch payload sizes).
-recls_context: crop # "crop" | "full_som"
-# Ratio resize for the VLM crop (crop mode only): scale by this factor (1.5 =
-# 150%, aspect preserved, no letterbox bars) instead of the height x width
-# letterbox above. Long edge capped at max(height, width). Unset = letterbox.
-crop_resize_ratio: null
-# Debug: save each box's exact final VLM-bound image (what the model sees,
-# letterbox included) as <stem>_box<line_no>.jpg under this dir (sync,
-# batch and dry runs). Output-only, no checkpoint effect.
-# dump_vlm_crops: null # e.g. ./output/vlm_crops
-
-# --- Real-ESRGAN upscaling (opt-in, all tasks) -------------------------------
+# --- Real-ESRGAN upscaling (opt-in) --------------------------------------
 # ESR-THEN-CROP: with esr_enabled, the whole image is super-resolved ONCE
-# and every box crop is cut from the upscaled pixels (box coords follow the
-# true ratio; the small-box filter still measures original pixels; YOLO
-# outputs stay in original space). Needs: uv pip install -e .[esrgan]
-# (torch, CUDA-only; CPU is refused). Weights auto-download to
-# ~/.cache/llmog/esr on first use (or pass esr_model_path).
+# and every box crop is cut from the upscaled pixels. Final YOLO coords
+# always stay in original-image space. Needs: uv pip install -e .[esrgan]
+# (torch, CUDA-only; CPU is refused). Weights auto-download on first use.
 # PRECEDENCE: esr_* controls only the INTERMEDIATE image. The height/width
-# above always wins for the final VLM payload (ESR output is letterboxed
-# down to height x width afterwards), so match esr_target_long_edge to
-# roughly max(height, width) -- larger just burns GPU for discarded pixels
-# (crops are additionally auto-trimmed to that bound).
-esr_enabled: false
-esr_model: general-x4v3 # registry key (see esr/registry.py) | esr_model_path: /path/to/custom.pth
-# esr_model_path: null # explicit local checkpoint (wins over esr_model)
-esr_target_long_edge: 2048 # working size after ESR (0 = keep native x4 output)
-esr_max_long_edge: 4096 # VRAM guard: larger ESR outputs are downscaled first
-# Whole scenes upscale when esr_enabled is on. Per-crop ESR stays OFF unless
-# opted in (the pipeline upscales the whole image, never each crop, by default):
-# esr_for_crops: true # opt-in for tiny-defect crops
+# above always wins for the final VLM payload, so match esr_target_long_edge
+# to roughly max(height, width) -- larger just burns GPU for discarded pixels.
+esr:
+  enabled: false
+  model: general-x4v3 # registry key (see esr/registry.py)
+  # model_path: null # explicit local checkpoint (wins over model)
+  target_long_edge: 2048 # working size after ESR (0 = keep native x4 output)
+  max_long_edge: 4096 # VRAM guard: larger ESR outputs are downscaled first
+  # Whole scenes upscale when esr_enabled is on. Per-crop ESR stays OFF unless
+  # opted in (the pipeline upscales the whole image, never each crop, by default):
+  # for_crops: true # opt-in for tiny-defect crops
 
-# --- Sampling / Batching ------------------------------------------------------
-num_samples: null
-shuffle: false
-seed: 42
-start_index: null
-end_index: null
-batch_size: 40
-dry_run: false
+sampling:
+  num_samples: null
+  shuffle: false
+  seed: 42
+  start: null # start_index
+  end: null # end_index
+  batch_size: 40
+  dry_run: false
 
-# --- Checkpointing & Resumption -----------------------------------------------
-resume: true
-auto_resume: true
+checkpoint:
+  resume: true
+  auto_resume: true
 
-# --- External API Configuration -----------------------------------------------
-# server_type: external skips local server startup entirely (see
-# auto_annotation/server_init.py: build_client) and talks directly to
-# base_url with api_key. No local GPU, port, or health-check is used.
-# All vLLM engine knobs from the vLLM example (max_model_len,
-# gpu_memory_utilization, tensor_parallel_size, dtype, quantization,
-# max_num_seqs, trust_remote_code, download_dir, chat_template,
-# limit_mm_per_prompt, extra_args, ...) are intentionally omitted here:
-# they are only consumed by the local server path and do nothing for external.
-model: your-model-id # e.g. qwen/qwen2.5-vl-32b-instruct, gpt-4o-mini
-server_type: external
-api_key: sk-replace-me # replace, or override via CLI: --api_key $MY_KEY
-base_url: https://your-endpoint/v1 # e.g. https://openrouter.ai/api/v1, https://api.openai.com/v1
-max_workers:
-  4 # lower than the vLLM example's 10; hosted endpoints enforce
-  # RPM/TPM rate limits, so raise this only if your provider allows it.
-  # On 429s, lower max_workers and/or batch_size and retry.
+server:
+  # server_type: external skips local server startup entirely (see
+  # auto_annotation/server_init.py: build_client) and talks directly to
+  # base_url with api_key. No local GPU, port, or health-check is used.
+  # vLLM engine knobs are intentionally omitted here: they are only consumed
+  # by the local server path and do nothing for external.
+  type: external # server_type
+  url: https://your-endpoint/v1 # base_url, e.g. https://openrouter.ai/api/v1
+  key: sk-replace-me # api_key (or override via CLI: --api_key $MY_KEY)
+  workers: 4 # max_workers: hosted endpoints enforce RPM/TPM rate limits --
+    # lower than the vLLM example's 10; raise only if your provider allows it.
+    # On 429s, lower max_workers and/or batch_size and retry.
+
+llm:
+  model: your-model-id # e.g. qwen/qwen2.5-vl-32b-instruct, gpt-4o-mini
 
 # --- OpenAI Batch API (~50% cheaper than sync) ---------------------------------
 # One /v1/chat/completions request per box is submitted as a batch job, then
 # polled to completion and finalized into YOLO labels. Needs a provider with
-# /v1/batches support (OpenAI, and some OpenAI-compatible hosts) — the local
-# llama.cpp / vLLM servers do not implement it, so keep server_type: external
-# above. max_workers and batch_size are unused on this path.
-#
+# /v1/batches support -- the local llama.cpp / vLLM servers do not implement
+# it, so keep server_type: external above.
 # Jobs can take up to 24h. To split the work across sessions:
-#   batch_mode: submit  -> uploads the job, writes <output>/.batch_job.json, exits
-#   batch_mode: poll    -> re-run with the same config later to finalize labels
-#   batch_mode: auto    -> submit + wait + finalize in one run (default)
-use_batch_api: true
-batch_mode: auto # "auto" | "submit" (exit after submit) | "poll" (finalize a saved job)
-batch_poll_interval: 60
-batch_poll_timeout: 0 # 0 = wait forever; re-run with batch_mode poll to resume
-batch_completion_window: 24h
-# batch_job_id: null # poll a specific provider batch id instead of the saved job
-#
-# batch_submit_style controls how the requests reach the provider:
-#   file   -- upload batch_requests.jsonl and pass input_file_id (OpenAI).
-#   inline -- embed the requests in the create body and poll with raw HTTP.
-#             Use this for hosts whose /batches ignores input_file_id, e.g.
-#             OpenRouter (https://openrouter.ai/api/v1), which also returns
-#             results inline instead of via an output file.
-#   auto   -- try file, fall back to inline on that specific 400 (default).
-batch_submit_style: auto
+#   mode: submit -> uploads the job, writes <output>/.batch_job.json, exits
+#   mode: poll   -> re-run with the same config later to finalize labels
+#   mode: auto  -> submit + wait + finalize in one run (default)
+batch:
+  enabled: true # use_batch_api
+  mode: auto # batch_mode: "auto" | "submit" | "poll"
+  poll_interval: 60 # batch_poll_interval
+  poll_timeout: 0 # batch_poll_timeout: 0 = wait forever; re-run with poll to resume
+  window: 24h # batch_completion_window
+  # job_id: null # batch_job_id: poll a specific provider batch id instead
+  # submit_style controls how the requests reach the provider:
+  #   file   -- upload batch_requests.jsonl and pass input_file_id (OpenAI).
+  #   inline -- embed the requests in the create body and poll with raw HTTP.
+  #             Use this for hosts whose /batches ignores input_file_id, e.g.
+  #             OpenRouter (https://openrouter.ai/api/v1), which also returns
+  #             results inline instead of via an output file.
+  #   auto   -- try file, fall back to inline on that specific 400 (default).
+  submit_style: auto # batch_submit_style
+  # Inline hosts (e.g. OpenRouter) reject base64 images: with public_images,
+  # crop JPEGs are uploaded to a public host and bodies rewritten to the URLs.
+  # WARNING: uploads are world-readable; never use for sensitive data.
+  # public_images: false # batch_public_images
+  # host: catbox # image_host
 
 # --- Provider-specific params (optional) --------------------------------------
 # Forwarded verbatim as extra_body=... on every classify call. Omit (or leave
 # commented) to send nothing extra. CLI equivalent:
 #   --extra_body '{"provider": {"order": ["deepinfra"]}}'
-# extra_body:
-#   provider:
-#     order: ["deepinfra"]
-#     allow_fallbacks: false
+# provider:
+#   extra_body:
+#     provider:
+#       order: ["deepinfra"]
+#       allow_fallbacks: false

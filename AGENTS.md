@@ -18,7 +18,7 @@ Interactive test console for assessing Vision-Language Models (VLMs) on object d
 | `uv run classify-cli` | `image_classification:main` | Shortcut for `llmog --task classify` (whole-image single/multi/top_k) |
 | `uv run detection-gui` | `interface.gui:main` | Launch Gradio console (`app_builder.build_app()`) |
 
-Single source of truth for CLI flags: `llmog/schemes/argument.py:PipelineConfig` (pydantic v2). `llmog/main.py:build_parser` mirrors every field onto `argparse`; `parse_args()` overlays optional `--config <yaml>` and constructs validated `PipelineConfig`.
+Single source of truth for CLI flags: `llmog/schemes/argument.py:PipelineConfig` (pydantic v2). `llmog/main.py:build_parser` mirrors every field onto `argparse`; `parse_args()` overlays optional `--config <yaml>` and constructs validated `PipelineConfig`. `--config` YAML accepts grouped sections (`llmog/main.py:_normalize_nested_config`, rule-based: `batch_`/`esr_`/`prep_` prefix strip, verbatim field names, ~20 short aliases): `logging inputs classes classification output sampling checkpoint llm server vllm sizing reclass batch provider esr prep`. Precedence: `pydantic defaults < nested sections < flat YAML keys < CLI flags`. `batch.size` is rejected (collides with staging `batch_size`); near-miss keys fail with suggestions.
 
 ## Key Directories
 - `llmog/` — Package root (`tool.setuptools.package-dir = {"": "llmog"}`)

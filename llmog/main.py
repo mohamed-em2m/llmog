@@ -846,6 +846,149 @@ def _load_yaml_config(path: str) -> dict:
     return data
 
 
+# ---------------------------------------------------------------------------
+# Nested YAML sections (grouped, professional configs)
+# ---------------------------------------------------------------------------
+# Rule-based resolution -- no big alias table:
+#   1. section-prefix strip for the uniform families: batch_/esr_/prep_
+#      (``esr: {target_long_edge: 2048}`` -> ``esr_target_long_edge``).
+#   2. verbatim field name (``server: {base_url: ...}`` -> ``base_url``).
+#   3. micro-aliases below (``logging: {level: INFO}`` -> ``log_level``).
+# One level max (section.key only); prefix wins over verbatim on ties.
+# Flat keys keep working; a flat top-level key wins over its nested twin.
+# NOTE: ``checkpoint`` (not ``resume``) is the section name because ``resume``
+# itself is a field.
+_NESTED_SECTIONS = frozenset(
+    {
+        "logging",
+        "inputs",
+        "classes",
+        "classification",
+        "output",
+        "sampling",
+        "checkpoint",
+        "llm",
+        "server",
+        "vllm",
+        "sizing",
+        "reclass",
+        "batch",
+        "provider",
+        "esr",
+        "prep",
+    }
+)
+_NESTED_PREFIXES = {"batch": "batch_", "esr": "esr_", "prep": "prep_"}
+_NESTED_ALIASES = {
+    "logging": {"level": "log_level", "file": "log_file"},
+    "output": {"folder": "output_folder", "inplace": "inplace_saving"},
+    "sampling": {"start": "start_index", "end": "end_index"},
+    "sizing": {
+        "size": "image_size",
+        "min_tokens": "image_min_tokens",
+        "max_tokens": "image_max_tokens",
+    },
+    "reclass": {
+        "context": "recls_context",
+        "resize_ratio": "crop_resize_ratio",
+        "dump_crops": "dump_vlm_crops",
+    },
+    "batch": {"enabled": "use_batch_api", "window": "batch_completion_window"},
+    "server": {
+        "type": "server_type",
+        "url": "base_url",
+        "key": "api_key",
+        "workers": "max_workers",
+    },
+    "classes": {"mode": "class_mode", "defs": "class_definitions"},
+    "classification": {
+        "mode": "classification_mode",
+        "format": "output_format",
+        "temperature": "classification_temperature",
+        "max_tokens": "classification_max_tokens",
+    },
+    "llm": {"retries": "api_retries"},
+}
+# batch.size would resolve to the STAGING batch_size (a sampling concept),
+# silently misrouting a Batch-API intent -- hard error instead.
+_NESTED_FORBIDDEN = {
+    ("batch", "size"): (
+        "'size' is not allowed inside the 'batch:' section: it would "
+        "collide with the staging 'batch_size'. Put the images-per-batch "
+        "staging size under 'sampling: {batch_size: ...}' instead."
+    ),
+}
+
+
+def _resolve_nested_key(section: str, sub: str, fields: set) -> str:
+    """Resolve one ``section: {sub: ...}`` key to a PipelineConfig field."""
+    if (section, sub) in _NESTED_FORBIDDEN:
+        raise ValueError(_NESTED_FORBIDDEN[(section, sub)])
+    aliases = _NESTED_ALIASES.get(section, {})
+    if sub in aliases:
+        return aliases[sub]
+    prefix = _NESTED_PREFIXES.get(section)
+    if prefix and (prefix + sub) in fields:
+        return prefix + sub
+    if sub in fields:
+        return sub
+    import difflib
+
+    pool = list(aliases)
+    if prefix:
+        pool += sorted(f[len(prefix) :] for f in fields if f.startswith(prefix))
+    else:
+        pool += sorted(fields)
+    suggestions = difflib.get_close_matches(sub, pool, n=3)
+    hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+    raise ValueError(f"Unknown key '{sub}' in YAML section '{section}'.{hint}")
+
+
+def _normalize_nested_config(raw: dict) -> dict:
+    """Flatten known ``section: {key: value}`` groups to field names.
+
+    Sections are pure organization: every nested key resolves through
+    :func:`_resolve_nested_key`. Two sections resolving to the same field
+    is an error (ambiguous); a flat top-level twin wins over nested.
+    Non-section mapping values (``serving_extra``, ``extra_body``) pass
+    through untouched. Near-miss flat keys fail here with a suggestion
+    instead of deep inside pydantic's ``extra="forbid"`` error.
+    """
+    import difflib
+
+    fields = set(PipelineConfig.model_fields)
+    # Handled downstream of normalization (aliases), not real fields.
+    passthrough = {"output_dir", "config"}
+    nested: dict = {}
+    origins: dict = {}
+    for key, val in raw.items():
+        if key in _NESTED_SECTIONS:
+            if val is None:
+                continue  # fully-commented section: nothing to flatten
+            if not isinstance(val, dict):
+                raise ValueError(
+                    f"YAML section '{key}:' must be a mapping of "
+                    f"key: value pairs, got: {val!r}."
+                )
+            for sub, subval in val.items():
+                field = _resolve_nested_key(key, sub, fields)
+                if field in nested:
+                    raise ValueError(
+                        f"YAML key '{sub}' in section '{key}:' collides with "
+                        f"'{origins[field]}' (both set '{field}'): keep only one."
+                    )
+                nested[field] = subval
+                origins[field] = f"{key}.{sub}"
+    # Flat top-level keys overlay nested (explicit wins).
+    flat = {k: v for k, v in raw.items() if k not in _NESTED_SECTIONS}
+    for key in flat:
+        if key not in fields and key not in passthrough:
+            suggestions = difflib.get_close_matches(key, sorted(fields), n=3)
+            hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
+            raise ValueError(f"Unknown YAML key '{key}'.{hint}")
+    return {**nested, **flat}
+
+
 def _coerce_serving_extra(raw: Optional[List[str]]) -> dict:
     """Convert repeated ``key=value`` CLI tokens into a dict."""
     if raw is None:
@@ -883,7 +1026,8 @@ def parse_args(argv: Optional[List[str]] = None) -> PipelineConfig:
 
     Precedence (lowest to highest):
       1. PipelineConfig field defaults
-      2. YAML key/values from ``--config``
+      2. YAML key/values from ``--config`` (nested ``section: {key}`` groups
+         flattened first; a flat top-level twin wins over nested)
       3. Explicit CLI flags
     """
     parser = build_parser()
@@ -914,6 +1058,13 @@ def parse_args(argv: Optional[List[str]] = None) -> PipelineConfig:
     #   pydantic defaults  <  YAML  <  CLI
     ns = parser.parse_args(argv)
     raw = vars(ns)
+
+    # Flatten nested YAML sections to field names (flat twins win; bad
+    # sections/keys fail here with a clear message, not deep in pydantic).
+    try:
+        overrides = _normalize_nested_config(overrides)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # base layer: YAML overrides pydantic defaults
     # CLI explicit flags override YAML

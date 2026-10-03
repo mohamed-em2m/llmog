@@ -47,11 +47,10 @@ class TestNoneLabelsCoercion:
         assert cfg.none_labels == "none,no_detection,background"
 
     def test_example_yaml_loads(self):
-        # The shipped example uses list form -- it must validate.
+        # The shipped example uses list form under reclass: -- it must validate.
         from pathlib import Path
 
-        from main import _load_yaml_config
-        from schemes import PipelineConfig
+        from main import _load_yaml_config, parse_args
 
         ex = (
             Path(__file__).resolve().parent.parent
@@ -59,8 +58,8 @@ class TestNoneLabelsCoercion:
             / "auto_label_vllm.example.yaml"
         )
         data = _load_yaml_config(str(ex))
-        assert isinstance(data.get("none_labels"), list)
-        cfg = PipelineConfig(**{**data, "train_image": "imgs/"})
+        assert isinstance(data.get("reclass", {}).get("none_labels"), list)
+        cfg = parse_args(["--config", str(ex)])
         assert "background" in cfg.none_labels.split(",")
 
 

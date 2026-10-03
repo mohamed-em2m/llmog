@@ -16,72 +16,70 @@
 # CLI flags override whatever you set here.
 # ==============================================================================
 
-# --- Task selection -----------------------------------------------------------
 task: free_detection
 
-# --- Logging ------------------------------------------------------------------
-log_level: INFO
-log_file: null
+logging:
+  level: INFO
+  # file: null
 
-# --- Detection settings -------------------------------------------------------
-images:
-  - ./assets/image.png
-categories: "crack, scratch, dent"
-definitions: |
-  crack: a thin linear fracture on the surface
-  scratch: shallow groove from abrasion
-  dent: a shallow depression or indentation
-max_rounds: 2
-score_threshold: 8
-detector_temperature: 0.9
-detector_top_p: 0.95
-judge_temperature: 0.2
-detector_max_tokens: 4096
-judge_max_tokens: 1024
-api_retries: 3
+inputs:
+  images:
+    - ./assets/image.png
 
-# --- Model / server -----------------------------------------------------------
-base_url: "http://localhost:8080/v1"
-api_key: "not-needed"
-detector_model: "local-model"
-judge_model: "local-model"
-judge_url: null
-server_type: llama_cpp # "llama_cpp" | "vllm" | "external"
+classes:
+  categories: "crack, scratch, dent"
+  definitions: |
+    crack: a thin linear fracture on the surface
+    scratch: shallow groove from abrasion
+    dent: a shallow depression or indentation
 
-# --- Output -------------------------------------------------------------------
-output_folder: ./esr_detection_results
-no_plot: true
+llm:
+  detector_model: "local-model"
+  judge_model: "local-model"
+  max_rounds: 2
+  score_threshold: 8
+  detector_temperature: 0.9
+  detector_top_p: 0.95
+  judge_temperature: 0.2
+  detector_max_tokens: 4096
+  judge_max_tokens: 1024
+  retries: 3
 
-# --- Preprocessing ------------------------------------------------------------
-prep_enabled: true
-prep_short_edge: 1024
-prep_pad_square: false
-prep_contrast_method: none
-prep_gamma: 1.0
-prep_denoise_method: none
-prep_sharpen: false
-prep_white_balance: false
+server:
+  type: llama_cpp # "llama_cpp" | "vllm" | "external"
+  url: "http://localhost:8080/v1"
+  key: "not-needed"
 
-# Tiling for small objects (tile size auto-scales with ESR growth, so
-# relative coverage -- and cost -- stays as configured here).
-prep_tiling_enabled: true
-prep_tile_size: 512
-prep_tile_overlap: 0.2
-prep_crop_verify_enabled: false
-prep_crop_padding: 0.15
+output:
+  folder: ./esr_detection_results
+  no_plot: true
 
-# Set-of-Mark prompting
-prep_som_enabled: false
-
-# Grid overlay (step is 0-1000 relative and untouched; line width / font
-# auto-scale with ESR growth so the VLM sees the same relative grid).
-prep_grid_style: standard
-prep_grid_step: 100
-prep_grid_line_width: 1
-prep_grid_font_size: 0
-prep_grid_line_color: "red"
-prep_grid_text_color: "white"
-prep_grid_backing_color: "black"
+prep:
+  enabled: true
+  short_edge: 1024
+  pad_square: false
+  contrast_method: none
+  gamma: 1.0
+  denoise_method: none
+  sharpen: false
+  white_balance: false
+  # Tiling for small objects (tile size auto-scales with ESR growth, so
+  # relative coverage -- and cost -- stays as configured here).
+  tiling_enabled: true
+  tile_size: 512
+  tile_overlap: 0.2
+  crop_verify_enabled: false
+  crop_padding: 0.15
+  som_enabled: false
+  # Grid overlay (step is 0-1000 relative and untouched; line width / font
+  # auto-scale with ESR growth so the VLM sees the same relative grid).
+  grid_style: standard
+  grid_step: 100
+  grid_line_width: 1
+  grid_font_size: 0
+  grid_line_color: "red"
+  grid_text_color: "white"
+  grid_backing_color: "black"
 
 # --- Real-ESRGAN stage-0 (the point of this example) ---------------------------
 # PRECEDENCE: these esr_* keys control only the INTERMEDIATE upscaled image.
@@ -90,18 +88,19 @@ prep_grid_backing_color: "black"
 # 1024 means: super-resolve for detail, then fit to 1024 for the request.
 # Set esr_target_long_edge to match (or sit just above) your final size to
 # avoid upscaling pixels that get thrown away right after.
-esr_enabled: true
-esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
-# esr_model_path: null # explicit local checkpoint (wins over esr_model)
-# esr_model_repo: null # HF repo fallback (needs huggingface_hub), only if
-#   the official download fails
-# esr_cache_dir: null # weight cache (default ~/.cache/llmog/esr)
-# esr_scale: null # factor override (default: checkpoint native; mismatch = error)
-esr_target_long_edge: 2048 # working size after ESR (0 = keep native x4 output)
-esr_max_long_edge: 4096 # VRAM guard: larger ESR outputs are downscaled first
-esr_tile_size: 512 # ESR inference tile (input px)
-esr_overlap: 16 # ESR inference overlap (input px)
-# esr_batch_size: 4 # ESR tiles per batch
-# esr_compile: false # torch.compile (faster batches, slow first run)
-esr_channels_last: true
-esr_device: auto # first CUDA device ("cuda:0", ...); CPU is refused
+esr:
+  enabled: true
+  model: general-x4v3 # tiny/fast default; "x4plus" for max quality
+  # model_path: null # explicit local checkpoint (wins over model)
+  # model_repo: null # HF repo fallback (needs huggingface_hub), only if
+  #   the official download fails
+  # cache_dir: null # weight cache (default ~/.cache/llmog/esr)
+  # scale: null # factor override (default: checkpoint native; mismatch = error)
+  target_long_edge: 2048 # working size after ESR (0 = keep native x4 output)
+  max_long_edge: 4096 # VRAM guard: larger ESR outputs are downscaled first
+  tile_size: 512 # ESR inference tile (input px)
+  overlap: 16 # ESR inference overlap (input px)
+  # batch_size: 4 # ESR tiles per batch
+  # compile: false # torch.compile (faster batches, slow first run)
+  channels_last: true
+  device: auto # first CUDA device ("cuda:0", ...); CPU is refused
