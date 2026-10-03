@@ -427,6 +427,9 @@ def main(args=None):
                 target_height,
                 target_width,
                 effective_definitions,
+                # yaml_names is the ORIGINAL data.yaml order (pre-checkpoint
+                # re-sync), i.e. what numeric ids meant in the input labels.
+                orig_names=yaml_names,
             )
         else:
             read_images_with_labels(
@@ -474,6 +477,9 @@ def main(args=None):
                 crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
                 esr_settings=build_esr_settings(args),
                 dump_vlm_crops=getattr(args, "dump_vlm_crops", None),
+                # yaml_names is the ORIGINAL data.yaml order (pre-checkpoint
+                # re-sync), i.e. what numeric ids meant in the input labels.
+                orig_names=yaml_names,
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

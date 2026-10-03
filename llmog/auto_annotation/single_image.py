@@ -80,6 +80,10 @@ def process_one_image(
     crop_resize_ratio=None,
     esr_settings=None,
     dump_vlm_crops=None,
+    # Ordered data.yaml names (list) or id->name mapping, used ONLY to
+    # recover a kept box's original label name (true keep, no model call).
+    # None (tests/legacy callers) keeps the previous synthetic-name behavior.
+    orig_names=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -323,12 +327,14 @@ def process_one_image(
                 # Kept boxes are never classified: their class must not
                 # silently merge into an unrelated map entry (e.g. an old
                 # binary id reinterpreted under a new multi-class map).
-                # resolve_kept_class keeps free ids in place and mints a
-                # fresh id when the original is taken; the written line uses
-                # the RESOLVED id (coords always verbatim).
+                # With orig_names (data.yaml), a box whose original name
+                # still holds its id is kept verbatim ("original"); free ids
+                # slot in place, taken ids quarantine once via
+                # resolve_kept_class; the written line uses the RESOLVED id
+                # (coords always verbatim).
                 with class_map_lock:
                     _kept_name, _kept_id, _kept_how = resolve_kept_class(
-                        class_map, values[0]
+                        class_map, values[0], orig_names=orig_names
                     )
                 if _kept_how == "invalid":
                     logger.warning(
@@ -358,7 +364,7 @@ def process_one_image(
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
-                elif _kept_how == "reused":
+                elif _kept_how in ("reused", "original"):
                     logger.info(
                         f"{img_file}: keeping small box "
                         f"({x2 - x1}x{y2 - y1}px) as id {_kept_id} "

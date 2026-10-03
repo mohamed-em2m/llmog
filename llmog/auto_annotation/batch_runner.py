@@ -101,6 +101,9 @@ def read_images_with_labels(
     crop_resize_ratio=None,
     esr_settings=None,
     dump_vlm_crops=None,
+    # Ordered data.yaml names (list) or id->name mapping, used ONLY to
+    # recover a kept box's original label name (true keep, no model call).
+    orig_names=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -358,6 +361,7 @@ def read_images_with_labels(
                         crop_resize_ratio=crop_resize_ratio,
                         esr_settings=esr_settings,
                         dump_vlm_crops=dump_vlm_crops,
+                        orig_names=orig_names,
                     )
                     if img is not None:
                         last_img = img
@@ -413,6 +417,7 @@ def read_images_with_labels(
                         crop_resize_ratio=crop_resize_ratio,
                         esr_settings=esr_settings,
                         dump_vlm_crops=dump_vlm_crops,
+                        orig_names=orig_names,
                     ): img_file
                     for img_file in batch_images
                 }

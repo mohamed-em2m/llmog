@@ -939,6 +939,9 @@ def finalize_batch_job(
     checkpoint=None,
     completed_images=None,
     batches_done=None,
+    # Ordered data.yaml names (list) or id->name mapping, used ONLY to
+    # recover a kept box's original label name (true keep, no model call).
+    orig_names=None,
 ):
     """Download the batch output and write YOLO labels (online-path semantics).
 
@@ -1089,15 +1092,17 @@ def finalize_batch_job(
 
             stats.incr("boxes_kept_small", len(kept))
             # Kept boxes are never classified: resolve each original id so a
-            # taken id mints a fresh one instead of merging into an unrelated
-            # class (finalize is single-threaded, no lock needed). Only the
-            # class token is rewritten; coordinate text stays verbatim.
+            # taken id quarantines once instead of merging into an unrelated
+            # class (finalize is single-threaded, no lock needed). With
+            # orig_names (data.yaml), a box whose original name still holds
+            # its id is kept verbatim. Only the class token is rewritten;
+            # coordinate text stays verbatim.
             for _kept_line in kept:
                 _parts = _kept_line.split()
                 if not _parts:
                     continue
                 _kept_name, _kept_id, _kept_how = resolve_kept_class(
-                    class_map, _parts[0]
+                    class_map, _parts[0], orig_names=orig_names
                 )
                 if _kept_how == "invalid":
                     logger.warning(
@@ -1122,7 +1127,7 @@ def finalize_batch_job(
                         f"as {_kept_name!r} so data.yaml stays trainable."
                     )
                     stats.note_new_class(_kept_name)
-                elif _kept_how == "reused":
+                elif _kept_how in ("reused", "original"):
                     logger.info(
                         f"{img_file}: keeping small box as id {_kept_id} "
                         f"('{_kept_name}') without LLM call."
@@ -1272,6 +1277,9 @@ def run_batch_api_flow(
     target_height,
     target_width,
     effective_definitions,
+    # Ordered data.yaml names (list) or id->name mapping, used ONLY to
+    # recover a kept box's original label name at finalize time.
+    orig_names=None,
 ):
     """Driver for ``--use_batch_api``: submit and/or poll+finalize per mode."""
     from auto_annotation.stats import RunStats  # noqa: F401  (docs: stats type)
@@ -1540,6 +1548,7 @@ def run_batch_api_flow(
         checkpoint=checkpoint,
         completed_images=completed_images,
         batches_done=batches_done,
+        orig_names=orig_names,
     )
     # Sync newly discovered classes back so the yaml sync + final log see them.
     try:

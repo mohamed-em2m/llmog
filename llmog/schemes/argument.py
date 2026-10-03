@@ -176,15 +176,16 @@ class PipelineConfig(BaseModel):
     # verbatim (original class id + coords, no LLM call, no class_map
     # mutation); "drop" skips the box entirely (no YOLO line).
     # NOTE on keep: coordinates stay byte-identical, but the class id is
-    # resolved, not blindly copied: a free id is kept in place (registered
-    # as original_class_<id> when nameless); an id already taken in the
-    # current map quarantines ONCE under original_class_<id> at a fresh id
-    # (later boxes reuse it -- never one id per box) so the box can never
-    # silently merge into an unrelated class (e.g. an old binary id
-    # reinterpreted under a new multi-class map). The original_class_<id>
-    # name pattern is reserved for this purpose. Unknown kept ids are
-    # registered as original_class_<id> (with a WARNING) so data.yaml stays
-    # trainable.
+    # resolved, not blindly copied: when data.yaml names resolve the id,
+    # the ORIGINAL name+id are kept verbatim (no model call, no map change);
+    # a free id slots in place (original name if known, else
+    # original_class_<id>); an id already taken in the current map
+    # quarantines ONCE under original_class_<id> at a fresh id (later boxes
+    # reuse it -- never one id per box) so the box can never silently merge
+    # into an unrelated class (e.g. an old binary id reinterpreted under a
+    # new multi-class map). The original_class_<id> name pattern is reserved
+    # for this purpose. Unknown kept ids are registered so data.yaml stays
+    # trainable (with a WARNING).
     small_box_action: Literal["keep", "drop"] = "keep"
     # Image-level guard against false negatives: when True (default) and
     # small_box_action="drop", an image that ends up with ZERO writable

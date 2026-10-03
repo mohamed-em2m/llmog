@@ -319,6 +319,55 @@ class TestKeepRegistersUnknownId:
         # checkpoint carries the settings fingerprint
         assert saves and saves[0].get("model") == "test-model"
 
+    def test_kept_box_keeps_original_name(self, tmp_path, monkeypatch):
+        """With orig_names (data.yaml), a kept box whose original name still
+        holds its id keeps the ORIGINAL name and id verbatim: no synthetic
+        class, no map mutation, model never called."""
+        import threading
+
+        from auto_annotation.single_image import process_one_image
+        from auto_annotation.stats import RunStats
+
+        train_image = tmp_path / "images"
+        train_label = tmp_path / "labels"
+        train_image.mkdir()
+        train_label.mkdir()
+        Image.new("RGB", (100, 100), (128, 128, 128)).save(train_image / "img0.jpg")
+        # 50px box on a 100px image, original class id 0 == 'hole'
+        (train_label / "img0.txt").write_text("0 0.5 0.5 0.5 0.5\n")
+
+        def _must_not_run(*a, **k):
+            raise AssertionError("kept boxes must never reach the model")
+
+        monkeypatch.setattr("auto_annotation.single_image.detect_defect", _must_not_run)
+
+        out = tmp_path / "out"
+        out.mkdir(exist_ok=True)
+        stats = RunStats()
+        class_map = {"hole": 0}
+        process_one_image(
+            "img0.jpg",
+            str(train_image),
+            str(train_label),
+            str(out),
+            class_map,
+            threading.Lock(),
+            object(),
+            "test-model",
+            2,
+            False,
+            False,
+            64,
+            64,
+            stats,
+            False,
+            min_box_size=60,
+            small_box_action="keep",
+            orig_names=["hole"],
+        )
+        assert (out / "img0.txt").read_text() == "0 0.5 0.5 0.5 0.5\n"
+        assert class_map == {"hole": 0}
+
     def test_taken_id_remapped_to_fresh(self, tmp_path, monkeypatch):
         """A kept box whose old id is taken gets a FRESH id (no silent merge
         into an unrelated class): old binary id 1 meant 'defect', but the new

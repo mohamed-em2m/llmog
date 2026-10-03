@@ -231,6 +231,54 @@ class TestResolveKeptClass:
             assert resolve_kept_class(m, 0) == (first[0], first[1], "reused")
         assert m == {"hole": 0, "original_class_0": 1}
 
+    def test_original_name_kept_verbatim(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        # The input name still holds its id: true keep, no map mutation.
+        m = {"hole": 0, "stain": 1}
+        assert resolve_kept_class(m, 0, orig_names=["hole", "stain"]) == (
+            "hole",
+            0,
+            "original",
+        )
+        assert m == {"hole": 0, "stain": 1}
+
+    def test_slot_uses_original_name_when_known(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        m = {}
+        assert resolve_kept_class(m, 1, orig_names=["hole", "stain"]) == (
+            "stain",
+            1,
+            "slot",
+        )
+        assert m == {"stain": 1}
+
+    def test_changed_convention_still_quarantines(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        # data.yaml said 1 == 'stain', but the map holds 1 == 'dog': the
+        # original name must NOT be reused (it means something else now),
+        # so the box quarantines under the synthetic name -- once.
+        m = {"dog": 1}
+        first = resolve_kept_class(m, 1, orig_names=["hole", "stain"])
+        assert first == ("original_class_1", 2, "remapped")
+        assert resolve_kept_class(m, 1, orig_names=["hole", "stain"]) == (
+            "original_class_1",
+            2,
+            "reused",
+        )
+        assert m == {"dog": 1, "original_class_1": 2}
+
+    def test_dict_form_names(self):
+        from auto_annotation.yaml_utils import lookup_original_name
+
+        assert lookup_original_name({"0": "hole", 1: "stain"}, 0) == "hole"
+        assert lookup_original_name({"0": "hole", 1: "stain"}, 1) == "stain"
+        assert lookup_original_name({"0": "hole"}, 5) is None
+        assert lookup_original_name(None, 0) is None
+        assert lookup_original_name(["hole"], "abc") is None
+
 
 class TestSaveUnderLocks:
     def test_concurrent_saves_lose_nothing(self, tmp_path):

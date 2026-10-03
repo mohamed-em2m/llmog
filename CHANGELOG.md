@@ -6,6 +6,16 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-03
+
+### Fixed
+- Kept small boxes (`small_box_action keep`) now keep the ORIGINAL data.yaml
+  name+id verbatim whenever the input name still holds its id in the current
+  map (true keep: no model call, no map mutation, no synthetic class). Free
+  ids slot in place under the original name when known; only genuinely
+  taken ids quarantine once under `original_class_<old>` (reused by later
+  boxes). Applies identically on the sync and batch-finalize paths.
+
 ## [1.4.1] - 2026-10-03
 
 ### Fixed
