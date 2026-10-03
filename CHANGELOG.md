@@ -6,6 +6,21 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-10-03
+
+### Added
+- ESR-then-crop for `auto_label`: with `--esr_enabled`, the whole image is
+  super-resolved ONCE per input image and every box crop is cut from the
+  upscaled pixels (box coords scaled by the true returned ratio; the
+  small-box filter still measures ORIGINAL pixels; outputs stay in original
+  YOLO space). Per-crop ESR now only fires when the whole-image stage did
+  not, and never on dry runs. Sync and batch paths share the stage so
+  bodies stay byte-identical.
+
+### Fixed
+- `find_labeled_images()` skips our own `skipped_small_images.txt` manifest
+  instead of warning about it as an unmatched label on every run.
+
 ## [1.4.2] - 2026-10-03
 
 ### Fixed

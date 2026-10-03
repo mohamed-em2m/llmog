@@ -452,7 +452,13 @@ def find_labeled_images(train_image, train_label, image_extensions):
     skipped_no_image = 0
 
     label_files = sorted(
-        f for f in os.listdir(train_label) if f.lower().endswith(".txt")
+        f
+        for f in os.listdir(train_label)
+        if f.lower().endswith(".txt")
+        # Skip our own manifests: a previous run may have written
+        # skipped_small_images.txt next to the labels (e.g. inplace runs),
+        # and it must never be treated as a YOLO label file.
+        and f.lower() != "skipped_small_images.txt"
     )
 
     for label_file in label_files:

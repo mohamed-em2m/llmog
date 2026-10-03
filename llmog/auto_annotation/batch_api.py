@@ -276,6 +276,25 @@ def collect_batch_requests(
             continue
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         h, w, _ = img.shape
+        # Stage 0 (ESR-then-crop, mirrors single_image.process_one_image):
+        # super-resolve the WHOLE image ONCE, then cut every box crop out
+        # of it. `_fx`/`_fy` map working pixels back to original pixels so
+        # the small-box filter below still measures ORIGINAL pixels.
+        # (collect builds real payloads even on dry runs, so unlike the
+        # sync path there is no dry-run gate here -- but dry_run=True still
+        # forces native pixels via the _esr={} guard above.)
+        _fx = _fy = 1.0
+        _whole_applied = False
+        if _esr:
+            _full, _info = maybe_esr_upscale_pil(
+                Image.fromarray(img), _esr, purpose="scene"
+            )
+            if _info.get("applied"):
+                _fx = _info["work_w"] / max(1, _info["orig_w"])
+                _fy = _info["work_h"] / max(1, _info["orig_h"])
+                img = np.array(_full)
+                h, w, _ = img.shape
+                _whole_applied = True
         try:
             with open(label_path, "r") as f:
                 lines = f.readlines()
@@ -298,7 +317,10 @@ def collect_batch_requests(
             if x2 <= x1 or y2 <= y1:
                 logger.warning(f"Invalid box in {img_file}: {values}")
                 continue
-            if min_side > 0 and ((x2 - x1) < min_side or (y2 - y1) < min_side):
+            # Original-pixel dims (working dims divided by the stage-0
+            # factors) -- the filter threshold is in ORIGINAL pixel units.
+            _ow, _oh = (x2 - x1) / _fx, (y2 - y1) / _fy
+            if min_side > 0 and (_ow < min_side or _oh < min_side):
                 if action == "keep":
                     entry["kept"].append(line.strip())
                 else:
@@ -308,7 +330,8 @@ def collect_batch_requests(
             if _som_mode:
                 try:
                     _scene = Image.fromarray(img)
-                    if _esr:
+                    # Whole-image ESR already applied above: mark directly.
+                    if _esr and not _whole_applied:
                         _scene, (x1, y1, x2, y2), _ = upscale_scene_for_som(
                             _scene, (x1, y1, x2, y2), _esr
                         )
@@ -336,10 +359,12 @@ def collect_batch_requests(
                     continue
                 try:
                     pil_crop = Image.fromarray(crop)
-                    # ESR first (pixels only), then the usual sizing -- same
-                    # order as single_image.process_one_image (crop cap
-                    # included, so bodies stay byte-identical).
-                    if _esr:
+                    # Crops are cut from the (possibly whole-image-upscaled)
+                    # img above. A per-crop ESR pass runs ONLY when the
+                    # whole-image stage did not -- same order as
+                    # single_image.process_one_image (crop cap included, so
+                    # bodies stay byte-identical).
+                    if _esr and not _whole_applied:
                         pil_crop, _ = maybe_esr_upscale_pil(
                             pil_crop,
                             _esr,

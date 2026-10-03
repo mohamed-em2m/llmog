@@ -158,6 +158,43 @@ def process_one_image(
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w, _ = img.shape
 
+    # Real-ESRGAN settings for VLM-bound pixels ({} when disabled; the
+    # helper centralizes getattr defaults so sync == batch by construction).
+    # Never loads a model on dry runs (no-op runs stay model-free).
+    _esr = build_esr_settings(esr_settings)
+    if _esr and not dry_run:
+        logger.info(
+            "ESR upscaling ON for VLM pixels "
+            f"(model={_esr.get('esr_model')}, target_long_edge="
+            f"{_esr.get('esr_target_long_edge')}). Final YOLO coords stay in "
+            "original-image space."
+        )
+
+    # Stage 0 (ESR-then-crop): super-resolve the WHOLE image ONCE, then cut
+    # every box crop out of the upscaled image. `_fx`/`_fy` map working
+    # pixels back to original pixels; the small-box filter below always
+    # measures ORIGINAL pixels (working dims divided by f). Output YOLO
+    # coords use the original normalized label values, untouched.
+    _fx = _fy = 1.0
+    _whole_applied = False
+    if _esr and not dry_run:
+        _full, _info = maybe_esr_upscale_pil(
+            Image.fromarray(img), _esr, purpose="scene"
+        )
+        if _info.get("applied"):
+            _fx = _info["work_w"] / max(1, _info["orig_w"])
+            _fy = _info["work_h"] / max(1, _info["orig_h"])
+            img = np.array(_full)
+            h, w, _ = img.shape
+            _whole_applied = True
+            logger.info(
+                f"{img_file}: ESR whole-image "
+                f"{_info['orig_w']}x{_info['orig_h']} -> working "
+                f"{_info['work_w']}x{_info['work_h']} "
+                f"(x{_info.get('scale', 1)}); boxes projected "
+                f"x{_fx:.2f}/x{_fy:.2f}; crops cut from the upscaled image."
+            )
+
     # Context padding for the VLM crop (box-relative %, clamped to the image;
     # 0 = legacy exact-box crop). Applied AFTER the small-box filter, which
     # always measures the original box, and never touches output YOLO coords.
@@ -191,14 +228,7 @@ def process_one_image(
     # Real-ESRGAN settings for VLM-bound pixels ({} when disabled; the
     # helper centralizes getattr defaults so sync == batch by construction).
     # Never loads a model on dry runs (no-op runs stay model-free).
-    _esr = build_esr_settings(esr_settings)
-    if _esr and not dry_run:
-        logger.info(
-            "ESR upscaling ON for VLM pixels "
-            f"(model={_esr.get('esr_model')}, target_long_edge="
-            f"{_esr.get('esr_target_long_edge')}). Final YOLO coords stay in "
-            "original-image space."
-        )
+    # NOTE: _esr was already built above (stage 0 needs it right after load).
     _dump_dir = str(dump_vlm_crops) if dump_vlm_crops else None
     if _dump_dir:
         # Debug dumps run on dry runs too: they cost no model calls and no
@@ -299,6 +329,8 @@ def process_one_image(
         # Tiny boxes produce crops the VLM cannot classify reliably, so they
         # are never sent to the model. "keep" preserves the original YOLO
         # line verbatim; "drop" omits the box from the output entirely.
+        # Under whole-image ESR, x1..y2 above are WORKING pixels: divide by
+        # the stage-0 factors to recover original-pixel dims for the test.
         try:
             _min_side = int(min_box_size or 0)
         except (TypeError, ValueError):
@@ -306,21 +338,22 @@ def process_one_image(
         _action = str(small_box_action or "keep").lower().strip()
         if _action not in ("keep", "drop"):
             _action = "keep"
-        if _min_side > 0 and ((x2 - x1) < _min_side or (y2 - y1) < _min_side):
+        _ow, _oh = (x2 - x1) / _fx, (y2 - y1) / _fy
+        if _min_side > 0 and (_ow < _min_side or _oh < _min_side):
             stats.incr("boxes_skipped_small")
             small_skipped_this_image += 1
             # INFO (not DEBUG): the user needs to see the filter firing to trust
             # it, and the box dimensions to calibrate min_box_size.
             logger.info(
                 f"{img_file}: small box filtered "
-                f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
-                f"action={_action})."
+                f"({int(round(_ow))}x{int(round(_oh))}px < "
+                f"min_box_size={_min_side}px, action={_action})."
             )
             if dry_run:
                 logger.info(
                     f"[dry run] {img_file}: would skip small box "
-                    f"({x2 - x1}x{y2 - y1}px < min_box_size={_min_side}px, "
-                    f"action={_action})."
+                    f"({int(round(_ow))}x{int(round(_oh))}px < "
+                    f"min_box_size={_min_side}px, action={_action})."
                 )
                 continue
             if _action == "keep":
@@ -367,26 +400,28 @@ def process_one_image(
                 elif _kept_how in ("reused", "original"):
                     logger.info(
                         f"{img_file}: keeping small box "
-                        f"({x2 - x1}x{y2 - y1}px) as id {_kept_id} "
+                        f"({int(round(_ow))}x{int(round(_oh))}px) as id {_kept_id} "
                         f"('{_kept_name}') without LLM call."
                     )
             else:
                 stats.incr("boxes_dropped_small")
                 logger.debug(
                     f"{img_file}: dropping small box "
-                    f"({x2 - x1}x{y2 - y1}px < {_min_side}px)."
+                    f"({int(round(_ow))}x{int(round(_oh))}px < {_min_side}px)."
                 )
             continue
 
         if _som_mode:
-            # Full-scene context: highlight the ORIGINAL box (padding is a
-            # crop-mode concept) and send the whole annotated image, fitted
-            # to the target size so batch payloads stay bounded. With ESR,
-            # the scene is super-resolved first and the box is scaled by the
-            # TRUE working/original ratio (never assumed) before marking.
+            # Full-scene context: highlight the box (padding is a crop-mode
+            # concept) and send the whole annotated image, fitted to the
+            # target size so batch payloads stay bounded. Under whole-image
+            # ESR the scene is ALREADY super-resolved (coords already in
+            # working pixels), so it is marked directly; otherwise the
+            # scene is super-resolved first with the box scaled by the TRUE
+            # working/original ratio (never assumed) before marking.
             try:
                 _scene = Image.fromarray(img)
-                if _esr and not dry_run:
+                if _esr and not dry_run and not _whole_applied:
                     _scene, (x1, y1, x2, y2), _ = upscale_scene_for_som(
                         _scene, (x1, y1, x2, y2), _esr
                     )
@@ -414,15 +449,14 @@ def process_one_image(
                 stats.incr("boxes_empty_crop")
                 continue
 
-            # preprocess_custom_resize works on PIL.Image, not numpy arrays
+            # preprocess_custom_resize works on PIL.Image, not numpy arrays.
+            # The crop is cut from the (possibly whole-image-upscaled) img
+            # above, so its pixels already carry ESR detail. A per-crop ESR
+            # pass runs ONLY when the whole-image stage did not (opt-in
+            # esr_for_crops without stage 0 has no other path); never both.
             pil_crop = Image.fromarray(crop_image)
             try:
-                # ESR first (pixels only -- output YOLO coords below always
-                # use the ORIGINAL normalized box), then the usual sizing.
-                # The crop cap keeps ESR working output at/below the
-                # downstream letterbox instead of swelling to the scene
-                # target first.
-                if _esr and not dry_run:
+                if _esr and not dry_run and not _whole_applied:
                     pil_crop, _ = maybe_esr_upscale_pil(
                         pil_crop,
                         _esr,

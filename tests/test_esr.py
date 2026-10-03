@@ -470,3 +470,188 @@ class TestDumpCrops:
 
         ns = build_parser().parse_args([])
         assert ns.dump_vlm_crops is None
+
+
+# ---------------------------------------------------------------------------
+# ESR-then-crop: whole image upscaled once, crops cut from it
+# ---------------------------------------------------------------------------
+def _fake_2x_upscale(pil_image, esr_settings, purpose="scene", long_edge_cap=None):
+    w, h = pil_image.size
+    info = {
+        "applied": True,
+        "orig_w": w,
+        "orig_h": h,
+        "pre_w": w,
+        "pre_h": h,
+        "up_w": w * 2,
+        "up_h": h * 2,
+        "work_w": w * 2,
+        "work_h": h * 2,
+        "scale": 4,
+    }
+    return pil_image.resize(
+        (w * 2, h * 2), __import__("PIL").Image.Resampling.NEAREST
+    ), info
+
+
+class TestWholeImageEsr:
+    def test_filter_measures_original_pixels(self, tmp_path, monkeypatch):
+        """A 30px box on a 100px image is filtered at min_box_size=60 even
+        though the whole-image 2x upscale makes it 60px in working pixels."""
+        import threading
+
+        import cv2
+        import numpy as np
+
+        from auto_annotation.single_image import process_one_image
+        from auto_annotation.stats import RunStats
+
+        monkeypatch.setattr(
+            "auto_annotation.single_image.maybe_esr_upscale_pil", _fake_2x_upscale
+        )
+
+        def _must_not_run(*a, **k):
+            raise AssertionError("filtered boxes must never reach the model")
+
+        monkeypatch.setattr("auto_annotation.single_image.detect_defect", _must_not_run)
+
+        train_image = tmp_path / "images"
+        train_label = tmp_path / "labels"
+        train_image.mkdir()
+        train_label.mkdir()
+        cv2.imwrite(
+            str(train_image / "img0.jpg"), np.full((100, 100, 3), 128, dtype=np.uint8)
+        )
+        (train_label / "img0.txt").write_text("0 0.5 0.5 0.3 0.3\n")
+        out = tmp_path / "out"
+        out.mkdir()
+        stats = RunStats()
+        process_one_image(
+            "img0.jpg",
+            str(train_image),
+            str(train_label),
+            str(out),
+            {},
+            threading.Lock(),
+            object(),
+            "test-model",
+            2,
+            False,
+            False,
+            64,
+            64,
+            stats,
+            False,
+            min_box_size=60,
+            small_box_action="drop",
+            drop_small_images=False,
+            esr_settings={"esr_enabled": True, "esr_model": "general-x4v3"},
+        )
+        assert stats.boxes_skipped_small == 1
+
+    def test_crop_cut_from_upscaled_image_coords_untouched(self, tmp_path, monkeypatch):
+        """Crops come from the upscaled image, but output YOLO coords stay
+        in original normalized space."""
+        import threading
+
+        import cv2
+        import numpy as np
+
+        from auto_annotation.single_image import process_one_image
+        from auto_annotation.stats import RunStats
+
+        monkeypatch.setattr(
+            "auto_annotation.single_image.maybe_esr_upscale_pil", _fake_2x_upscale
+        )
+        seen = {}
+
+        def _fake_detect(crop_image, *a, **k):
+            seen["shape"] = tuple(crop_image.shape)
+            return {"class": "hole", "confidence": 5}
+
+        monkeypatch.setattr("auto_annotation.single_image.detect_defect", _fake_detect)
+
+        train_image = tmp_path / "images"
+        train_label = tmp_path / "labels"
+        train_image.mkdir()
+        train_label.mkdir()
+        cv2.imwrite(
+            str(train_image / "img0.jpg"), np.full((100, 100, 3), 128, dtype=np.uint8)
+        )
+        (train_label / "img0.txt").write_text("0 0.5 0.5 0.5 0.5\n")
+        out = tmp_path / "out"
+        out.mkdir()
+        stats = RunStats()
+        class_map = {}
+        process_one_image(
+            "img0.jpg",
+            str(train_image),
+            str(train_label),
+            str(out),
+            class_map,
+            threading.Lock(),
+            object(),
+            "test-model",
+            2,
+            False,
+            False,
+            1024,
+            1024,
+            stats,
+            False,
+            min_box_size=0,
+            crop_resize_ratio=2.0,
+            esr_settings={"esr_enabled": True, "esr_model": "general-x4v3"},
+        )
+        # Native 50px crop x2 (upscaled image) x2 (ratio) = 200px payload.
+        # Without whole-image ESR it would have been 100px.
+        assert seen["shape"] == (200, 200, 3)
+        # Output coords: original normalized values, verbatim.
+        assert (out / "img0.txt").read_text() == "0 0.5 0.5 0.5 0.5\n"
+        assert class_map == {"hole": 0}
+
+    def test_batch_collect_same_behavior(self, tmp_path, monkeypatch):
+        """Batch path mirrors sync: original-pixel filter + original coords."""
+        import cv2
+        import numpy as np
+
+        from auto_annotation.batch_api import collect_batch_requests
+
+        monkeypatch.setattr(
+            "auto_annotation.batch_api.maybe_esr_upscale_pil", _fake_2x_upscale
+        )
+        img_dir = tmp_path / "imgs"
+        lbl_dir = tmp_path / "lbls"
+        img_dir.mkdir()
+        lbl_dir.mkdir()
+        cv2.imwrite(
+            str(img_dir / "img.jpg"), np.full((100, 100, 3), 128, dtype=np.uint8)
+        )
+        # 10px box: filtered at min 15 on ORIGINAL pixels (20px working).
+        (lbl_dir / "img.txt").write_text("0 0.5 0.5 0.1 0.1\n")
+        reqs, stems = collect_batch_requests(
+            str(img_dir),
+            str(lbl_dir),
+            known_names=["hole"],
+            min_box_size=15,
+            small_box_action="drop",
+            esr_settings={"esr_enabled": True},
+        )
+        assert reqs == []
+        assert stems["img"]["sent"] == {}
+        assert stems["img"]["skipped_small"] == 1
+
+    def test_manifest_excluded_from_label_scan(self, tmp_path):
+        import cv2
+        import numpy as np
+
+        from auto_annotation.image_io import find_labeled_images
+
+        img_dir = tmp_path / "imgs"
+        lbl_dir = tmp_path / "lbls"
+        img_dir.mkdir()
+        lbl_dir.mkdir()
+        cv2.imwrite(str(img_dir / "img.jpg"), np.full((50, 50, 3), 128, dtype=np.uint8))
+        (lbl_dir / "img.txt").write_text("0 0.5 0.5 0.5 0.5\n")
+        (lbl_dir / "skipped_small_images.txt").write_text("some_stem\n")
+        assert find_labeled_images(str(img_dir), str(lbl_dir), (".jpg",)) == ["img.jpg"]

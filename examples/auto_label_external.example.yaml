@@ -87,9 +87,10 @@ crop_resize_ratio: null
 # dump_vlm_crops: null # e.g. ./output/vlm_crops
 
 # --- Real-ESRGAN upscaling (opt-in, all tasks) -------------------------------
-# Super-resolve VLM-bound pixels with Real-ESRGAN before the model sees them
-# (crops here; full images in free_detection/classify). Final YOLO coords
-# always stay in original-image space. Needs: uv pip install -e .[esrgan]
+# ESR-THEN-CROP: with esr_enabled, the whole image is super-resolved ONCE
+# and every box crop is cut from the upscaled pixels (box coords follow the
+# true ratio; the small-box filter still measures original pixels; YOLO
+# outputs stay in original space). Needs: uv pip install -e .[esrgan]
 # (torch, CUDA-only; CPU is refused). Weights auto-download to
 # ~/.cache/llmog/esr on first use (or pass esr_model_path).
 # PRECEDENCE: esr_* controls only the INTERMEDIATE image. The height/width
