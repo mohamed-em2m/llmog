@@ -84,6 +84,12 @@ prep_grid_text_color: "white"
 prep_grid_backing_color: "black"
 
 # --- Real-ESRGAN stage-0 (the point of this example) ---------------------------
+# PRECEDENCE: these esr_* keys control only the INTERMEDIATE upscaled image.
+# The final size the VLM sees always comes from the stages AFTER ESR
+# (prep_short_edge / custom resize above). So ESR 2048 -> prep_short_edge
+# 1024 means: super-resolve for detail, then fit to 1024 for the request.
+# Set esr_target_long_edge to match (or sit just above) your final size to
+# avoid upscaling pixels that get thrown away right after.
 esr_enabled: true
 esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
 # esr_model_path: null # explicit local checkpoint (wins over esr_model)

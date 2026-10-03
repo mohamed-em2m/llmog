@@ -80,6 +80,9 @@ crop_resize_ratio: null
 # sees them. Final YOLO coords always stay in original-image space.
 # Needs: uv pip install -e .[esrgan] (torch, CUDA-only; CPU is refused).
 # Weights auto-download to ~/.cache/llmog/esr on first use.
+# PRECEDENCE: esr_* controls only the INTERMEDIATE image -- height/width
+# above always wins for the final payload, so keep esr_target_long_edge
+# near max(height, width).
 esr_enabled: false
 esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
 esr_target_long_edge: 2048 # working size after ESR (0 = native x4 output)
