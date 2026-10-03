@@ -418,3 +418,55 @@ class TestConfigSurface:
         )
         assert out["esr_enabled"] is True
         assert out["esr_model"] == "general-x4v3"
+
+
+# ---------------------------------------------------------------------------
+# --dump_vlm_crops (exact VLM-bound pixels on disk)
+# ---------------------------------------------------------------------------
+class TestDumpCrops:
+    def test_helper_writes_readable_jpg(self, tmp_path):
+        import cv2
+        import numpy as np
+
+        from auto_annotation.image_io import dump_vlm_crop
+
+        crop = np.full((64, 48, 3), 200, dtype=np.uint8)
+        path = dump_vlm_crop(crop, str(tmp_path / "dumps"), "img", 3)
+        assert path is not None and Path(path).is_file()
+        back = cv2.imread(str(path))
+        assert back.shape == (64, 48, 3)
+
+    def test_collect_dumps_per_box(self, tmp_path):
+        import cv2
+        import numpy as np
+
+        from auto_annotation.batch_api import collect_batch_requests
+
+        img_dir = tmp_path / "imgs"
+        lbl_dir = tmp_path / "lbls"
+        img_dir.mkdir()
+        lbl_dir.mkdir()
+        cv2.imwrite(
+            str(img_dir / "big.jpg"), np.full((200, 200, 3), 128, dtype=np.uint8)
+        )
+        (lbl_dir / "big.txt").write_text("0 0.7 0.7 0.5 0.5\n")
+        dump_dir = tmp_path / "dumps"
+        reqs, stems = collect_batch_requests(
+            str(img_dir),
+            str(lbl_dir),
+            known_names=["hole"],
+            dump_vlm_crops=str(dump_dir),
+        )
+        assert len(reqs) == 1
+        dumped = sorted(p.name for p in dump_dir.iterdir())
+        assert dumped == ["big_box0.jpg"]
+
+    def test_config_and_parser_surface(self):
+        from schemes import PipelineConfig
+
+        cfg = PipelineConfig(task="classify", images=["x.jpg"])
+        assert cfg.dump_vlm_crops is None
+        from main import build_parser
+
+        ns = build_parser().parse_args([])
+        assert ns.dump_vlm_crops is None

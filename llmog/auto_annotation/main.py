@@ -473,6 +473,7 @@ def main(args=None):
                 recls_context=getattr(args, "recls_context", "crop") or "crop",
                 crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
                 esr_settings=build_esr_settings(args),
+                dump_vlm_crops=getattr(args, "dump_vlm_crops", None),
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

@@ -549,6 +549,16 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "letterbox. Crop mode only; long edge capped at max(height, width).",
     )
     parser.add_argument(
+        "--dump_vlm_crops",
+        "--dump-vlm-crops",
+        dest="dump_vlm_crops",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="Debug: save every box's exact final VLM-bound image as "
+        "<stem>_box<line_no>.jpg under DIR (sync, batch, and dry runs).",
+    )
+    parser.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",

@@ -26,6 +26,11 @@ versioning follows [Semantic Versioning](https://semver.org/).
   2048, 0 = native), `--esr_max_long_edge` VRAM guard (default 4096).
   ESR keys join the checkpoint run-settings fingerprint, and saved batch
   jobs warn when ESR flags change after the build (requests are baked).
+- `--dump_vlm_crops DIR` (auto_label CLI + YAML, default off): saves every
+  box's exact final VLM-bound image (post padding/ESR/resize, letterbox
+  bars included) as `<stem>_box<line_no>.jpg` under DIR, on the sync path,
+  the batch path, and dry runs. Output-only: excluded from the checkpoint
+  fingerprint.
 - ESR robustness fixes: rectangular tiling (narrow images such as 600x100
   crops no longer crash blending on a square feather mask -- effective
   tile dims clamp per axis in `esr.project.tile_geometry`, mirrored in

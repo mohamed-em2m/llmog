@@ -81,6 +81,10 @@ recls_context: crop # "crop" | "full_som"
 # 150%, aspect preserved, no letterbox bars) instead of the height x width
 # letterbox above. Long edge capped at max(height, width). Unset = letterbox.
 crop_resize_ratio: null
+# Debug: save each box's exact final VLM-bound image (what the model sees,
+# letterbox included) as <stem>_box<line_no>.jpg under this dir (sync,
+# batch and dry runs). Output-only, no checkpoint effect.
+# dump_vlm_crops: null # e.g. ./output/vlm_crops
 
 # --- Real-ESRGAN upscaling (opt-in, all tasks) -------------------------------
 # Super-resolve VLM-bound pixels with Real-ESRGAN before the model sees them

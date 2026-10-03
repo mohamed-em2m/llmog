@@ -539,6 +539,16 @@ def build_parser() -> argparse.ArgumentParser:
         "capped at max(--height, --width). Unset = fixed-size letterbox.",
     )
     p.add_argument(
+        "--dump_vlm_crops",
+        "--dump-vlm-crops",
+        dest="dump_vlm_crops",
+        default=None,
+        metavar="DIR",
+        help="Debug: save every box's exact final VLM-bound image "
+        "(post padding/ESR/resize, letterbox included) as "
+        "<stem>_box<line_no>.jpg under DIR, on sync, batch, and dry runs.",
+    )
+    p.add_argument(
         "--use_batch_api",
         "--use-batch-api",
         dest="use_batch_api",

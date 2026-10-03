@@ -41,6 +41,7 @@ from auto_annotation.image_io import (
     build_classify_body,
     build_esr_settings,
     draw_som_context,
+    dump_vlm_crop,
     find_labeled_images,
     maybe_esr_upscale_pil,
     pad_box,
@@ -138,6 +139,7 @@ def collect_batch_requests(
     crop_resize_ratio=None,
     esr_settings=None,
     dry_run=False,
+    dump_vlm_crops=None,
 ):
     """Build one batch request per classifiable box.
 
@@ -195,6 +197,9 @@ def collect_batch_requests(
     if _esr and dry_run:
         # A dry run must never load the SR model: preview with native pixels.
         _esr = {}
+    _dump_dir = str(dump_vlm_crops) if dump_vlm_crops else None
+    if _dump_dir:
+        logger.info(f"Dumping final VLM crops to {_dump_dir}.")
     if _esr:
         logger.info(
             "ESR upscaling ON for batch VLM pixels "
@@ -361,6 +366,8 @@ def collect_batch_requests(
                     continue
 
             custom_id = make_custom_id(stem, line_no)
+            if _dump_dir:
+                dump_vlm_crop(crop, _dump_dir, stem, line_no)
             body = build_classify_body(
                 crop,
                 model_name,
@@ -1411,6 +1418,7 @@ def run_batch_api_flow(
             crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
             esr_settings=build_esr_settings(args),
             dry_run=bool(getattr(args, "dry_run", False)),
+            dump_vlm_crops=getattr(args, "dump_vlm_crops", None),
         )
         # Auto-resume: never rebuild/resubmit images the checkpoint says are
         # finished. Without this, deleting .batch_job.json for a fresh sample

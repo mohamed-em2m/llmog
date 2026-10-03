@@ -100,6 +100,7 @@ def read_images_with_labels(
     recls_context: str = "crop",
     crop_resize_ratio=None,
     esr_settings=None,
+    dump_vlm_crops=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -356,6 +357,7 @@ def read_images_with_labels(
                         recls_context=recls_context,
                         crop_resize_ratio=crop_resize_ratio,
                         esr_settings=esr_settings,
+                        dump_vlm_crops=dump_vlm_crops,
                     )
                     if img is not None:
                         last_img = img
@@ -410,6 +412,7 @@ def read_images_with_labels(
                         recls_context=recls_context,
                         crop_resize_ratio=crop_resize_ratio,
                         esr_settings=esr_settings,
+                        dump_vlm_crops=dump_vlm_crops,
                     ): img_file
                     for img_file in batch_images
                 }

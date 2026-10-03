@@ -210,6 +210,13 @@ class PipelineConfig(BaseModel):
     # capped at max(height, width) to bound batch payload sizes. None
     # (default) keeps the fixed-size letterbox.
     crop_resize_ratio: Optional[float] = None
+    # Debug directory for the exact final VLM-bound pixels: when set, every
+    # box's payload image (post padding/ESR/resize, i.e. precisely what the
+    # model receives, letterbox bars included) is saved as
+    # <stem>_box<line_no>.jpg under this folder, on both the sync and batch
+    # paths (and on dry runs). Output-only: excluded from the checkpoint
+    # fingerprint. None (default) disables.
+    dump_vlm_crops: Optional[str] = None
 
     # --- OpenAI Batch API (auto_label, ~50% cheaper than sync) -------------
     # Submit one /v1/chat/completions request per box as a batch job, then

@@ -173,6 +173,25 @@ def encode_crop_to_data_uri(crop_rgb):
     return f"data:image/jpeg;base64,{b64}"
 
 
+def dump_vlm_crop(crop_rgb, dump_dir, stem, line_no):
+    """Save the exact final VLM-bound RGB numpy crop for debugging.
+
+    Writes ``<stem>_box<line_no>.jpg`` under ``dump_dir`` (created on
+    demand) -- precisely the pixels the model receives, letterbox bars
+    included. Never raises: failures are WARNING-logged and return None.
+    """
+    try:
+        out_dir = Path(dump_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"{stem}_box{line_no}.jpg"
+        cv2.imwrite(str(path), cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR))
+        logger.debug("Dumped VLM crop %s", path)
+        return path
+    except Exception as e:
+        logger.warning(f"Could not dump VLM crop for {stem} box {line_no}: {e}")
+        return None
+
+
 def pad_box(x1, y1, x2, y2, img_w, img_h, pad_pct=0.0):
     """Expand a pixel box by pct% of its own width/height per side.
 

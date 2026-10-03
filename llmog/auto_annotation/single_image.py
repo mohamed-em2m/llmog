@@ -14,6 +14,7 @@ from auto_annotation.image_io import (
     build_esr_settings,
     detect_defect,
     draw_som_context,
+    dump_vlm_crop,
     maybe_esr_upscale_pil,
     pad_box,
     resize_crop_ratio,
@@ -78,6 +79,7 @@ def process_one_image(
     recls_context: str = "crop",
     crop_resize_ratio=None,
     esr_settings=None,
+    dump_vlm_crops=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -193,6 +195,11 @@ def process_one_image(
             f"{_esr.get('esr_target_long_edge')}). Final YOLO coords stay in "
             "original-image space."
         )
+    _dump_dir = str(dump_vlm_crops) if dump_vlm_crops else None
+    if _dump_dir:
+        # Debug dumps run on dry runs too: they cost no model calls and no
+        # label writes, and previewing the payload is the point.
+        logger.info(f"{img_file}: dumping final VLM crops to {_dump_dir}.")
     # Fingerprint of the label-affecting settings, stored in the checkpoint
     # with every save so a resume with changed flags warns (main.py) instead
     # of silently mixing label vintages.
@@ -249,7 +256,7 @@ def process_one_image(
     # decisions, not errors.
     failed_boxes_this_image = 0
 
-    for line in lines:
+    for line_no, line in enumerate(lines):
         stats.incr("boxes_seen")
         values = line.strip().split()
         if len(values) != 5:
@@ -435,6 +442,9 @@ def process_one_image(
                 )
                 stats.incr("boxes_empty_crop")
                 continue
+
+        if _dump_dir:
+            dump_vlm_crop(crop_image, _dump_dir, img_stem, line_no)
 
         if dry_run:
             logger.info(
