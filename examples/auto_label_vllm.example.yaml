@@ -75,6 +75,19 @@ recls_context: crop # "crop" | "full_som"
 # letterbox. Long edge capped at max(height, width). Unset = letterbox.
 crop_resize_ratio: null
 
+# --- Real-ESRGAN upscaling (opt-in, all tasks) -------------------------------
+# Super-resolve VLM-bound crops/scenes with Real-ESRGAN before the model
+# sees them. Final YOLO coords always stay in original-image space.
+# Needs: uv pip install -e .[esrgan] (torch, CUDA-only; CPU is refused).
+# Weights auto-download to ~/.cache/llmog/esr on first use.
+esr_enabled: false
+esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
+esr_target_long_edge: 2048 # working size after ESR (0 = native x4 output)
+esr_max_long_edge: 4096 # VRAM guard: downscale ESR output past this first
+esr_for_crops: true # set false to keep native crops
+# esr_model_path: null # explicit local checkpoint (wins over esr_model)
+# esr_compile: false # torch.compile (faster batches, slow first run)
+
 # --- Sampling / Batching ------------------------------------------------------
 num_samples: null
 shuffle: false
