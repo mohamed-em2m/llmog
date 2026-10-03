@@ -6,6 +6,19 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-03
+
+### Fixed
+- Kept small boxes (`small_box_action keep`) whose original id is taken no
+  longer mint a fresh `original_class_<id>_N` class PER BOX: the first box
+  quarantines once under `original_class_<id>` at a fresh id and every later
+  box reuses it (`resolve_kept_class()`; the `original_class_<id>` name
+  pattern is now reserved for this purpose). Previously a run where id 0
+  was already mapped (e.g. via `--init_class_map`) sprayed
+  `original_class_0 … original_class_0_5` across the class map. Already
+  created suffixed ids stay valid but unused; start fresh
+  (`--no_auto_resume` with a clean checkpoint) for a tidy map.
+
 ## [1.4.0] - 2026-10-03
 
 ### Added

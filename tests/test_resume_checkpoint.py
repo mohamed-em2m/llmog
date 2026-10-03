@@ -206,13 +206,30 @@ class TestResolveKeptClass:
         assert how == "remapped"
         assert new_id == 2 and m[name] == 2 and name.startswith("original_class_1")
 
-    def test_invalid_and_name_collision(self):
+    def test_invalid_and_reserved_prefix(self):
         from auto_annotation.yaml_utils import resolve_kept_class
 
         assert resolve_kept_class({}, "abc") == (None, None, "invalid")
-        m = {"original_class_5": 0}  # slot name taken by another id
-        name, new_id, how = resolve_kept_class(m, 5)
-        assert how == "slot" and name != "original_class_5" and m[name] == 5
+        # The original_class_<id> pattern is reserved for quarantines: a
+        # pre-existing entry with that name is treated as ours and reused,
+        # never suffixed into a second class.
+        m = {"original_class_5": 0}
+        assert resolve_kept_class(m, 5) == ("original_class_5", 0, "reused")
+        assert m == {"original_class_5": 0}
+
+    def test_repeated_remaps_share_one_quarantine(self):
+        from auto_annotation.yaml_utils import resolve_kept_class
+
+        # Regression: kept boxes whose old id is taken (e.g. id 0 already
+        # means 'hole') must ALL land on one quarantine id -- previously
+        # every box minted a fresh original_class_0_N id.
+        m = {"hole": 0}
+        first = resolve_kept_class(m, 0)
+        assert first[2] == "remapped"
+        assert first[0] == "original_class_0" and first[1] == 1
+        for _ in range(5):
+            assert resolve_kept_class(m, 0) == (first[0], first[1], "reused")
+        assert m == {"hole": 0, "original_class_0": 1}
 
 
 class TestSaveUnderLocks:

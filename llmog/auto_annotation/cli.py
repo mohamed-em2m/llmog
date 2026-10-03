@@ -495,7 +495,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["keep", "drop"],
         help="What to do with boxes smaller than --min_box_size: 'keep' preserves "
         "the box with coordinates verbatim (no LLM call) -- a free original id "
-        "is kept, an id already taken in the current map mints a fresh one so "
+        "is kept, an id already taken in the current map quarantines once "
+        "under original_class_<id> at a fresh id (reused by later boxes) so "
         "kept boxes never merge into an unrelated class; 'drop' skips the box "
         "entirely.",
     )
