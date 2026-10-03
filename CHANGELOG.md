@@ -10,8 +10,9 @@ versioning follows [Semantic Versioning](https://semver.org/).
 - Real-ESRGAN upscaling (`--esr_enabled`, CLI + YAML, default off, all
   tasks): super-resolves VLM-bound pixels with Real-ESRGAN BEFORE the model
   sees them -- full image in `free_detection` (stage 0, before
-  resolution/grid/tiling) and `classify`, crops + full_som scenes in
-  `auto_label` (gated by `--esr_for_crops`, default on). New `esr` package:
+  resolution/grid/tiling) and `classify`, whole scenes in `auto_label`
+  (`full_som`); per-crop ESR is opt-in via `--esr_for_crops` (default off:
+  crops stay native). New `esr` package:
   weight registry (`general-x4v3` default, `x4plus`, `x2plus`, anime
   variants; official GitHub release assets, `~/.cache/llmog/esr`,
   `--esr_model_path` local override, optional HF repo fallback),

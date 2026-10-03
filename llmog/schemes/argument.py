@@ -315,9 +315,11 @@ class PipelineConfig(BaseModel):
     esr_tile_size: int = 512
     esr_overlap: int = 16
     esr_batch_size: int = 4
-    # Apply ESR to auto_label VLM crops / full_som scenes (default ON -- the
-    # tiny-defect win). Only matters when esr_enabled is True.
-    esr_for_crops: bool = True
+    # Apply ESR to auto_label VLM crops (default OFF -- the pipeline
+    # upscales the WHOLE image/scene; per-crop ESR is opt-in for tiny
+    # defects). Full scenes (full_som) and classify images always upscale
+    # when esr_enabled is True. Only matters when esr_enabled is True.
+    esr_for_crops: bool = False
     # torch.compile the SR model (faster batches, slow first run + warmup).
     esr_compile: bool = False
     # channels-last memory format (faster convs on CUDA, on by default).

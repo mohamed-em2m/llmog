@@ -87,7 +87,8 @@ esr_enabled: false
 esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
 esr_target_long_edge: 2048 # working size after ESR (0 = native x4 output)
 esr_max_long_edge: 4096 # VRAM guard: downscale ESR output past this first
-esr_for_crops: true # set false to keep native crops
+# Whole scenes upscale when esr_enabled is on; per-crop ESR stays OFF
+# unless opted in: esr_for_crops: true
 # esr_model_path: null # explicit local checkpoint (wins over esr_model)
 # esr_compile: false # torch.compile (faster batches, slow first run)
 

@@ -753,14 +753,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--esr_for_crops",
         dest="esr_for_crops",
         action="store_true",
-        default=True,
-        help="Apply ESR to auto_label VLM crops / full_som scenes (default ON).",
+        default=False,
+        help="Also apply ESR to auto_label VLM crops (default OFF: only "
+        "whole images/scenes upscale; opt in for tiny defects).",
     )
     p.add_argument(
         "--no_esr_for_crops",
         dest="esr_for_crops",
         action="store_false",
-        help="Skip ESR for auto_label crops (full images still upscaled).",
+        help="Skip ESR for auto_label crops (whole images still upscale).",
     )
     p.add_argument(
         "--esr_compile",

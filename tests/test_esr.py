@@ -292,7 +292,7 @@ class TestManager:
         from esr.manager import ESRConfig
 
         cfg = ESRConfig.from_config({"esr_enabled": True, "esr_model": "x4plus"})
-        assert cfg.enabled and cfg.model == "x4plus" and cfg.for_crops
+        assert cfg.enabled and cfg.model == "x4plus" and not cfg.for_crops
         ns = argparse.Namespace(esr_enabled=False)
         cfg2 = ESRConfig.from_config(ns)
         assert not cfg2.enabled and cfg2.target_long_edge == 2048
@@ -371,7 +371,7 @@ class TestConfigSurface:
         assert cfg.esr_model == "general-x4v3"
         assert cfg.esr_target_long_edge == 2048
         assert cfg.esr_max_long_edge == 4096
-        assert cfg.esr_for_crops is True
+        assert cfg.esr_for_crops is False
         assert cfg.esr_compile is False
 
     def test_pipeline_config_esr_validation(self):
@@ -389,7 +389,7 @@ class TestConfigSurface:
         assert ns.esr_enabled is False
         assert ns.esr_model == "general-x4v3"
         assert ns.esr_target_long_edge == 2048
-        assert ns.esr_for_crops is True
+        assert ns.esr_for_crops is False
 
     def test_checkpoint_fingerprint_includes_esr(self):
         from auto_annotation.checkpoint import RUN_SETTINGS_KEYS, build_run_settings

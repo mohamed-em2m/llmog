@@ -65,7 +65,7 @@ class ESRConfig:
     tile_size: int = 512
     overlap: int = 16
     batch_size: int = 4
-    for_crops: bool = True
+    for_crops: bool = False
     compile: bool = False
     channels_last: bool = True
     device: str = "auto"
@@ -98,7 +98,7 @@ class ESRConfig:
             tile_size=_int("esr_tile_size", 512),
             overlap=_int("esr_overlap", 16),
             batch_size=_int("esr_batch_size", 4),
-            for_crops=bool(_get("esr_for_crops", True)),
+            for_crops=bool(_get("esr_for_crops", False)),
             compile=bool(_get("esr_compile", False)),
             channels_last=bool(_get("esr_channels_last", True)),
             device=str(_get("esr_device", "auto") or "auto"),

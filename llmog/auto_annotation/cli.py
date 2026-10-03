@@ -723,8 +723,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "--esr_for_crops",
         dest="esr_for_crops",
         action="store_true",
-        default=True,
-        help="Apply ESR to VLM crops / full_som scenes (default ON).",
+        default=False,
+        help="Also apply ESR to VLM crops (default OFF: only whole scenes upscale).",
     )
     parser.add_argument(
         "--no_esr_for_crops",
@@ -1064,7 +1064,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     if getattr(args, "esr_batch_size", None) is None:
         args.esr_batch_size = 4
     if getattr(args, "esr_for_crops", None) is None:
-        args.esr_for_crops = True
+        args.esr_for_crops = False
     if getattr(args, "esr_compile", None) is None:
         args.esr_compile = False
     if getattr(args, "esr_channels_last", None) is None:
