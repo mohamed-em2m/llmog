@@ -107,6 +107,40 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--classification_temperature", type=float, default=0.2)
     p.add_argument("--classification_max_tokens", type=int, default=1024)
     p.add_argument("--api_retries", type=int, default=3)
+    # --- Real-ESRGAN upscaling (opt-in; mirrors llmog/main.py) ---
+    p.add_argument("--esr_enabled", action="store_true", default=False)
+    p.add_argument(
+        "--esr_model",
+        default="general-x4v3",
+        choices=[
+            "general-x4v3",
+            "general-wdn-x4v3",
+            "animevideov3",
+            "x4plus",
+            "x4plus-anime-6B",
+            "x2plus",
+        ],
+    )
+    p.add_argument("--esr_model_path", default=None)
+    p.add_argument("--esr_model_repo", default=None)
+    p.add_argument("--esr_cache_dir", default=None)
+    p.add_argument("--esr_scale", type=int, default=None)
+    p.add_argument("--esr_target_long_edge", type=int, default=2048)
+    p.add_argument("--esr_max_long_edge", type=int, default=4096)
+    p.add_argument("--esr_tile_size", type=int, default=512)
+    p.add_argument("--esr_overlap", type=int, default=16)
+    p.add_argument("--esr_batch_size", type=int, default=4)
+    p.add_argument("--esr_compile", action="store_true", default=False)
+    p.add_argument(
+        "--esr_channels_last",
+        dest="esr_channels_last",
+        action="store_true",
+        default=True,
+    )
+    p.add_argument(
+        "--no_esr_channels_last", dest="esr_channels_last", action="store_false"
+    )
+    p.add_argument("--esr_device", default="auto")
     return p
 
 
@@ -270,6 +304,19 @@ def main(args: Any = None) -> None:
     temperature = float(cfg.get("classification_temperature", 0.2))
     max_tokens = int(cfg.get("classification_max_tokens", 1024))
     retries = int(cfg.get("api_retries", 3))
+    # Real-ESRGAN for whole images ({} when disabled; never loads on dry
+    # runs -- the dry-run early-return above already fired before this).
+    try:
+        from auto_annotation.image_io import build_esr_settings
+
+        esr_settings = build_esr_settings(cfg)
+    except Exception:
+        esr_settings = {}
+    if esr_settings:
+        print(
+            f"ESR upscaling ON for classify images "
+            f"(model={esr_settings.get('esr_model')})."
+        )
     lock = threading.Lock()
     rows: List[Dict[str, Any]] = []
     all_preds: List[List[Dict[str, Any]]] = []
@@ -287,6 +334,7 @@ def main(args: Any = None) -> None:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 retries=retries,
+                esr_settings=esr_settings,
             )
             best = preds[0]
             return {

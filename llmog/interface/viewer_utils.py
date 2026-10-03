@@ -241,12 +241,44 @@ def build_prep_config(
     prep_custom_resize_enabled: bool = False,
     prep_custom_resize_width: float | int | None = 1024,
     prep_custom_resize_height: float | int | None = 1024,
+    esr_enabled: bool = False,
+    esr_settings: dict | None = None,
 ) -> dict:
     """Build unified pipeline preprocessing_config from raw Gradio inputs.
 
     Single source of truth for Batch + Realtime tabs – keeps tiling, SoM,
     grid, and contrast settings in sync.  Fast path for disabled case.
+
+    ESR (Real-ESRGAN stage-0) is a passthrough here: the Gradio tabs have no
+    ESR widgets yet (CLI/YAML surface first), but ``esr_settings`` flows
+    straight into the pipeline dict so programmatic callers can enable it.
     """
+    _esr: dict = {}
+    if esr_enabled and esr_settings:
+        from esr.manager import ESRConfig
+
+        _cfg = (
+            esr_settings
+            if isinstance(esr_settings, ESRConfig)
+            else ESRConfig.from_config(esr_settings)
+        )
+        if _cfg.enabled:
+            _esr = {
+                "esr_enabled": True,
+                "esr_model": _cfg.model,
+                "esr_model_path": _cfg.model_path,
+                "esr_model_repo": _cfg.model_repo,
+                "esr_cache_dir": _cfg.cache_dir,
+                "esr_scale": _cfg.scale,
+                "esr_target_long_edge": _cfg.target_long_edge,
+                "esr_max_long_edge": _cfg.max_long_edge,
+                "esr_tile_size": _cfg.tile_size,
+                "esr_overlap": _cfg.overlap,
+                "esr_batch_size": _cfg.batch_size,
+                "esr_compile": _cfg.compile,
+                "esr_channels_last": _cfg.channels_last,
+                "esr_device": _cfg.device,
+            }
     if not prep_enabled:
         return {
             "resolution_enabled": False,
@@ -268,6 +300,7 @@ def build_prep_config(
             "custom_resize": False,
             "custom_resize_width": 1024,
             "custom_resize_height": 1024,
+            **_esr,
         }
     use_custom_resize = bool(prep_custom_resize_enabled)
     return {
@@ -315,4 +348,5 @@ def build_prep_config(
         "custom_resize": use_custom_resize,
         "custom_resize_width": int(prep_custom_resize_width or 1024),
         "custom_resize_height": int(prep_custom_resize_height or 1024),
+        **_esr,
     }

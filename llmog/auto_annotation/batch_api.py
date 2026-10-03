@@ -39,10 +39,13 @@ from auto_annotation.logging_utils import logger
 from auto_annotation.checkpoint import build_run_settings
 from auto_annotation.image_io import (
     build_classify_body,
+    build_esr_settings,
     draw_som_context,
     find_labeled_images,
+    maybe_esr_upscale_pil,
     pad_box,
     resize_crop_ratio,
+    upscale_scene_for_som,
 )
 from auto_annotation.single_image import _normalize_label, _parse_none_labels
 from free_detection.image_preprocessing import preprocess_custom_resize
@@ -133,6 +136,8 @@ def collect_batch_requests(
     crop_padding_pct=0.0,
     recls_context="crop",
     crop_resize_ratio=None,
+    esr_settings=None,
+    dry_run=False,
 ):
     """Build one batch request per classifiable box.
 
@@ -142,6 +147,10 @@ def collect_batch_requests(
     "sent": {custom_id: meta}}``. Small boxes never become requests: ``keep``
     lines are staged in ``kept`` for finalize to merge, ``drop`` lines are
     counted in ``skipped_small`` for the drop_small_images guard.
+
+    The crop/SoM pixel pipeline mirrors ``single_image.process_one_image``
+    exactly (including ESR upscaling via ``esr_settings``) so sync and batch
+    bodies stay byte-identical.
     """
     try:
         min_side = int(min_box_size or 0)
@@ -181,6 +190,17 @@ def collect_batch_requests(
             f"Crop resize ratio={_ratio} (long edge capped at "
             f"{max(target_height, target_width)}px) instead of the fixed "
             f"{target_width}x{target_height} letterbox."
+        )
+    _esr = build_esr_settings(esr_settings)
+    if _esr and dry_run:
+        # A dry run must never load the SR model: preview with native pixels.
+        _esr = {}
+    if _esr:
+        logger.info(
+            "ESR upscaling ON for batch VLM pixels "
+            f"(model={_esr.get('esr_model')}, target_long_edge="
+            f"{_esr.get('esr_target_long_edge')}). Final YOLO coords stay in "
+            "original-image space."
         )
 
     image_names = find_labeled_images(train_image, train_label, image_extensions)
@@ -282,7 +302,12 @@ def collect_batch_requests(
 
             if _som_mode:
                 try:
-                    som_view = draw_som_context(Image.fromarray(img), x1, y1, x2, y2)
+                    _scene = Image.fromarray(img)
+                    if _esr:
+                        _scene, (x1, y1, x2, y2), _ = upscale_scene_for_som(
+                            _scene, (x1, y1, x2, y2), _esr
+                        )
+                    som_view = draw_som_context(_scene, x1, y1, x2, y2)
                     som_view, _ = preprocess_custom_resize(
                         som_view,
                         target_height=target_height,
@@ -306,6 +331,16 @@ def collect_batch_requests(
                     continue
                 try:
                     pil_crop = Image.fromarray(crop)
+                    # ESR first (pixels only), then the usual sizing -- same
+                    # order as single_image.process_one_image (crop cap
+                    # included, so bodies stay byte-identical).
+                    if _esr:
+                        pil_crop, _ = maybe_esr_upscale_pil(
+                            pil_crop,
+                            _esr,
+                            purpose="crop",
+                            long_edge_cap=max(target_height, target_width),
+                        )
                     if _ratio is not None:
                         pil_crop = resize_crop_ratio(
                             pil_crop,
@@ -1329,6 +1364,25 @@ def run_batch_api_flow(
             "--shuffle/--seed/--num_samples flags do NOT re-select images. To "
             f"build a fresh sample, remove {output_folder}/{JOB_FILENAME} first."
         )
+        # ESR (like the sampling flags) is baked into the built requests: a
+        # saved job finalized after flipping ESR would mix vintages.
+        _saved_rs = job.get("run_settings") or {}
+        _cur_esr = {
+            "esr_enabled": bool(getattr(args, "esr_enabled", False)),
+            "esr_model": getattr(args, "esr_model", None),
+            "esr_model_path": getattr(args, "esr_model_path", None),
+            "esr_scale": getattr(args, "esr_scale", None),
+            "esr_target_long_edge": getattr(args, "esr_target_long_edge", None),
+            "esr_for_crops": getattr(args, "esr_for_crops", None),
+        }
+        for _k, _v in _cur_esr.items():
+            if _k in _saved_rs and _saved_rs.get(_k) != _v:
+                logger.warning(
+                    f"Saved batch job was built with {_k}={_saved_rs.get(_k)!r}, "
+                    f"now {_v!r} -- the saved requests (and their VLM pixels) "
+                    "do NOT change. Remove "
+                    f"{output_folder}/{JOB_FILENAME} for a fresh build."
+                )
     if job is None:
         # ---- Build ------------------------------------------------------
         with_class_map_lock = list(class_map.keys())
@@ -1355,6 +1409,8 @@ def run_batch_api_flow(
             crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
             recls_context=getattr(args, "recls_context", "crop") or "crop",
             crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
+            esr_settings=build_esr_settings(args),
+            dry_run=bool(getattr(args, "dry_run", False)),
         )
         # Auto-resume: never rebuild/resubmit images the checkpoint says are
         # finished. Without this, deleting .batch_job.json for a fresh sample
@@ -1445,6 +1501,12 @@ def run_batch_api_flow(
                 none_labels=getattr(args, "none_labels", ""),
                 drop_none=getattr(args, "drop_none", True),
                 batch_size=getattr(args, "batch_size", 0),
+                esr_enabled=bool(getattr(args, "esr_enabled", False)),
+                esr_model=getattr(args, "esr_model", None),
+                esr_model_path=getattr(args, "esr_model_path", None),
+                esr_scale=getattr(args, "esr_scale", None),
+                esr_target_long_edge=getattr(args, "esr_target_long_edge", None),
+                esr_for_crops=getattr(args, "esr_for_crops", None),
             ),
         )
         if mode == "submit":

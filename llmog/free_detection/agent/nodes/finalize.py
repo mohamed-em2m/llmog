@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from free_detection.agent.state import DetectionState, RoundResult
+from free_detection.agent.visuals import render_detections
 
 logger = logging.getLogger("detection_pipeline")
 
@@ -55,6 +56,26 @@ def node_finalize(state: DetectionState) -> Dict[str, Any]:
     show_plot = state.get("show_plot", False)
 
     logger.info("Best result: round %d with score %d/10", best["round"], best["score"])
+
+    # ESR projection: the round loop annotates the high-res WORKING image
+    # (what the VLM saw). Final outputs must be the ORIGINAL image with
+    # boxes fitted to its width/height -- normalized (0-1000) detections are
+    # resolution-independent, so re-render them on base_image_raw. The JSON
+    # payload is untouched (already resolution-free).
+    esr_info = state.get("esr_info") or {}
+    if esr_info.get("applied") and best.get("detections"):
+        try:
+            best = {
+                **best,
+                "annotated": render_detections(base_image_raw, best["detections"]),
+            }
+            logger.info(
+                "ESR: final annotated image re-rendered on original dims %dx%d.",
+                base_image_raw.width,
+                base_image_raw.height,
+            )
+        except Exception as exc:
+            logger.warning("ESR final re-render failed, keeping working image: %s", exc)
 
     if output_dir:
         persist_results(output_dir, base_image_raw, best, history)

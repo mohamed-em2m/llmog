@@ -622,6 +622,145 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["catbox"],
         help="Anonymous public image host used with --batch_public_images.",
     )
+    # ── Real-ESRGAN upscaling (opt-in; mirrors llmog/main.py) ─────────────
+    parser.add_argument(
+        "--esr_enabled",
+        "--esr-enabled",
+        dest="esr_enabled",
+        action="store_true",
+        default=False,
+        help="Super-resolve VLM crops/scenes with Real-ESRGAN before "
+        "classification (needs the [esrgan] extra: torch, CUDA-only).",
+    )
+    parser.add_argument(
+        "--esr_model",
+        "--esr-model",
+        dest="esr_model",
+        type=str,
+        default="general-x4v3",
+        choices=[
+            "general-x4v3",
+            "general-wdn-x4v3",
+            "animevideov3",
+            "x4plus",
+            "x4plus-anime-6B",
+            "x2plus",
+        ],
+        help="Registry checkpoint key (auto-downloaded on first use).",
+    )
+    parser.add_argument(
+        "--esr_model_path",
+        "--esr-model-path",
+        dest="esr_model_path",
+        type=str,
+        default=None,
+        help="Explicit local ESR checkpoint (wins over --esr_model).",
+    )
+    parser.add_argument(
+        "--esr_model_repo",
+        "--esr-model-repo",
+        dest="esr_model_repo",
+        type=str,
+        default=None,
+        help="Optional HuggingFace repo fallback for the weights.",
+    )
+    parser.add_argument(
+        "--esr_cache_dir",
+        "--esr-cache-dir",
+        dest="esr_cache_dir",
+        type=str,
+        default=None,
+        help="Weight cache dir (default ~/.cache/llmog/esr).",
+    )
+    parser.add_argument(
+        "--esr_scale",
+        "--esr-scale",
+        dest="esr_scale",
+        type=int,
+        default=None,
+        help="Upscale factor override (default: checkpoint native scale).",
+    )
+    parser.add_argument(
+        "--esr_target_long_edge",
+        "--esr-target-long-edge",
+        dest="esr_target_long_edge",
+        type=int,
+        default=2048,
+        help="Fit ESR output long edge to this (0 = keep native).",
+    )
+    parser.add_argument(
+        "--esr_max_long_edge",
+        "--esr-max-long-edge",
+        dest="esr_max_long_edge",
+        type=int,
+        default=4096,
+        help="VRAM guard: downscale ESR output past this long edge.",
+    )
+    parser.add_argument(
+        "--esr_tile_size",
+        "--esr-tile-size",
+        dest="esr_tile_size",
+        type=int,
+        default=512,
+        help="ESR inference tile edge in input px.",
+    )
+    parser.add_argument(
+        "--esr_overlap",
+        dest="esr_overlap",
+        type=int,
+        default=16,
+        help="ESR inference tile overlap in input px.",
+    )
+    parser.add_argument(
+        "--esr_batch_size",
+        "--esr-batch-size",
+        dest="esr_batch_size",
+        type=int,
+        default=4,
+        help="ESR tiles inferred per batch.",
+    )
+    parser.add_argument(
+        "--esr_for_crops",
+        dest="esr_for_crops",
+        action="store_true",
+        default=True,
+        help="Apply ESR to VLM crops / full_som scenes (default ON).",
+    )
+    parser.add_argument(
+        "--no_esr_for_crops",
+        dest="esr_for_crops",
+        action="store_false",
+        help="Skip ESR for crops.",
+    )
+    parser.add_argument(
+        "--esr_compile",
+        "--esr-compile",
+        dest="esr_compile",
+        action="store_true",
+        default=False,
+        help="torch.compile the SR model (faster batches, slow first run).",
+    )
+    parser.add_argument(
+        "--esr_channels_last",
+        dest="esr_channels_last",
+        action="store_true",
+        default=True,
+        help="channels-last memory format for ESR convs (default ON).",
+    )
+    parser.add_argument(
+        "--no_esr_channels_last",
+        dest="esr_channels_last",
+        action="store_false",
+        help="Disable channels-last for ESR.",
+    )
+    parser.add_argument(
+        "--esr_device",
+        "--esr-device",
+        dest="esr_device",
+        type=str,
+        default="auto",
+        help="CUDA device for ESR ('auto' = first CUDA device).",
+    )
     parser.add_argument(
         "--init_class_map",
         action="store_true",
@@ -900,6 +1039,41 @@ def parse_args(argv=None) -> argparse.Namespace:
         args.batch_poll_timeout = 0
     if args.batch_poll_timeout < 0:
         parser.error("--batch_poll_timeout must be >= 0 (0 = poll forever)")
+
+    # ── Defaults for Real-ESRGAN upscaling (hand-built Namespaces) ───────
+    if getattr(args, "esr_enabled", None) is None:
+        args.esr_enabled = False
+    if getattr(args, "esr_model", None) is None:
+        args.esr_model = "general-x4v3"
+    if getattr(args, "esr_target_long_edge", None) is None:
+        args.esr_target_long_edge = 2048
+    if args.esr_target_long_edge < 0:
+        parser.error("--esr_target_long_edge must be >= 0 (0 = keep native ESR output)")
+    if getattr(args, "esr_max_long_edge", None) is None:
+        args.esr_max_long_edge = 4096
+    if args.esr_max_long_edge <= 0:
+        parser.error("--esr_max_long_edge must be > 0")
+    if getattr(args, "esr_tile_size", None) is None:
+        args.esr_tile_size = 512
+    if args.esr_tile_size <= 0:
+        parser.error("--esr_tile_size must be > 0")
+    if getattr(args, "esr_overlap", None) is None:
+        args.esr_overlap = 16
+    if args.esr_overlap < 0:
+        parser.error("--esr_overlap must be >= 0")
+    if getattr(args, "esr_batch_size", None) is None:
+        args.esr_batch_size = 4
+    if getattr(args, "esr_for_crops", None) is None:
+        args.esr_for_crops = True
+    if getattr(args, "esr_compile", None) is None:
+        args.esr_compile = False
+    if getattr(args, "esr_channels_last", None) is None:
+        args.esr_channels_last = True
+    if getattr(args, "esr_device", None) is None:
+        args.esr_device = "auto"
+    _esr_scale = getattr(args, "esr_scale", None)
+    if _esr_scale is not None and _esr_scale <= 0:
+        parser.error("--esr_scale must be > 0 when set")
 
     # ── Defaults for server-failure safety (hand-built Namespaces) ──────────
     if getattr(args, "max_consecutive_failures", None) is None:

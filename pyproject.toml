@@ -22,6 +22,7 @@ dependencies = [
     "langgraph>=0.2.0",
     "langchain-core>=0.3.0",
     "pre-commit>=4.6.2",
+    "spandrel==0.4.2",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,10 @@ llama-cpp-python = [
 ]
 llama-cpp = []
 vllm = ["vllm>=0.6.0"]
+# Real-ESRGAN upscaling (--esr_enabled): torch (CUDA build for your platform;
+# ~2GB) + spandrel is already a core dependency. CPU ESRGAN is refused at
+# runtime, so only install this where a CUDA device exists.
+esrgan = ["torch>=2.4"]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
@@ -86,6 +91,7 @@ include = [
     "servers*",
     "interface*",
     "detection_viewer*",
+    "esr*",
 ]
 exclude = ["*.egg-info"]
 

@@ -273,6 +273,58 @@ class PipelineConfig(BaseModel):
     prep_min_pixels: int = 200_704
     prep_max_pixels: int = 4_194_304
 
+    # --- Real-ESRGAN upscaling (all tasks, opt-in) ---------------------------
+    # When True, images are super-resolved with Real-ESRGAN BEFORE the VLM
+    # sees them: free_detection upscales the full image (stage 0, before
+    # resolution/grid/tiling), auto_label upscales each VLM crop (and the
+    # full scene in full_som mode) when esr_for_crops is set, classify
+    # upscales the whole image before encoding. Final boxes/outputs are
+    # always projected back onto the ORIGINAL dims (see esr.project), and
+    # pixel-space cosmetics (grid line width/font, tile size) are scaled by
+    # the growth factor so the VLM sees the same relative grid. Needs the
+    # [esrgan] extra (torch, CUDA-only; CPU is refused at runtime).
+    esr_enabled: bool = False
+    # Registry key from esr.registry.ESR_MODEL_CHOICES (default tiny/fast
+    # general-x4v3). Any other spandrel-compatible checkpoint works via
+    # esr_model_path, which always wins over the registry.
+    esr_model: Literal[
+        "general-x4v3",
+        "general-wdn-x4v3",
+        "animevideov3",
+        "x4plus",
+        "x4plus-anime-6B",
+        "x2plus",
+    ] = "general-x4v3"
+    # Explicit local checkpoint file (wins over registry/download). Also
+    # readable from the LLMOG_ESR_MODEL env var (see esr.download).
+    esr_model_path: Optional[str] = None
+    # Optional HuggingFace repo id holding the registry file name, used only
+    # as a fallback when the official download fails (needs huggingface_hub).
+    esr_model_repo: Optional[str] = None
+    # Cache dir for downloaded weights (default ~/.cache/llmog/esr, or
+    # LLMOG_CACHE_DIR / XDG layout; see esr.download.default_cache_dir).
+    esr_cache_dir: Optional[str] = None
+    # Upscale factor override. None (default) uses the checkpoint's native
+    # scale; an explicit mismatch is an error, not a silent distortion.
+    esr_scale: Optional[int] = None
+    # Working size after ESR: fit the long edge to this (aspect preserved,
+    # LANCZOS). 0 keeps the native ESR output. Default 2048.
+    esr_target_long_edge: int = 2048
+    # VRAM guard: ESR output past this long edge is Lanczos-downscaled first.
+    esr_max_long_edge: int = 4096
+    esr_tile_size: int = 512
+    esr_overlap: int = 16
+    esr_batch_size: int = 4
+    # Apply ESR to auto_label VLM crops / full_som scenes (default ON -- the
+    # tiny-defect win). Only matters when esr_enabled is True.
+    esr_for_crops: bool = True
+    # torch.compile the SR model (faster batches, slow first run + warmup).
+    esr_compile: bool = False
+    # channels-last memory format (faster convs on CUDA, on by default).
+    esr_channels_last: bool = True
+    # CUDA device spec ("auto" = first CUDA device). Non-CUDA is refused.
+    esr_device: str = "auto"
+
     serving_extra: Dict[str, Any] = Field(default_factory=dict)
     # Raw extra command-line tokens forwarded verbatim to vLLM (list[str]).
     extra_args: Optional[List[str]] = None
@@ -347,6 +399,43 @@ class PipelineConfig(BaseModel):
     def _check_crop_resize_ratio(cls, v: Optional[float]) -> Optional[float]:
         if v is not None and v <= 0:
             raise ValueError("--crop_resize_ratio must be > 0 when set")
+        return v
+
+    @field_validator("esr_target_long_edge")
+    @classmethod
+    def _check_esr_target(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(
+                "--esr_target_long_edge must be >= 0 (0 = keep native ESR output)"
+            )
+        return v
+
+    @field_validator("esr_max_long_edge")
+    @classmethod
+    def _check_esr_max(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("--esr_max_long_edge must be > 0")
+        return v
+
+    @field_validator("esr_tile_size")
+    @classmethod
+    def _check_esr_tile(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("--esr_tile_size must be > 0")
+        return v
+
+    @field_validator("esr_overlap")
+    @classmethod
+    def _check_esr_overlap(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("--esr_overlap must be >= 0")
+        return v
+
+    @field_validator("esr_scale")
+    @classmethod
+    def _check_esr_scale(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("--esr_scale must be > 0 when set")
         return v
 
     @field_validator("batch_poll_interval")

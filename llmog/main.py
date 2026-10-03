@@ -649,6 +649,148 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--prep_min_pixels", type=int, default=200_704)
     p.add_argument("--prep_max_pixels", type=int, default=4_194_304)
 
+    # --- Real-ESRGAN upscaling (all tasks, opt-in) --------------------------
+    p.add_argument(
+        "--esr_enabled",
+        "--esr-enabled",
+        dest="esr_enabled",
+        action="store_true",
+        default=False,
+        help="Super-resolve with Real-ESRGAN before the VLM sees images "
+        "(full image for free_detection/classify; crops for auto_label). "
+        "Final outputs are projected back onto original dims. Needs the "
+        "[esrgan] extra (torch, CUDA-only).",
+    )
+    p.add_argument(
+        "--esr_model",
+        "--esr-model",
+        dest="esr_model",
+        choices=[
+            "general-x4v3",
+            "general-wdn-x4v3",
+            "animevideov3",
+            "x4plus",
+            "x4plus-anime-6B",
+            "x2plus",
+        ],
+        default="general-x4v3",
+        help="Registry checkpoint key (auto-downloaded to ~/.cache/llmog/esr "
+        "on first use). Overridden by --esr_model_path.",
+    )
+    p.add_argument(
+        "--esr_model_path",
+        "--esr-model-path",
+        dest="esr_model_path",
+        default=None,
+        help="Explicit local ESR checkpoint (any spandrel-compatible file); "
+        "wins over --esr_model. Also readable from LLMOG_ESR_MODEL.",
+    )
+    p.add_argument(
+        "--esr_model_repo",
+        "--esr-model-repo",
+        dest="esr_model_repo",
+        default=None,
+        help="Optional HuggingFace repo fallback holding the registry file "
+        "(needs huggingface_hub), used only if the official download fails.",
+    )
+    p.add_argument(
+        "--esr_cache_dir",
+        "--esr-cache-dir",
+        dest="esr_cache_dir",
+        default=None,
+        help="Weight cache dir (default ~/.cache/llmog/esr).",
+    )
+    p.add_argument(
+        "--esr_scale",
+        "--esr-scale",
+        dest="esr_scale",
+        type=int,
+        default=None,
+        help="Upscale factor override (default: checkpoint native scale; "
+        "a mismatch is an error).",
+    )
+    p.add_argument(
+        "--esr_target_long_edge",
+        "--esr-target-long-edge",
+        dest="esr_target_long_edge",
+        type=int,
+        default=2048,
+        help="Fit the ESR output long edge to this working size (0 = keep "
+        "native ESR output).",
+    )
+    p.add_argument(
+        "--esr_max_long_edge",
+        "--esr-max-long-edge",
+        dest="esr_max_long_edge",
+        type=int,
+        default=4096,
+        help="VRAM guard: ESR output past this long edge is downscaled first.",
+    )
+    p.add_argument(
+        "--esr_tile_size",
+        "--esr-tile-size",
+        dest="esr_tile_size",
+        type=int,
+        default=512,
+        help="ESR inference tile edge in input px.",
+    )
+    p.add_argument(
+        "--esr_overlap",
+        dest="esr_overlap",
+        type=int,
+        default=16,
+        help="ESR inference tile overlap in input px.",
+    )
+    p.add_argument(
+        "--esr_batch_size",
+        "--esr-batch-size",
+        dest="esr_batch_size",
+        type=int,
+        default=4,
+        help="ESR tiles inferred per batch.",
+    )
+    p.add_argument(
+        "--esr_for_crops",
+        dest="esr_for_crops",
+        action="store_true",
+        default=True,
+        help="Apply ESR to auto_label VLM crops / full_som scenes (default ON).",
+    )
+    p.add_argument(
+        "--no_esr_for_crops",
+        dest="esr_for_crops",
+        action="store_false",
+        help="Skip ESR for auto_label crops (full images still upscaled).",
+    )
+    p.add_argument(
+        "--esr_compile",
+        "--esr-compile",
+        dest="esr_compile",
+        action="store_true",
+        default=False,
+        help="torch.compile the SR model (faster batches, slow first run).",
+    )
+    p.add_argument(
+        "--esr_channels_last",
+        dest="esr_channels_last",
+        action="store_true",
+        default=True,
+        help="channels-last memory format for ESR convs (default ON).",
+    )
+    p.add_argument(
+        "--no_esr_channels_last",
+        dest="esr_channels_last",
+        action="store_false",
+        help="Disable channels-last for ESR.",
+    )
+    p.add_argument(
+        "--esr_device",
+        "--esr-device",
+        dest="esr_device",
+        default="auto",
+        help="CUDA device for ESR ('auto' = first CUDA device; CPU refused).",
+    )
+
     # --- Serving extras ---------------------------------------------------
     p.add_argument(
         "--serving_extra",

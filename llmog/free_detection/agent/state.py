@@ -37,6 +37,11 @@ class DetectionState(TypedDict, total=False):
     prep_w: int
     prep_h: int
 
+    # Real-ESRGAN stage-0 info (esr.manager info dict) + ESR-scaled tiling.
+    esr_info: Dict[str, Any]
+    tile_size_eff: int
+    tile_overlap: float
+
     # Grid / Preprocessing Settings
     grid_style: str
     grid_step: int

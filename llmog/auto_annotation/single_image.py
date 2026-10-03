@@ -11,10 +11,13 @@ from PIL import Image
 from free_detection.image_preprocessing import preprocess_custom_resize
 from auto_annotation.logging_utils import logger
 from auto_annotation.image_io import (
+    build_esr_settings,
     detect_defect,
     draw_som_context,
+    maybe_esr_upscale_pil,
     pad_box,
     resize_crop_ratio,
+    upscale_scene_for_som,
 )
 from auto_annotation.yaml_utils import resolve_kept_class
 from auto_annotation.checkpoint import build_run_settings
@@ -74,6 +77,7 @@ def process_one_image(
     crop_padding_pct: float = 0.0,
     recls_context: str = "crop",
     crop_resize_ratio=None,
+    esr_settings=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -178,6 +182,17 @@ def process_one_image(
             f"{max(target_height, target_width)}px) instead of the fixed "
             f"{target_width}x{target_height} letterbox."
         )
+    # Real-ESRGAN settings for VLM-bound pixels ({} when disabled; the
+    # helper centralizes getattr defaults so sync == batch by construction).
+    # Never loads a model on dry runs (no-op runs stay model-free).
+    _esr = build_esr_settings(esr_settings)
+    if _esr and not dry_run:
+        logger.info(
+            "ESR upscaling ON for VLM pixels "
+            f"(model={_esr.get('esr_model')}, target_long_edge="
+            f"{_esr.get('esr_target_long_edge')}). Final YOLO coords stay in "
+            "original-image space."
+        )
     # Fingerprint of the label-affecting settings, stored in the checkpoint
     # with every save so a resume with changed flags warns (main.py) instead
     # of silently mixing label vintages.
@@ -193,6 +208,12 @@ def process_one_image(
         class_mode=class_mode,
         none_labels=none_labels,
         drop_none=drop_none,
+        esr_enabled=bool(_esr),
+        esr_model=_esr.get("esr_model") if _esr else None,
+        esr_model_path=_esr.get("esr_model_path") if _esr else None,
+        esr_scale=_esr.get("esr_scale") if _esr else None,
+        esr_target_long_edge=_esr.get("esr_target_long_edge") if _esr else None,
+        esr_for_crops=_esr.get("esr_for_crops") if _esr else None,
     )
 
     try:
@@ -347,9 +368,16 @@ def process_one_image(
         if _som_mode:
             # Full-scene context: highlight the ORIGINAL box (padding is a
             # crop-mode concept) and send the whole annotated image, fitted
-            # to the target size so batch payloads stay bounded.
+            # to the target size so batch payloads stay bounded. With ESR,
+            # the scene is super-resolved first and the box is scaled by the
+            # TRUE working/original ratio (never assumed) before marking.
             try:
-                som_view = draw_som_context(Image.fromarray(img), x1, y1, x2, y2)
+                _scene = Image.fromarray(img)
+                if _esr and not dry_run:
+                    _scene, (x1, y1, x2, y2), _ = upscale_scene_for_som(
+                        _scene, (x1, y1, x2, y2), _esr
+                    )
+                som_view = draw_som_context(_scene, x1, y1, x2, y2)
                 som_view, _ = preprocess_custom_resize(
                     som_view,
                     target_height=target_height,
@@ -376,6 +404,18 @@ def process_one_image(
             # preprocess_custom_resize works on PIL.Image, not numpy arrays
             pil_crop = Image.fromarray(crop_image)
             try:
+                # ESR first (pixels only -- output YOLO coords below always
+                # use the ORIGINAL normalized box), then the usual sizing.
+                # The crop cap keeps ESR working output at/below the
+                # downstream letterbox instead of swelling to the scene
+                # target first.
+                if _esr and not dry_run:
+                    pil_crop, _ = maybe_esr_upscale_pil(
+                        pil_crop,
+                        _esr,
+                        purpose="crop",
+                        long_edge_cap=max(target_height, target_width),
+                    )
                 if _ratio is not None:
                     pil_crop = resize_crop_ratio(
                         pil_crop,

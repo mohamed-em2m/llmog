@@ -342,7 +342,8 @@ def node_detector(state: DetectionState) -> Dict[str, Any]:
             judge_actions=judge_actions,
             annotated_prep_image=annotated_prep_image,
             round_num=round_num,
-            tile_size=prep_cfg.get("tile_size", 512),
+            # ESR-scaled effective tile (== configured size when ESR is off).
+            tile_size=state.get("tile_size_eff", prep_cfg.get("tile_size", 512)),
             tile_overlap=prep_cfg.get("tile_overlap", 0.2),
             grid_kwargs=grid_kwargs,
         )

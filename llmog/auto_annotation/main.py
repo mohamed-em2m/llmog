@@ -21,7 +21,7 @@ from auto_annotation.checkpoint import (
     run_settings_mismatches,
 )
 from auto_annotation.server_guard import ServerDownError
-from auto_annotation.image_io import load_or_init_class_map
+from auto_annotation.image_io import build_esr_settings, load_or_init_class_map
 from auto_annotation.server_init import build_client
 from auto_annotation.batch_runner import read_images_with_labels
 from auto_annotation.yaml_utils import save_updated_yaml
@@ -384,6 +384,12 @@ def main(args=None):
                 none_labels=getattr(args, "none_labels", ""),
                 drop_none=getattr(args, "drop_none", True),
                 batch_size=getattr(args, "batch_size", 0),
+                esr_enabled=bool(getattr(args, "esr_enabled", False)),
+                esr_model=getattr(args, "esr_model", None),
+                esr_model_path=getattr(args, "esr_model_path", None),
+                esr_scale=getattr(args, "esr_scale", None),
+                esr_target_long_edge=getattr(args, "esr_target_long_edge", None),
+                esr_for_crops=getattr(args, "esr_for_crops", None),
             )
             _fp_diffs = run_settings_mismatches(saved_fp, current_fp)
             for diff in _fp_diffs:
@@ -466,6 +472,7 @@ def main(args=None):
                 crop_padding_pct=getattr(args, "crop_padding_pct", 0.0) or 0.0,
                 recls_context=getattr(args, "recls_context", "crop") or "crop",
                 crop_resize_ratio=getattr(args, "crop_resize_ratio", None),
+                esr_settings=build_esr_settings(args),
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

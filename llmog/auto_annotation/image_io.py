@@ -10,6 +10,157 @@ from PIL import Image, ImageDraw, ImageFont
 
 from auto_annotation.logging_utils import logger
 from free_detection.agent.prompts import render_auto_label_prompt
+from esr.manager import ESRConfig, upscale_pil
+from esr.project import fit_long_edge
+
+
+def build_esr_settings(obj) -> dict:
+    """Collect the ``esr_*`` fields off a config/Namespace/dict ({} when off).
+
+    Centralizes the getattr-with-defaults dance so the sync path, the Batch
+    API path, and the checkpoint fingerprint all see identical settings.
+    """
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        raw = dict(obj)
+    else:
+        raw = {
+            k: getattr(obj, k, None)
+            for k in (
+                "esr_enabled",
+                "esr_model",
+                "esr_model_path",
+                "esr_model_repo",
+                "esr_cache_dir",
+                "esr_scale",
+                "esr_target_long_edge",
+                "esr_max_long_edge",
+                "esr_tile_size",
+                "esr_overlap",
+                "esr_batch_size",
+                "esr_for_crops",
+                "esr_compile",
+                "esr_channels_last",
+                "esr_device",
+            )
+        }
+    if not raw.get("esr_enabled"):
+        return {}
+    cfg = ESRConfig.from_config(raw)
+    if not cfg.enabled:
+        return {}
+    return raw
+
+
+def maybe_esr_upscale_pil(
+    pil_image, esr_settings, *, purpose="crop", long_edge_cap=None
+):
+    """Upscale a VLM-bound PIL image with Real-ESRGAN when enabled.
+
+    ``purpose`` is ``"crop"`` (gated by ``esr_for_crops``) or ``"scene"``
+    (full_som / classify full images -- always applied when enabled).
+    ``long_edge_cap`` (pixels, e.g. the downstream letterbox size) trims the
+    ESR working image when it is larger than what the caller keeps anyway --
+    a 100px crop need not swell to the 2048px scene target before being
+    letterboxed back to 1024. Returns ``(pil_image, esr_info)``; disabled
+    configs return the input with ``applied: False`` (no torch import, no
+    model load). Callers must skip this entirely on dry runs (no model load
+    for a no-op run).
+    """
+    if not esr_settings:
+        w, h = pil_image.size
+        return pil_image, {
+            "applied": False,
+            "orig_w": w,
+            "orig_h": h,
+            "pre_w": w,
+            "pre_h": h,
+            "up_w": w,
+            "up_h": h,
+            "work_w": w,
+            "work_h": h,
+            "scale": 1,
+        }
+    cfg = ESRConfig.from_config(esr_settings)
+    if not cfg.enabled:
+        w, h = pil_image.size
+        return pil_image, {
+            "applied": False,
+            "orig_w": w,
+            "orig_h": h,
+            "pre_w": w,
+            "pre_h": h,
+            "up_w": w,
+            "up_h": h,
+            "work_w": w,
+            "work_h": h,
+            "scale": 1,
+        }
+    if purpose == "crop" and not cfg.for_crops:
+        logger.info("ESR: esr_for_crops is off -- sending the native crop.")
+        w, h = pil_image.size
+        return pil_image, {
+            "applied": False,
+            "orig_w": w,
+            "orig_h": h,
+            "pre_w": w,
+            "pre_h": h,
+            "up_w": w,
+            "up_h": h,
+            "work_w": w,
+            "work_h": h,
+            "scale": 1,
+        }
+    upscaled, info = upscale_pil(pil_image.convert("RGB"), cfg)
+    if info.get("applied") and long_edge_cap:
+        cw, ch = fit_long_edge(info["work_w"], info["work_h"], long_edge_cap)
+        if (cw, ch) != (info["work_w"], info["work_h"]):
+            logger.debug(
+                "ESR crop cap: trimming working %dx%d to %dx%d "
+                "(downstream keeps <= %d).",
+                info["work_w"],
+                info["work_h"],
+                cw,
+                ch,
+                long_edge_cap,
+            )
+            upscaled = upscaled.resize((cw, ch), Image.Resampling.LANCZOS)
+            info = {**info, "work_w": cw, "work_h": ch}
+    if info.get("applied"):
+        logger.info(
+            "ESR upscale (%s): %dx%d -> working %dx%d (x%d).",
+            purpose,
+            info["orig_w"],
+            info["orig_h"],
+            info["work_w"],
+            info["work_h"],
+            info.get("scale", 1),
+        )
+    return upscaled, info
+
+
+def upscale_scene_for_som(pil_image, box_xyxy, esr_settings):
+    """Upscale a full scene for SoM marking; returns ``(scene, scaled_box)``.
+
+    Box coords are in the input image's pixels; after ESR they are
+    multiplied by the actual working/original ratio (never assumed from
+    config -- the true factor comes back in ``esr_info``).
+    """
+    upscaled, info = maybe_esr_upscale_pil(pil_image, esr_settings, purpose="scene")
+    if not info.get("applied"):
+        return upscaled, tuple(int(v) for v in box_xyxy), info
+    sx = info["work_w"] / max(1, info["orig_w"])
+    sy = info["work_h"] / max(1, info["orig_h"])
+    x1, y1, x2, y2 = box_xyxy
+    w, h = upscaled.size
+    scaled = (
+        max(0, min(w, int(round(x1 * sx)))),
+        max(0, min(h, int(round(y1 * sy)))),
+        max(0, min(w, int(round(x2 * sx)))),
+        max(0, min(h, int(round(y2 * sy)))),
+    )
+    return upscaled, scaled, info
 
 
 def encode_crop_to_data_uri(crop_rgb):

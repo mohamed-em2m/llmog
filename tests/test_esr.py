@@ -1,0 +1,420 @@
+"""Coverage for the Real-ESRGAN upscaler: registry, downloads, projection math, manager gating, and pipeline wiring."""
+
+import argparse
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
+
+# ---------------------------------------------------------------------------
+# registry
+# ---------------------------------------------------------------------------
+class TestRegistry:
+    def test_all_entries_well_formed(self):
+        from esr.registry import ESR_MODELS
+
+        assert len(ESR_MODELS) >= 6
+        for key, entry in ESR_MODELS.items():
+            assert entry["file"].endswith(".pth"), key
+            assert str(entry["url"]).startswith(
+                "https://github.com/xinntao/Real-ESRGAN/releases/download/"
+            ), key
+            assert entry["url"].endswith(entry["file"]), key
+            assert int(entry["scale"]) > 0, key
+
+    def test_default_model_exists(self):
+        from esr.registry import DEFAULT_ESR_MODEL, ESR_MODEL_CHOICES, get_model_entry
+
+        assert DEFAULT_ESR_MODEL in ESR_MODEL_CHOICES
+        entry = get_model_entry(DEFAULT_ESR_MODEL)
+        assert int(entry["scale"]) == 4
+
+    def test_unknown_key_error_mentions_path_override(self):
+        from esr.registry import get_model_entry
+
+        with pytest.raises(KeyError, match="esr_model_path"):
+            get_model_entry("nope-not-a-model")
+
+
+# ---------------------------------------------------------------------------
+# download / cache resolution (no network: cache hits + explicit paths only)
+# ---------------------------------------------------------------------------
+class TestResolveWeights:
+    def test_explicit_local_path_wins(self, tmp_path):
+        from esr.download import resolve_weights
+
+        p = tmp_path / "custom.pth"
+        p.write_bytes(b"fake-weights")
+        assert resolve_weights(model_path=str(p)) == p
+
+    def test_missing_explicit_path_is_loud(self, tmp_path):
+        from esr.download import resolve_weights
+
+        with pytest.raises(FileNotFoundError, match="esr_model_path"):
+            resolve_weights(model_path=str(tmp_path / "absent.pth"))
+
+    def test_cache_hit_skips_download(self, tmp_path, monkeypatch):
+        from esr.download import resolve_weights
+        from esr.registry import get_model_entry
+
+        entry = get_model_entry("general-x4v3")
+        cached = tmp_path / str(entry["file"])
+        cached.write_bytes(b"cached-weights")
+
+        def _boom(url, dest):
+            raise AssertionError("download must not run on a cache hit")
+
+        monkeypatch.setattr("esr.download._download", _boom)
+        assert resolve_weights(model_key="general-x4v3", cache_dir=tmp_path) == cached
+
+    def test_no_cache_no_download_raises_helpfully(self, tmp_path):
+        from esr.download import resolve_weights
+
+        with pytest.raises(FileNotFoundError, match="esr_model_path"):
+            resolve_weights(
+                model_key="general-x4v3", cache_dir=tmp_path, auto_download=False
+            )
+
+    def test_env_var_override(self, tmp_path, monkeypatch):
+        from esr.download import resolve_weights
+
+        p = tmp_path / "env.pth"
+        p.write_bytes(b"env-weights")
+        monkeypatch.setenv("LLMOG_ESR_MODEL", str(p))
+        assert resolve_weights() == p
+
+    def test_default_cache_dir_layout(self, monkeypatch):
+        from esr.download import default_cache_dir
+
+        monkeypatch.setenv("LLMOG_CACHE_DIR", "/tmp/llmog-cache-test")
+        monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+        assert default_cache_dir() == Path("/tmp/llmog-cache-test/esr")
+
+    def test_xdg_cache_home_honored(self, monkeypatch):
+        from esr.download import default_cache_dir
+
+        monkeypatch.delenv("LLMOG_CACHE_DIR", raising=False)
+        monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/xdg-test")
+        assert default_cache_dir() == Path("/tmp/xdg-test/llmog/esr")
+
+
+# ---------------------------------------------------------------------------
+# tiling geometry (F1: narrow images must tile without crashing blending)
+# ---------------------------------------------------------------------------
+class TestTileGeometry:
+    def test_square_image(self):
+        from esr.project import tile_geometry
+
+        coords, th, tw = tile_geometry(600, 600, 512, 16)
+        assert (th, tw) == (512, 512)
+        assert coords == [(0, 0), (0, 88), (88, 0), (88, 88)]
+
+    def test_narrow_image_short_but_full_tiles(self):
+        import numpy as np
+
+        from esr.project import tile_geometry
+
+        # 600x100 with tile 512: previously crashed blending (100px-tall
+        # tiles vs a square 512 feather mask).
+        coords, th, tw = tile_geometry(100, 600, 512, 16)
+        assert (th, tw) == (100, 512)
+        assert coords == [(0, 0), (0, 88)]
+        fake = np.zeros((100, 600, 3), dtype=np.float32)
+        for y, x in coords:
+            assert fake[y : y + th, x : x + tw].shape == (100, 512, 3)
+
+    def test_sub_tile_image_single_tile(self):
+        from esr.project import tile_geometry
+
+        coords, th, tw = tile_geometry(100, 80, 512, 16)
+        assert coords == [(0, 0)]
+        assert (th, tw) == (100, 80)
+
+    def test_exact_tile_no_duplicates(self):
+        from esr.project import tile_geometry
+
+        coords, th, tw = tile_geometry(512, 512, 512, 16)
+        assert coords == [(0, 0)]
+
+    def test_rectangular_mask_matches_tiles(self):
+
+        from esr.project import tile_geometry
+
+        # Simulate the blend shapes: every patch must equal the mask shape.
+        h, w, tile, overlap, scale = 100, 600, 512, 16, 4
+        coords, th, tw = tile_geometry(h, w, tile, overlap)
+        mask_shape = (th * scale, tw * scale)
+        assert mask_shape == (400, 2048)
+        for y, x in coords:
+            patch_shape = (th * scale, tw * scale)
+            assert patch_shape == mask_shape
+
+
+# ---------------------------------------------------------------------------
+# pre-cap + singleton + config fixes (F2/F3/F5)
+# ---------------------------------------------------------------------------
+class TestPreCapMath:
+    def test_input_cap_keeps_output_within_guard(self):
+        from esr.project import fit_long_edge
+
+        # 5000px input, x4 model, 4096 guard -> pre-fit input to 1024 so the
+        # ESR output (4096) never exceeds the cap by construction.
+        scale, cap = 4, 4096
+        in_cap = max(1, cap // scale)
+        assert in_cap == 1024
+        pw, ph = fit_long_edge(5000, 3000, in_cap)
+        assert (pw, ph) == (1024, 614)
+        assert max(pw * scale, ph * scale) <= cap
+
+    def test_target_clamped_to_cap(self):
+        target, cap = 8192, 4096
+        eff = min(target, cap) if target > 0 and cap > 0 else target
+        assert eff == 4096
+
+    def test_from_config_honors_explicit_values(self):
+        from esr.manager import ESRConfig
+
+        cfg = ESRConfig.from_config({"esr_max_long_edge": 0})
+        assert cfg.max_long_edge == 0  # was silently rewritten to 4096
+        cfg2 = ESRConfig.from_config({"esr_target_long_edge": None})
+        assert cfg2.target_long_edge == 2048
+        cfg3 = ESRConfig.from_config({"esr_target_long_edge": 0})
+        assert cfg3.target_long_edge == 0
+        cfg4 = ESRConfig.from_config({"esr_enabled": True, "esr_scale": "4"})
+        assert cfg4.scale == 4
+
+    def test_singleton_keyed_by_config(self):
+        from esr.manager import ESRConfig, ESRUpscaler
+
+        ESRUpscaler.reset()
+        try:
+            a = ESRConfig(enabled=True, model="general-x4v3")
+            b = ESRConfig(enabled=True, model="x4plus")
+            assert ESRUpscaler.get(a) is ESRUpscaler.get(
+                ESRConfig(enabled=True, model="general-x4v3")
+            )
+            assert ESRUpscaler.get(b) is not ESRUpscaler.get(a)
+        finally:
+            ESRUpscaler.reset()
+
+    def test_disabled_info_carries_pre_keys(self):
+        from esr.manager import ESRConfig, upscale_pil
+
+        img = Image.new("RGB", (64, 48))
+        _, info = upscale_pil(img, ESRConfig())
+        assert (info["pre_w"], info["pre_h"]) == (64, 48)
+
+    def test_crop_cap_disabled_is_identity(self):
+        from auto_annotation.image_io import maybe_esr_upscale_pil
+
+        img = Image.new("RGB", (3000, 2000))
+        out, info = maybe_esr_upscale_pil(img, {}, purpose="crop", long_edge_cap=1024)
+        assert out is img and info["applied"] is False
+
+
+class TestProjection:
+    def test_norm_to_orig_pixels_square(self):
+        from esr.project import norm_to_orig_pixels
+
+        assert norm_to_orig_pixels([0, 0, 1000, 1000], 640, 480) == [0, 0, 640, 480]
+        assert norm_to_orig_pixels([250, 250, 750, 750], 1000, 1000) == [
+            250,
+            250,
+            750,
+            750,
+        ]
+
+    def test_norm_rounds_outward_and_clamps(self):
+        from esr.project import norm_to_orig_pixels
+
+        # 1/1000 of 640px = 0.64 -> floor 0 / ceil 1 (outward, no lost coverage)
+        assert norm_to_orig_pixels([1, 1, 2, 2], 640, 480) == [0, 0, 2, 1]
+        # out-of-range input clamps to the frame
+        assert norm_to_orig_pixels([-50, -50, 1200, 1200], 640, 480) == [0, 0, 640, 480]
+        # inverted coords normalize
+        assert norm_to_orig_pixels([800, 800, 200, 200], 1000, 1000) == [
+            200,
+            200,
+            800,
+            800,
+        ]
+
+    def test_work_pixels_ratio(self):
+        from esr.project import work_pixels_to_orig_pixels
+
+        # 4x working image maps back exactly
+        assert work_pixels_to_orig_pixels(
+            [400, 400, 800, 800], 4000, 4000, 1000, 1000
+        ) == [
+            100,
+            100,
+            200,
+            200,
+        ]
+        # non-square growth uses per-axis ratios
+        assert work_pixels_to_orig_pixels(
+            [0, 0, 2048, 1024], 2048, 1024, 1024, 512
+        ) == [
+            0,
+            0,
+            1024,
+            512,
+        ]
+
+    def test_growth_factor_and_scaling(self):
+        from esr.project import esr_growth_factor, scaled_pixel_param
+
+        assert esr_growth_factor(2048, 2048, 512, 512) == 4.0
+        assert esr_growth_factor(512, 512, 512, 512) == 1.0
+        # byte-identical behavior when ESR is off (factor <= 1 is a no-op)
+        assert scaled_pixel_param(1, 1.0) == 1
+        assert scaled_pixel_param(512, 0.5) == 512
+        # growth preserves relative measures
+        assert scaled_pixel_param(1, 4.0) == 4
+        assert scaled_pixel_param(512, 2.0) == 1024
+        assert scaled_pixel_param(0, 4.0) == 1  # never vanishes
+
+    def test_fit_long_edge(self):
+        from esr.project import fit_long_edge
+
+        assert fit_long_edge(4000, 3000, 2048) == (2048, 1536)
+        assert fit_long_edge(100, 80, 2048) == (2048, 1638)  # upscales too
+        assert fit_long_edge(800, 600, 0) == (800, 600)  # 0 = keep native
+        assert fit_long_edge(2048, 1536, 2048) == (2048, 1536)
+
+
+# ---------------------------------------------------------------------------
+# manager gating (no torch on CPU CI: disabled path + loud enable path)
+# ---------------------------------------------------------------------------
+class TestManager:
+    def test_from_config_dict_and_namespace(self):
+        from esr.manager import ESRConfig
+
+        cfg = ESRConfig.from_config({"esr_enabled": True, "esr_model": "x4plus"})
+        assert cfg.enabled and cfg.model == "x4plus" and cfg.for_crops
+        ns = argparse.Namespace(esr_enabled=False)
+        cfg2 = ESRConfig.from_config(ns)
+        assert not cfg2.enabled and cfg2.target_long_edge == 2048
+
+    def test_disabled_upscale_returns_input_untouched(self):
+        from esr.manager import ESRConfig, upscale_pil
+
+        img = Image.new("RGB", (64, 48), (10, 20, 30))
+        out, info = upscale_pil(img, ESRConfig())
+        assert out is img
+        assert info["applied"] is False
+        assert (info["orig_w"], info["orig_h"]) == (64, 48)
+
+    def test_enabled_without_torch_is_loud(self):
+        from esr.manager import ESRConfig, upscale_pil
+
+        cfg = ESRConfig(enabled=True)
+        img = Image.new("RGB", (32, 32))
+        with pytest.raises(RuntimeError, match="esrgan"):
+            upscale_pil(img, cfg)
+
+    def test_torch_status_shape(self):
+        from esr.manager import torch_status
+
+        ok, reason = torch_status()
+        assert isinstance(ok, bool) and isinstance(reason, str)
+
+
+# ---------------------------------------------------------------------------
+# image_io helpers (ESR off)
+# ---------------------------------------------------------------------------
+class TestImageIoEsr:
+    def test_build_esr_settings_off(self):
+        from auto_annotation.image_io import build_esr_settings
+
+        assert build_esr_settings(None) == {}
+        assert build_esr_settings({}) == {}
+        assert build_esr_settings({"esr_enabled": False}) == {}
+        ns = argparse.Namespace(esr_enabled=False)
+        assert build_esr_settings(ns) == {}
+
+    def test_build_esr_settings_on(self):
+        from auto_annotation.image_io import build_esr_settings
+
+        ns = argparse.Namespace(
+            esr_enabled=True, esr_model="general-x4v3", esr_target_long_edge=2048
+        )
+        out = build_esr_settings(ns)
+        assert out["esr_enabled"] is True
+        assert out["esr_model"] == "general-x4v3"
+
+    def test_maybe_upscale_disabled_is_identity(self):
+        from auto_annotation.image_io import maybe_esr_upscale_pil
+
+        img = Image.new("RGB", (40, 30), (1, 2, 3))
+        out, info = maybe_esr_upscale_pil(img, {}, purpose="crop")
+        assert out is img and info["applied"] is False
+
+    def test_upscale_scene_for_som_disabled_keeps_box(self):
+        from auto_annotation.image_io import upscale_scene_for_som
+
+        img = Image.new("RGB", (100, 80))
+        scene, box, info = upscale_scene_for_som(img, (10, 10, 50, 40), {})
+        assert box == (10, 10, 50, 40) and info["applied"] is False
+
+
+# ---------------------------------------------------------------------------
+# config + parser surface
+# ---------------------------------------------------------------------------
+class TestConfigSurface:
+    def test_pipeline_config_esr_defaults(self):
+        from schemes import PipelineConfig
+
+        cfg = PipelineConfig(task="classify", images=["x.jpg"])
+        assert cfg.esr_enabled is False
+        assert cfg.esr_model == "general-x4v3"
+        assert cfg.esr_target_long_edge == 2048
+        assert cfg.esr_max_long_edge == 4096
+        assert cfg.esr_for_crops is True
+        assert cfg.esr_compile is False
+
+    def test_pipeline_config_esr_validation(self):
+        from schemes import PipelineConfig
+
+        with pytest.raises(Exception, match="esr_target_long_edge"):
+            PipelineConfig(task="classify", images=["x.jpg"], esr_target_long_edge=-1)
+        with pytest.raises(Exception, match="esr_max_long_edge"):
+            PipelineConfig(task="classify", images=["x.jpg"], esr_max_long_edge=0)
+
+    def test_unified_parser_has_esr_flags(self):
+        from main import build_parser
+
+        ns = build_parser().parse_args([])
+        assert ns.esr_enabled is False
+        assert ns.esr_model == "general-x4v3"
+        assert ns.esr_target_long_edge == 2048
+        assert ns.esr_for_crops is True
+
+    def test_checkpoint_fingerprint_includes_esr(self):
+        from auto_annotation.checkpoint import RUN_SETTINGS_KEYS, build_run_settings
+
+        for key in (
+            "esr_enabled",
+            "esr_model",
+            "esr_model_path",
+            "esr_scale",
+            "esr_target_long_edge",
+            "esr_for_crops",
+        ):
+            assert key in RUN_SETTINGS_KEYS
+        fp = build_run_settings(esr_enabled=True, esr_model="x4plus")
+        assert fp["esr_enabled"] is True and fp["esr_model"] == "x4plus"
+
+    def test_gui_prep_config_esr_passthrough(self):
+        from interface.viewer_utils import build_prep_config
+
+        base = build_prep_config(prep_enabled=False)
+        assert base.get("esr_enabled", False) in (False, None)
+        out = build_prep_config(
+            prep_enabled=True,
+            esr_enabled=True,
+            esr_settings={"esr_enabled": True, "esr_model": "general-x4v3"},
+        )
+        assert out["esr_enabled"] is True
+        assert out["esr_model"] == "general-x4v3"

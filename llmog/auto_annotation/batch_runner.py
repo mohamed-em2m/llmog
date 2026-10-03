@@ -99,6 +99,7 @@ def read_images_with_labels(
     crop_padding_pct: float = 0.0,
     recls_context: str = "crop",
     crop_resize_ratio=None,
+    esr_settings=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -152,6 +153,12 @@ def read_images_with_labels(
         none_labels=none_labels,
         drop_none=drop_none,
         batch_size=batch_size,
+        esr_enabled=bool((esr_settings or {}).get("esr_enabled")),
+        esr_model=(esr_settings or {}).get("esr_model"),
+        esr_model_path=(esr_settings or {}).get("esr_model_path"),
+        esr_scale=(esr_settings or {}).get("esr_scale"),
+        esr_target_long_edge=(esr_settings or {}).get("esr_target_long_edge"),
+        esr_for_crops=(esr_settings or {}).get("esr_for_crops"),
     )
     # Staging vs final output: in-progress batches live under
     # <output>/batches/batch_XXXX/; <output>/labels/ is reserved for the final
@@ -348,6 +355,7 @@ def read_images_with_labels(
                         crop_padding_pct=crop_padding_pct,
                         recls_context=recls_context,
                         crop_resize_ratio=crop_resize_ratio,
+                        esr_settings=esr_settings,
                     )
                     if img is not None:
                         last_img = img
@@ -401,6 +409,7 @@ def read_images_with_labels(
                         crop_padding_pct=crop_padding_pct,
                         recls_context=recls_context,
                         crop_resize_ratio=crop_resize_ratio,
+                        esr_settings=esr_settings,
                     ): img_file
                     for img_file in batch_images
                 }

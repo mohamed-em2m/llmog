@@ -111,6 +111,14 @@ RUN_SETTINGS_KEYS = (
     "none_labels",
     "drop_none",
     "batch_size",
+    # Real-ESRGAN changes VLM-bound pixels (crop/scene resolution), so an
+    # ESR flip mid-dataset must warn like any other label-affecting flag.
+    "esr_enabled",
+    "esr_model",
+    "esr_model_path",
+    "esr_scale",
+    "esr_target_long_edge",
+    "esr_for_crops",
 )
 
 

@@ -7,6 +7,33 @@ versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Real-ESRGAN upscaling (`--esr_enabled`, CLI + YAML, default off, all
+  tasks): super-resolves VLM-bound pixels with Real-ESRGAN BEFORE the model
+  sees them -- full image in `free_detection` (stage 0, before
+  resolution/grid/tiling) and `classify`, crops + full_som scenes in
+  `auto_label` (gated by `--esr_for_crops`, default on). New `esr` package:
+  weight registry (`general-x4v3` default, `x4plus`, `x2plus`, anime
+  variants; official GitHub release assets, `~/.cache/llmog/esr`,
+  `--esr_model_path` local override, optional HF repo fallback),
+  CUDA-only torch-gated manager (fp16, channels-last, opt-in
+  `--esr_compile`, tiled VRAM-safe inference, install via
+  `uv pip install -e .[esrgan]`). Final outputs always map to ORIGINAL
+  dims: `best_annotated.jpg` is re-rendered on the original image,
+  detections JSON stays 0-1000, YOLO coords stay in original space; grid
+  line width/font and tile size auto-scale by the growth factor so the red
+  grid keeps its relative measures. `--esr_target_long_edge` (default
+  2048, 0 = native), `--esr_max_long_edge` VRAM guard (default 4096).
+  ESR keys join the checkpoint run-settings fingerprint, and saved batch
+  jobs warn when ESR flags change after the build (requests are baked).
+- ESR robustness fixes: rectangular tiling (narrow images such as 600x100
+  crops no longer crash blending on a square feather mask -- effective
+  tile dims clamp per axis in `esr.project.tile_geometry`, mirrored in
+  `scripts/run_spandrel.py`); pre-ESR input cap (`max_long_edge /
+  native_scale`) so the VRAM guard holds during inference, not just after
+  (working target is also clamped to the cap); fingerprinted upscaler
+  instances (distinct configs coexist instead of first-wins); crop
+  `long_edge_cap` (crops stop swelling to the 2048 scene target before the
+  downstream letterbox); dry-run batch builds never load the SR model.
 - `--crop_padding_pct` (CLI + YAML, default 0): expand each auto_label box by
   this % of its own width/height per side (clamped to the image) before the
   VLM crop, giving the classifier surrounding context. Applies identically to

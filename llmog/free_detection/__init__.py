@@ -251,6 +251,94 @@ def build_parser() -> argparse.ArgumentParser:
         "--prep_max_pixels", type=int, default=4194304, help="VLM max_pixels parameter."
     )
 
+    # --- Real-ESRGAN upscaling (opt-in; mirrors llmog/main.py) ---
+    p.add_argument(
+        "--esr_enabled",
+        action="store_true",
+        default=False,
+        help="Super-resolve with Real-ESRGAN before detection (needs the "
+        "[esrgan] extra: torch, CUDA-only). Final outputs map to original dims.",
+    )
+    p.add_argument(
+        "--esr_model",
+        default="general-x4v3",
+        choices=[
+            "general-x4v3",
+            "general-wdn-x4v3",
+            "animevideov3",
+            "x4plus",
+            "x4plus-anime-6B",
+            "x2plus",
+        ],
+        help="Registry checkpoint key (auto-downloaded on first use).",
+    )
+    p.add_argument(
+        "--esr_model_path",
+        default=None,
+        help="Explicit local ESR checkpoint (wins over --esr_model).",
+    )
+    p.add_argument(
+        "--esr_model_repo",
+        default=None,
+        help="Optional HuggingFace repo fallback for the weights.",
+    )
+    p.add_argument(
+        "--esr_cache_dir",
+        default=None,
+        help="Weight cache dir (default ~/.cache/llmog/esr).",
+    )
+    p.add_argument(
+        "--esr_scale", type=int, default=None, help="Upscale factor override."
+    )
+    p.add_argument(
+        "--esr_target_long_edge",
+        type=int,
+        default=2048,
+        help="Fit ESR output long edge to this (0 = keep native).",
+    )
+    p.add_argument(
+        "--esr_max_long_edge",
+        type=int,
+        default=4096,
+        help="VRAM guard: downscale ESR output past this long edge.",
+    )
+    p.add_argument(
+        "--esr_tile_size", type=int, default=512, help="ESR tile edge in input px."
+    )
+    p.add_argument(
+        "--esr_overlap", type=int, default=16, help="ESR tile overlap in input px."
+    )
+    p.add_argument(
+        "--esr_batch_size",
+        type=int,
+        default=4,
+        help="ESR tiles inferred per batch.",
+    )
+    p.add_argument(
+        "--esr_compile",
+        action="store_true",
+        default=False,
+        help="torch.compile the SR model (faster batches, slow first run).",
+    )
+    p.add_argument(
+        "--esr_channels_last",
+        dest="esr_channels_last",
+        action="store_true",
+        default=True,
+        help="channels-last memory format for ESR convs (default ON).",
+    )
+    p.add_argument(
+        "--no_esr_channels_last",
+        dest="esr_channels_last",
+        action="store_false",
+        help="Disable channels-last for ESR.",
+    )
+    p.add_argument(
+        "--esr_device",
+        default="auto",
+        help="CUDA device for ESR ('auto' = first CUDA device).",
+    )
+
     # --- Output ---
     p.add_argument(
         "--output_dir",
@@ -274,6 +362,22 @@ def build_parser() -> argparse.ArgumentParser:
 def _build_prep_config(args) -> dict:
     """Translate the prep_* fields on either a PipelineConfig or Namespace
     into the dict shape expected by :class:`ObjectDetectionPipeline`."""
+    esr = {
+        "esr_enabled": bool(getattr(args, "esr_enabled", False)),
+        "esr_model": getattr(args, "esr_model", "general-x4v3"),
+        "esr_model_path": getattr(args, "esr_model_path", None),
+        "esr_model_repo": getattr(args, "esr_model_repo", None),
+        "esr_cache_dir": getattr(args, "esr_cache_dir", None),
+        "esr_scale": getattr(args, "esr_scale", None),
+        "esr_target_long_edge": getattr(args, "esr_target_long_edge", 2048),
+        "esr_max_long_edge": getattr(args, "esr_max_long_edge", 4096),
+        "esr_tile_size": getattr(args, "esr_tile_size", 512),
+        "esr_overlap": getattr(args, "esr_overlap", 16),
+        "esr_batch_size": getattr(args, "esr_batch_size", 4),
+        "esr_compile": bool(getattr(args, "esr_compile", False)),
+        "esr_channels_last": bool(getattr(args, "esr_channels_last", True)),
+        "esr_device": getattr(args, "esr_device", "auto"),
+    }
     if not args.prep_enabled:
         return {
             "resolution_enabled": False,
@@ -292,6 +396,7 @@ def _build_prep_config(args) -> dict:
             "send_pixel_bounds": args.prep_send_pixel_bounds,
             "min_pixels": args.prep_min_pixels,
             "max_pixels": args.prep_max_pixels,
+            **esr,
         }
     return {
         "resolution_enabled": True,
@@ -321,6 +426,7 @@ def _build_prep_config(args) -> dict:
         "send_pixel_bounds": args.prep_send_pixel_bounds,
         "min_pixels": args.prep_min_pixels,
         "max_pixels": args.prep_max_pixels,
+        **esr,
     }
 
 

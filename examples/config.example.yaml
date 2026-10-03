@@ -73,6 +73,19 @@ prep_send_pixel_bounds: true
 prep_min_pixels: 200704
 prep_max_pixels: 2097152
 
+# --- Real-ESRGAN upscaling (opt-in) --------------------------------------
+# Stage-0 super-resolution before resolution/grid/tiling: the VLM sees the
+# high-res working image, final best_annotated.jpg is re-rendered on the
+# ORIGINAL dims (detections JSON stays 0-1000). Grid line width/font and
+# tile size auto-scale by the growth factor so relative measures hold.
+# Needs: uv pip install -e .[esrgan] (torch, CUDA-only).
+esr_enabled: false
+esr_model: general-x4v3 # tiny/fast default; "x4plus" for max quality
+esr_target_long_edge: 2048 # working size after ESR (0 = native x4 output)
+esr_max_long_edge: 4096 # VRAM guard
+# esr_model_path: null # explicit local checkpoint (wins over esr_model)
+# esr_compile: false # torch.compile (faster batches, slow first run)
+
 # --- Serving extras (passed through to the server manager) --------------
 serving_extra:
   ctx_size: 20000

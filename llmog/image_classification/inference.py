@@ -14,9 +14,29 @@ from PIL import Image
 logger = logging.getLogger("llmog.classify.inference")
 
 
-def encode_image_to_data_uri(image_path: str | Path) -> str:
+def encode_image_to_data_uri(image_path: str | Path, esr_settings=None) -> str:
+    """Encode a whole image as a base64 JPEG data URI (optionally ESR-upscaled)."""
     with Image.open(image_path) as img:
         rgb = img.convert("RGB")
+        if esr_settings:
+            from esr.manager import ESRConfig, upscale_pil
+
+            cfg = (
+                esr_settings
+                if isinstance(esr_settings, ESRConfig)
+                else ESRConfig.from_config(esr_settings)
+            )
+            if cfg.enabled:
+                rgb, info = upscale_pil(rgb, cfg)
+                if info.get("applied"):
+                    logger.info(
+                        "ESR upscale (classify): %s %dx%d -> %dx%d.",
+                        Path(image_path).name,
+                        info["orig_w"],
+                        info["orig_h"],
+                        info["work_w"],
+                        info["work_h"],
+                    )
         buf = io.BytesIO()
         rgb.save(buf, format="JPEG", quality=92)
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -103,9 +123,10 @@ def classify_single_image(
     temperature: float = 0.2,
     max_tokens: int = 1024,
     retries: int = 3,
+    esr_settings=None,
 ) -> List[Dict[str, Any]]:
     """Classify one full image; retries via 429-aware helper when available."""
-    data_uri = encode_image_to_data_uri(image_path)
+    data_uri = encode_image_to_data_uri(image_path, esr_settings=esr_settings)
 
     def _call() -> Any:
         kwargs: Dict[str, Any] = {
