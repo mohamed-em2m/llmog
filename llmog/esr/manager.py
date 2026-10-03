@@ -189,7 +189,11 @@ class ESRUpscaler:
                 "use the native factor."
             )
         if cfg.channels_last:
-            model.to(memory_format=torch.channels_last)
+            # NOTE: channels-last goes on the wrapped nn.Module, NOT the
+            # spandrel descriptor: ModelDescriptor.to() only accepts the
+            # plain device/dtype positionals and raises TypeError on
+            # memory_format (seen live on Kaggle).
+            model.model.to(memory_format=torch.channels_last)
         if cfg.compile:
             model = torch.compile(model)
             dummy = torch.zeros(
@@ -204,7 +208,7 @@ class ESRUpscaler:
             with torch.inference_mode(), torch.amp.autocast("cuda"):
                 model(dummy)
             torch.cuda.synchronize()
-        n_params = sum(p.numel() for p in model.parameters())
+        n_params = sum(p.numel() for p in model.model.parameters())
         logger.info(
             "ESR model ready: %s scale=x%d params=%.1fM device=%s channels_last=%s compiled=%s",
             self._weights.name,

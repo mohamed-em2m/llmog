@@ -162,7 +162,9 @@ def load_esr_model(
     load_s = time.perf_counter() - t0
 
     if channels_last:
-        model.to(memory_format=torch.channels_last)
+        # channels-last goes on the wrapped nn.Module: spandrel's
+        # ModelDescriptor.to() rejects the memory_format kwarg (TypeError).
+        model.model.to(memory_format=torch.channels_last)
 
     if use_compile:
         model = torch.compile(model)
@@ -175,7 +177,7 @@ def load_esr_model(
             model(dummy)
         torch.cuda.synchronize()
 
-    n_params = sum(p.numel() for p in model.parameters())
+    n_params = sum(p.numel() for p in model.model.parameters())
     print(
         f"Model: {model.architecture} | scale={model.scale} | "
         f"params={n_params / 1e6:.1f}M | load={load_s:.2f}s "

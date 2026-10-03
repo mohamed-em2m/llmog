@@ -6,6 +6,17 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-10-03
+
+### Fixed
+- ESR startup crash on real spandrel (`TypeError: to() got unexpected
+  keyword arguments ['memory_format']`): channels-last is now applied to
+  the wrapped `nn.Module` (`model.model`) instead of the spandrel
+  descriptor, whose `.to()` only forwards plain device/dtype positionals.
+  Param counting uses the wrapped module too. Locked by mock-based
+  regression tests (`TestSpandrelStrictTo`) that reproduce the strict
+  behavior without a GPU. Workaround (any version): `--no_esr_channels_last`.
+
 ## [1.4.3] - 2026-10-03
 
 ### Added

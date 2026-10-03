@@ -1,6 +1,6 @@
 [project]
 name = "llmog"
-version = "1.4.3"
+version = "1.4.4"
 description = "A pipeline for object detection using LLMs."
 readme = "README.md"
 requires-python = ">=3.12, <3.14"

@@ -655,3 +655,98 @@ class TestWholeImageEsr:
         (lbl_dir / "img.txt").write_text("0 0.5 0.5 0.5 0.5\n")
         (lbl_dir / "skipped_small_images.txt").write_text("some_stem\n")
         assert find_labeled_images(str(img_dir), str(lbl_dir), (".jpg",)) == ["img.jpg"]
+
+
+# ---------------------------------------------------------------------------
+# spandrel strictness: channels-last targets the wrapped nn.Module
+# ---------------------------------------------------------------------------
+class TestSpandrelStrictTo:
+    """Regression for the live Kaggle crash:
+    ``TypeError: to() got unexpected keyword arguments ['memory_format']``.
+
+    Spandrel's ModelDescriptor.to() only forwards plain device/dtype
+    positionals, so channels-last must be applied to the wrapped module
+    (``model.model``), never the descriptor. Faked torch/spandrel modules
+    reproduce the strict behavior without a GPU stack.
+    """
+
+    def _install_fakes(self, monkeypatch):
+        import sys
+        import types
+        from unittest.mock import MagicMock
+
+        wrapped_to_calls = []
+
+        torch_stub = MagicMock(name="torch")
+        torch_stub.cuda.is_available.return_value = True
+        torch_stub.device.side_effect = lambda spec: f"device({spec})"
+        torch_stub.channels_last = "channels-last-sentinel"
+
+        class _FakeDescriptorBase:
+            pass
+
+        class _StrictDescriptor(_FakeDescriptorBase):
+            scale = 4
+            architecture = "fake"
+
+            def __init__(self):
+                self.model = MagicMock(name="wrapped_nn_module")
+                self.model.parameters.return_value = []
+                self.model.to.side_effect = lambda *a, **k: (
+                    wrapped_to_calls.append((a, k)) or self.model
+                )
+
+            def to(self, *args, **kwargs):
+                if kwargs:
+                    raise TypeError(
+                        f"to() got unexpected keyword arguments {list(kwargs)}"
+                    )
+                return self
+
+            def eval(self):
+                return self
+
+        class _FakeLoader:
+            def __init__(self, device=None):
+                pass
+
+            def load_from_file(self, path):
+                return _StrictDescriptor()
+
+        spandrel_stub = types.ModuleType("spandrel")
+        spandrel_stub.ImageModelDescriptor = _FakeDescriptorBase
+        spandrel_stub.ModelLoader = _FakeLoader
+
+        monkeypatch.setitem(sys.modules, "torch", torch_stub)
+        monkeypatch.setitem(sys.modules, "spandrel", spandrel_stub)
+        return wrapped_to_calls
+
+    def test_channels_last_goes_to_wrapped_module(self, tmp_path, monkeypatch):
+        from esr.manager import ESRConfig, ESRUpscaler
+
+        ESRUpscaler.reset()
+        try:
+            wrapped_calls = self._install_fakes(monkeypatch)
+            weights = tmp_path / "fake.pth"
+            weights.write_bytes(b"fake")
+            cfg = ESRConfig(enabled=True, model_path=str(weights), channels_last=True)
+            ESRUpscaler.get(cfg)._ensure_loaded()  # must not raise
+            assert wrapped_calls, "wrapped module .to() was never called"
+            _, kwargs = wrapped_calls[0]
+            assert kwargs.get("memory_format") == "channels-last-sentinel"
+        finally:
+            ESRUpscaler.reset()
+
+    def test_channels_last_off_touches_nothing(self, tmp_path, monkeypatch):
+        from esr.manager import ESRConfig, ESRUpscaler
+
+        ESRUpscaler.reset()
+        try:
+            wrapped_calls = self._install_fakes(monkeypatch)
+            weights = tmp_path / "fake.pth"
+            weights.write_bytes(b"fake")
+            cfg = ESRConfig(enabled=True, model_path=str(weights), channels_last=False)
+            ESRUpscaler.get(cfg)._ensure_loaded()  # must not raise
+            assert wrapped_calls == []
+        finally:
+            ESRUpscaler.reset()
