@@ -104,6 +104,11 @@ def read_images_with_labels(
     # Ordered data.yaml names (list) or id->name mapping, used ONLY to
     # recover a kept box's original label name (true keep, no model call).
     orig_names=None,
+    # Shared stem -> {"reason": str} map of failed images, guarded by the
+    # completed_lock convention and snapshotted by save_under_locks. A
+    # batch containing an uncompleted failure is never marked done, so a
+    # resumed run re-enters it. None disables tracking (tests callers).
+    failed_images=None,
 ):
     """
     Re-label every bounding box in every image with a model-predicted class.
@@ -164,6 +169,10 @@ def read_images_with_labels(
         esr_target_long_edge=(esr_settings or {}).get("esr_target_long_edge"),
         esr_for_crops=(esr_settings or {}).get("esr_for_crops"),
     )
+    if failed_images is None:
+        failed_images = {}
+    # completed_lock (created below, always non-None here) guards
+    # failed_images too, same convention as completed_images.
     # Staging vs final output: in-progress batches live under
     # <output>/batches/batch_XXXX/; <output>/labels/ is reserved for the final
     # flattened YOLO labels written after all batches finish. Legacy runs
@@ -362,6 +371,7 @@ def read_images_with_labels(
                         esr_settings=esr_settings,
                         dump_vlm_crops=dump_vlm_crops,
                         orig_names=orig_names,
+                        failed_images=failed_images,
                     )
                     if img is not None:
                         last_img = img
@@ -378,6 +388,24 @@ def read_images_with_labels(
                     raise
                 except Exception as e:
                     logger.exception(f"Unexpected error processing {img_file}: {e}")
+                    if not dry_run and checkpoint is not None:
+                        # An unexpected per-image crash must be retried on
+                        # resume like any other failure (never silently
+                        # skipped, never marking the batch done below).
+                        _stem = Path(img_file).stem
+                        with completed_lock:
+                            failed_images[_stem] = {
+                                "reason": f"unexpected error: {e}"[:300]
+                            }
+                        checkpoint.save_under_locks(
+                            completed_images,
+                            completed_lock,
+                            class_map,
+                            class_map_lock,
+                            batches_done,
+                            _run_settings,
+                            failed_images,
+                        )
         else:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
@@ -418,6 +446,7 @@ def read_images_with_labels(
                         esr_settings=esr_settings,
                         dump_vlm_crops=dump_vlm_crops,
                         orig_names=orig_names,
+                        failed_images=failed_images,
                     ): img_file
                     for img_file in batch_images
                 }
@@ -443,25 +472,59 @@ def read_images_with_labels(
                         logger.exception(
                             f"Processing {img_file} raised an exception: {e}"
                         )
+                        if not dry_run and checkpoint is not None:
+                            _stem = Path(img_file).stem
+                            with completed_lock:
+                                failed_images[_stem] = {
+                                    "reason": f"unexpected error: {e}"[:300]
+                                }
+                            checkpoint.save_under_locks(
+                                completed_images,
+                                completed_lock,
+                                class_map,
+                                class_map_lock,
+                                batches_done,
+                                _run_settings,
+                                failed_images,
+                            )
                 if not dry_run and auto_save is not None:
                     auto_save()
 
         # Whole batch finished (every image in it either processed just now
         # or already marked completed earlier) -> record it so a resumed run
         # can skip this batch's folder entirely without re-checking images.
-        # Never mark a batch done when the server breaker tripped or any
-        # server-class failure happened inside it: some of its images were
-        # never classified, and per-image checkpointing already covers the
-        # ones that were, so a resumed run re-enters this batch safely.
+        # Never mark a batch done when the server breaker tripped, any
+        # server-class failure happened inside it, or any of its images is
+        # a recorded uncompleted failure: some of its images were never
+        # classified, and per-image checkpointing already covers the ones
+        # that were, so a resumed run re-enters this batch safely.
         if abort_on_server_down:
             failure_tracker.check_and_raise(f"batch {batch_idx}")
+        _batch_stems = [Path(f).stem for f in batch_images]
+        with completed_lock:
+            _batch_failed = [
+                s
+                for s in _batch_stems
+                if s in failed_images and s not in completed_images
+            ]
         if not dry_run and checkpoint is not None:
-            if failure_tracker.total > failures_before_batch:
-                logger.warning(
-                    f"Batch {batch_idx}: {failure_tracker.total - failures_before_batch} "
-                    "server failure(s) seen -- checkpointing finished images "
-                    "but NOT marking the batch done (will be re-entered on resume)."
-                )
+            if failure_tracker.total > failures_before_batch or _batch_failed:
+                if _batch_failed and not (
+                    failure_tracker.total > failures_before_batch
+                ):
+                    logger.warning(
+                        f"Batch {batch_idx}: {len(_batch_failed)} image(s) "
+                        f"failed ({', '.join(_batch_failed[:5])}"
+                        f"{'...' if len(_batch_failed) > 5 else ''}) -- "
+                        "checkpointing finished images but NOT marking the "
+                        "batch done (failures will be retried on resume)."
+                    )
+                else:
+                    logger.warning(
+                        f"Batch {batch_idx}: {failure_tracker.total - failures_before_batch} "
+                        "server failure(s) seen -- checkpointing finished images "
+                        "but NOT marking the batch done (will be re-entered on resume)."
+                    )
                 # Snapshot + write happen atomically inside save_under_locks
                 # (live refs passed, locks acquired there in fixed order).
                 checkpoint.save_under_locks(
@@ -471,6 +534,7 @@ def read_images_with_labels(
                     class_map_lock,
                     batches_done,
                     _run_settings,
+                    failed_images,
                 )
             else:
                 with completed_lock:
@@ -482,6 +546,7 @@ def read_images_with_labels(
                     class_map_lock,
                     batches_done,
                     _run_settings,
+                    failed_images,
                 )
 
     return last_img

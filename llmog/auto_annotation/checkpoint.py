@@ -12,6 +12,13 @@ The checkpoint records:
   - batches_done:     batch indices that are fully finished, so a
                        resumed run can skip a whole batch folder without
                        even checking each image inside it individually
+  - failed_images:    stem -> {"reason": str} for images that failed
+                       (read errors, server/model failures, write
+                       failures). A resumed run ALWAYS retries these --
+                       even when a stale output file exists (the legacy
+                       --resume file check is bypassed for them) -- and a
+                       batch containing one is never marked done. Entries
+                       are cleared the moment the image completes.
   - run_settings:     fingerprint of the label-affecting settings that
                        produced the finished labels (crop padding/context/
                        resize, size filter, model, resolution, class mode).
@@ -88,6 +95,9 @@ def validate_checkpoint_data(data):
                 )
     if not isinstance(batches, list):
         errors.append("batches_done is not a list")
+    failed = data.get("failed_images", {})
+    if not isinstance(failed, dict):
+        warnings.append("failed_images is not an object (failed retry list skipped)")
     rs = data.get("run_settings", None)
     if rs is not None and not isinstance(rs, dict):
         warnings.append("run_settings is not an object (settings check skipped)")
@@ -185,6 +195,7 @@ class CheckpointManager:
             data.setdefault("completed_images", [])
             data.setdefault("class_map", {})
             data.setdefault("batches_done", [])
+            data.setdefault("failed_images", {})
             # Normalize class_map ids to int (JSON keeps them numeric, but
             # hand-edited checkpoints may store strings).
             try:
@@ -212,25 +223,63 @@ class CheckpointManager:
             )
             return None
 
-    def save(self, completed_images, class_map, batches_done, run_settings=None):
+    def _carried_keys(self):
+        """Best-effort read of keys a None param must preserve.
+
+        Returns ``(failed_images, run_settings)`` from the current file
+        (``({}, None)`` when missing/unreadable). Used so a save that only
+        knows part of the state (e.g. an early failure save without the
+        fingerprint) never wipes keys written by an earlier save.
+        """
+        try:
+            with open(self.path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            return {}, None
+        if not isinstance(data, dict):
+            return {}, None
+        failed = data.get("failed_images", {})
+        if not isinstance(failed, dict):
+            failed = {}
+        run_settings = data.get("run_settings")
+        if not isinstance(run_settings, dict):
+            run_settings = None
+        return failed, run_settings
+
+    def save(
+        self,
+        completed_images,
+        class_map,
+        batches_done,
+        run_settings=None,
+        failed_images=None,
+    ):
         """completed_images / batches_done: iterables (sets are fine).
 
         ``run_settings``: optional fingerprint dict (see
-        :func:`build_run_settings`); omitted when None so old callers and
-        old checkpoint files keep working.
+        :func:`build_run_settings`); ``failed_images``: optional
+        stem -> {"reason": str} mapping. A None value carries over what the
+        current file holds (so partial saves never wipe keys), instead of
+        clearing it.
 
         NOTE: not atomic across threads by itself -- it only serializes the
         file write. Threaded callers must use :meth:`save_under_locks` so a
         stale snapshot cannot overwrite newer progress.
         """
         with self._lock:
+            carried_failed, carried_settings = self._carried_keys()
             payload = {
                 "completed_images": sorted(completed_images),
                 "class_map": dict(class_map),
                 "batches_done": sorted(batches_done),
+                "failed_images": (
+                    dict(failed_images) if failed_images is not None else carried_failed
+                ),
             }
             if run_settings is not None:
                 payload["run_settings"] = dict(run_settings)
+            elif carried_settings is not None:
+                payload["run_settings"] = carried_settings
             self._write_payload(payload)
 
     def _write_payload(self, payload):
@@ -250,6 +299,7 @@ class CheckpointManager:
         class_map_lock,
         batches_done,
         run_settings=None,
+        failed_images=None,
     ):
         """Snapshot shared run state and persist it atomically.
 
@@ -258,6 +308,12 @@ class CheckpointManager:
         concurrent worker cannot slip a newer snapshot+write in between and
         get wiped by a stale one (which would lose progress and burn new
         class ids already written into label files).
+
+        ``failed_images`` is a shared stem -> {"reason": str} dict guarded
+        by ``completed_lock`` (same convention as ``completed_images``);
+        it is snapshotted alongside everything else, so a recorded failure
+        can never be lost by a concurrent success save. Pass None to carry
+        over what the file holds.
 
         Callers must NOT hold completed_lock/class_map_lock when calling
         (they are acquired here; re-acquiring would deadlock since
@@ -274,14 +330,25 @@ class CheckpointManager:
                 completed_snapshot = set(completed_images or ())
                 class_map_snapshot = dict(class_map or {})
                 batches_snapshot = set(batches_done or ())
+                failed_snapshot = (
+                    dict(failed_images) if failed_images is not None else None
+                )
                 with self._lock:
+                    carried_failed, carried_settings = self._carried_keys()
                     payload = {
                         "completed_images": sorted(completed_snapshot),
                         "class_map": class_map_snapshot,
                         "batches_done": sorted(batches_snapshot),
+                        "failed_images": (
+                            failed_snapshot
+                            if failed_snapshot is not None
+                            else carried_failed
+                        ),
                     }
                     if run_settings is not None:
                         payload["run_settings"] = dict(run_settings)
+                    elif carried_settings is not None:
+                        payload["run_settings"] = carried_settings
                     self._write_payload(payload)
             finally:
                 if class_map_lock is not None:

@@ -1,5 +1,6 @@
 """Server-failure safety: no fake-empty labels, abort on dead/OOM server."""
 
+import json
 import threading
 
 import pytest
@@ -102,7 +103,9 @@ def _call_process_one_image(monkeypatch, tmp_path, img_file, fail=None, **kw):
     calls = {"saves": []}
 
     class FakeCheckpoint:
-        def save(self, completed, class_map, batches, run_settings=None):
+        def save(
+            self, completed, class_map, batches, run_settings=None, failed_images=None
+        ):
             calls["saves"].append((set(completed), dict(class_map), set(batches)))
 
         def save_under_locks(
@@ -113,6 +116,7 @@ def _call_process_one_image(monkeypatch, tmp_path, img_file, fail=None, **kw):
             class_map_lock,
             batches_done,
             run_settings=None,
+            failed_images=None,
         ):
             self.save(
                 set(completed_images or ()),
@@ -271,7 +275,14 @@ class TestKeepRegistersUnknownId:
         saves = []
 
         class FakeCheckpoint:
-            def save(self, completed, class_map, batches, run_settings=None):
+            def save(
+                self,
+                completed,
+                class_map,
+                batches,
+                run_settings=None,
+                failed_images=None,
+            ):
                 saves.append(dict(run_settings or {}))
 
             def save_under_locks(
@@ -282,6 +293,7 @@ class TestKeepRegistersUnknownId:
                 class_map_lock,
                 batches_done,
                 run_settings=None,
+                failed_images=None,
             ):
                 self.save(
                     set(completed_images or ()),
@@ -454,10 +466,14 @@ class TestBatchRunnerAbort:
                 max_consecutive_failures=2,
                 abort_on_server_down=True,
             )
-        # Nothing completed, no batch marked done, no checkpoint file.
+        # Nothing completed, no batch marked done. The checkpoint file exists
+        # but carries ONLY failure records (no progress): a resumed run
+        # retries exactly the failed images.
         assert completed == set()
         assert batches == set()
-        assert not (out / ".checkpoint.json").exists()
+        data = json.loads((out / ".checkpoint.json").read_text())
+        assert data["completed_images"] == [] and data["batches_done"] == []
+        assert set(data["failed_images"]) == {"img0", "img1"}
 
     def test_abort_disabled_leaves_images_unmarked(self, tmp_path, monkeypatch):
         from auto_annotation.batch_runner import read_images_with_labels

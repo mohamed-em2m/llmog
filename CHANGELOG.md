@@ -6,6 +6,20 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-10-03
+
+### Fixed
+- Failed images are now recorded in `.checkpoint.json` (`failed_images`:
+  stem -> reason) and ALWAYS retried on resume: previously a failed sample
+  that left a stale/partial output file was skipped by the legacy `--resume`
+  file check, and a batch containing an uncompleted non-server failure was
+  still marked done -- both silently dropped failures. The failed set
+  bypasses the file check, blocks whole-batch completion, clears the moment
+  an image succeeds, and survives concurrent saves (snapshotted under the
+  fixed lock order; partial saves carry keys over instead of wiping them).
+  Batch jobs record `failed_stems` too, and the done-gate tells exactly how
+  to resubmit for them (remove `.batch_job.json`; finished images skip).
+
 ## [1.5.0] - 2026-10-03
 
 ### Added

@@ -184,6 +184,7 @@ def main(args=None):
     checkpoint = CheckpointManager(args.output_folder)
     completed_images = set()
     batches_done = set()
+    failed_images: dict = {}
     checkpoint_data = None
     # Legacy --resume skips images whose output file already exists -- but
     # --no_auto_resume just cleared the checkpoint while leaving
@@ -217,6 +218,23 @@ def main(args=None):
         }
         completed_images = set(checkpoint_data.get("completed_images", []))
         batches_done = set(checkpoint_data.get("batches_done", []))
+        _failed_raw = checkpoint_data.get("failed_images", {})
+        failed_images = (
+            {str(k): v for k, v in dict(_failed_raw).items()}
+            if isinstance(_failed_raw, dict)
+            else {}
+        )
+        # A completed image is never failed (clear stale entries left by
+        # hand-edited checkpoints or older versions).
+        for _done_stem in completed_images:
+            failed_images.pop(_done_stem, None)
+        if failed_images:
+            logger.warning(
+                f"Auto-resume: {len(failed_images)} image(s) failed on "
+                f"previous run(s) and will be retried: "
+                f"{sorted(failed_images)[:5]}"
+                f"{'...' if len(failed_images) > 5 else ''}."
+            )
         # Start from the checkpoint verbatim -- ids stay exactly as written.
         class_map = dict(sorted(checkpoint_class_map.items(), key=lambda kv: kv[1]))
         # ---- Consistency check: data.yaml vs checkpoint ----------------------
@@ -430,6 +448,7 @@ def main(args=None):
                 # yaml_names is the ORIGINAL data.yaml order (pre-checkpoint
                 # re-sync), i.e. what numeric ids meant in the input labels.
                 orig_names=yaml_names,
+                failed_images=failed_images,
             )
         else:
             read_images_with_labels(
@@ -480,6 +499,7 @@ def main(args=None):
                 # yaml_names is the ORIGINAL data.yaml order (pre-checkpoint
                 # re-sync), i.e. what numeric ids meant in the input labels.
                 orig_names=yaml_names,
+                failed_images=failed_images,
             )
     except ServerDownError as e:
         # The inference server died/OOMed mid-run. Progress up to the failure

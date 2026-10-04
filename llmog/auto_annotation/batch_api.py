@@ -967,6 +967,9 @@ def finalize_batch_job(
     # Ordered data.yaml names (list) or id->name mapping, used ONLY to
     # recover a kept box's original label name (true keep, no model call).
     orig_names=None,
+    # Shared stem -> {"reason": str} map of failed images (recorded on
+    # provider-failed images, cleared on success). None disables tracking.
+    failed_images=None,
 ):
     """Download the batch output and write YOLO labels (online-path semantics).
 
@@ -1104,6 +1107,7 @@ def finalize_batch_job(
     manifest_path = Path(output_folder) / SKIPPED_MANIFEST
 
     finalized = 0
+    failed_stems: list = []
     for stem, entry in stems.items():
         img_file = entry.get("img_file", stem)
         sent = entry.get("sent", {})
@@ -1226,6 +1230,13 @@ def finalize_batch_job(
             )
             stats.incr("images_failed_server")
             stats.log_progress(img_file)
+            if failed_images is not None:
+                failed_images[stem] = {
+                    "reason": (
+                        f"all {failed_this_image} batch box(es) failed at the provider"
+                    )
+                }
+            failed_stems.append(stem)
             continue
 
         if not new_label_lines and skipped_small > 0 and drop_small_images:
@@ -1265,6 +1276,8 @@ def finalize_batch_job(
 
         if checkpoint is not None and completed_images is not None:
             completed_images.add(stem)
+            if failed_images is not None:
+                failed_images.pop(stem, None)
         finalized += 1
         stats.log_progress(img_file)
 
@@ -1276,13 +1289,24 @@ def finalize_batch_job(
             dict(class_map),
             set(batches_done or set()),
             job.get("run_settings"),
+            failed_images,
         )
 
     job["phase"] = "done"
     job["finalized"] = finalized
+    job["failed_stems"] = sorted(set(failed_stems))
     job["output_file_id"] = output_file_id
     job["class_map"] = dict(class_map)
     save_job(output_folder, job)
+    if failed_stems:
+        logger.warning(
+            f"Batch {batch_id} finalized with {len(set(failed_stems))} failed "
+            f"image(s) ({', '.join(sorted(set(failed_stems))[:5])}"
+            f"{'...' if len(set(failed_stems)) > 5 else ''}): they are "
+            "recorded in the checkpoint and will be picked up by a fresh "
+            f"submit (remove {output_folder}/{JOB_FILENAME} and resubmit; "
+            "finished images are skipped automatically)."
+        )
     logger.info(
         f"Batch {batch_id} finalized: {finalized}/{len(stems)} image(s) written. "
         "Run the normal end-of-run steps (yaml sync + flatten) to finish."
@@ -1305,6 +1329,10 @@ def run_batch_api_flow(
     # Ordered data.yaml names (list) or id->name mapping, used ONLY to
     # recover a kept box's original label name at finalize time.
     orig_names=None,
+    # Shared stem -> {"reason": str} map of failed images (same convention
+    # as the online path: recorded failures are retried on resume, cleared
+    # on success). None disables tracking.
+    failed_images=None,
 ):
     """Driver for ``--use_batch_api``: submit and/or poll+finalize per mode."""
     from auto_annotation.stats import RunStats  # noqa: F401  (docs: stats type)
@@ -1379,6 +1407,7 @@ def run_batch_api_flow(
             if isinstance(_done_n, int)
             else " (finalized before result counts were recorded)"
         )
+        _failed = [s for s in (job.get("failed_stems") or [])]
         if _done_n == 0:
             logger.warning(
                 f"Saved batch {job.get('batch_id')} is finalized BUT produced "
@@ -1386,6 +1415,15 @@ def run_batch_api_flow(
                 "to resume; remove "
                 f"{output_folder}/{JOB_FILENAME} (and use --no_auto_resume if "
                 "you also want to redo finished images) to submit a fresh job."
+            )
+        elif _failed:
+            logger.warning(
+                f"Saved batch {job.get('batch_id')} is finalized{_done_note}, "
+                f"BUT {len(_failed)} image(s) failed ({', '.join(_failed[:5])}"
+                f"{'...' if len(_failed) > 5 else ''}). Re-polling cannot fix "
+                "them (provider results are fixed); remove "
+                f"{output_folder}/{JOB_FILENAME} and resubmit -- finished "
+                "images are skipped automatically, failed ones retried."
             )
         else:
             logger.info(
@@ -1574,6 +1612,7 @@ def run_batch_api_flow(
         completed_images=completed_images,
         batches_done=batches_done,
         orig_names=orig_names,
+        failed_images=failed_images,
     )
     # Sync newly discovered classes back so the yaml sync + final log see them.
     try:

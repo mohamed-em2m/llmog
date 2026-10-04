@@ -84,6 +84,13 @@ def process_one_image(
     # recover a kept box's original label name (true keep, no model call).
     # None (tests/legacy callers) keeps the previous synthetic-name behavior.
     orig_names=None,
+    # Shared stem -> {"reason": str} map of failed images, guarded by
+    # completed_lock (same convention as completed_images). A resumed run
+    # ALWAYS retries these stems -- even when a stale output file exists
+    # (the legacy --resume file check is bypassed for them). Entries are
+    # cleared the moment the image completes. None disables tracking
+    # (tests/legacy callers).
+    failed_images=None,
 ):
     """Relabel every box in a single image. Thread-safe w.r.t. class_map and stats.
 
@@ -99,6 +106,62 @@ def process_one_image(
     img_stem = Path(img_file).stem
     label_path = os.path.join(train_label, img_stem + ".txt")
 
+    def _failed_contains():
+        """Whether this stem is a recorded failure (lock-guarded read)."""
+        if failed_images is None:
+            return False
+        if completed_lock is not None:
+            with completed_lock:
+                return img_stem in failed_images
+        return img_stem in failed_images
+
+    def _persist_failed_state(run_settings=None):
+        """Persist progress incl. the shared failed set (no-op on dry run).
+
+        Thread-safety comes from save_under_locks (snapshots under the
+        fixed lock order); callers must NOT hold locks when calling.
+        """
+        if checkpoint is None or dry_run:
+            return
+        checkpoint.save_under_locks(
+            completed_images,
+            completed_lock,
+            class_map,
+            class_map_lock,
+            batches_done,
+            run_settings,
+            failed_images,
+        )
+
+    def _record_failure(reason):
+        """Mark this image failed (retried on resume) and persist.
+
+        No-op when tracking is disabled (failed_images=None, tests/legacy
+        callers) or on dry runs: those paths keep the historical
+        write-nothing-on-failure behavior exactly.
+        """
+        if failed_images is None or dry_run:
+            return
+        if completed_lock is not None:
+            with completed_lock:
+                failed_images[img_stem] = {"reason": str(reason)[:300]}
+        else:
+            failed_images[img_stem] = {"reason": str(reason)[:300]}
+        logger.warning(
+            f"{img_file}: recorded as failed ({reason}) -- will be retried on resume."
+        )
+        _persist_failed_state()
+
+    def _clear_failure():
+        """Drop this image from the failed set (it completed)."""
+        if failed_images is None:
+            return
+        if completed_lock is not None:
+            with completed_lock:
+                failed_images.pop(img_stem, None)
+        else:
+            failed_images.pop(img_stem, None)
+
     # Check existence FIRST (before touching the file at all). Previously the
     # code tried to open() the label file before this check, so a genuinely
     # missing label file raised inside the try/except and got miscounted as
@@ -108,6 +171,7 @@ def process_one_image(
         logger.warning(f"Label file not found for {img_file}: {label_path}")
         stats.incr("images_skipped_no_label")
         stats.log_progress(img_file)
+        _record_failure(f"label file not found: {label_path}")
         return None
 
     if inplace_saving:
@@ -143,17 +207,26 @@ def process_one_image(
     # mode -- the "output" file is the very input file we just confirmed
     # exists, so every image would be skipped. Auto-resume (via the
     # checkpoint, above) is what actually tracks completion in that mode.
+    # Recorded failures ALWAYS bypass this skip: a stale/partial output file
+    # from a failed run must never count as done.
     if resume and not inplace_saving and label_out_path.exists():
-        logger.info(f"Skipping {img_file} (already relabeled, --resume).")
-        stats.incr("images_skipped_resume")
-        stats.log_progress(img_file)
-        return None
+        if _failed_contains():
+            logger.info(
+                f"Retrying {img_file} (failed on a previous run; ignoring "
+                "the stale output file)."
+            )
+        else:
+            logger.info(f"Skipping {img_file} (already relabeled, --resume).")
+            stats.incr("images_skipped_resume")
+            stats.log_progress(img_file)
+            return None
 
     img = cv2.imread(img_path)
     if img is None:
         logger.error(f"Could not read image {img_path}, skipping.")
         stats.incr("images_failed_read")
         stats.log_progress(img_file)
+        _record_failure(f"could not read image {img_path}")
         return None
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     h, w, _ = img.shape
@@ -264,6 +337,7 @@ def process_one_image(
         logger.error(f"Failed to read label file {label_path}: {e}")
         stats.incr("images_failed_read")
         stats.log_progress(img_file)
+        _record_failure(f"failed to read label file {label_path}: {e}")
         return None
 
     logger.debug(f"{img_file}: label file has {len(lines)} line(s) -> {label_path}")
@@ -528,8 +602,14 @@ def process_one_image(
                         f"({img_file})."
                     )
                     if tripped and abort_on_server_down:
-                        # Abort immediately: no label file, no checkpoint update.
-                        # The batch runner catches this and stops the whole run.
+                        # Abort immediately: no label file, no checkpoint
+                        # update. Record the failure FIRST so a resumed run
+                        # retries this image (the batch runner catches the
+                        # raise below and stops the whole run).
+                        _record_failure(
+                            "inference server dead/OOM during "
+                            f"{img_file} -- run aborted"
+                        )
                         logger.error(
                             f"Server appears dead/OOM during {img_file}; aborting run."
                         )
@@ -650,6 +730,9 @@ def process_one_image(
         )
         stats.incr("images_failed_server")
         stats.log_progress(img_file)
+        _record_failure(
+            f"{server_failures_this_image} server failure(s), nothing classified"
+        )
         if failure_tracker is not None and abort_on_server_down:
             # Another thread may have tripped the breaker meanwhile.
             failure_tracker.check_and_raise(img_file)
@@ -671,6 +754,7 @@ def process_one_image(
         )
         stats.incr("images_failed_unclassified")
         stats.log_progress(img_file)
+        _record_failure(f"{failed_boxes_this_image} box(es) failed with model errors")
         return None
 
     if not new_label_lines and small_skipped_this_image > 0 and drop_small_images:
@@ -709,6 +793,7 @@ def process_one_image(
                     completed_images.add(img_stem)
             else:
                 completed_images.add(img_stem)
+            _clear_failure()
             # Snapshot + write atomically (see save_under_locks): a bare
             # save() here could overwrite a newer worker's progress.
             checkpoint.save_under_locks(
@@ -718,6 +803,7 @@ def process_one_image(
                 class_map_lock,
                 batches_done,
                 _run_settings,
+                failed_images,
             )
         stats.log_progress(img_file)
         return img
@@ -767,6 +853,9 @@ def process_one_image(
         )
         stats.incr("images_failed_server")
         stats.log_progress(img_file)
+        _record_failure(
+            f"{server_failures_this_image} server failure(s); partial result kept"
+        )
         if failure_tracker is not None and abort_on_server_down:
             failure_tracker.check_and_raise(img_file)
         return img
@@ -777,6 +866,7 @@ def process_one_image(
                 completed_images.add(img_stem)
         else:
             completed_images.add(img_stem)
+        _clear_failure()
         checkpoint.save_under_locks(
             completed_images,
             completed_lock,
@@ -784,6 +874,7 @@ def process_one_image(
             class_map_lock,
             batches_done,
             _run_settings,
+            failed_images,
         )
     elif not write_ok:
         # Don't silently mark progress for an image whose label file failed
@@ -792,6 +883,7 @@ def process_one_image(
         logger.warning(
             f"{img_file}: label write failed, NOT marking as completed in checkpoint."
         )
+        _record_failure("label file write failed")
 
     stats.log_progress(img_file)
     return img
