@@ -534,7 +534,7 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
         "--recls-context",
         dest="recls_context",
         type=str,
-        default="crop",
+        default="full_som",
         choices=["crop", "full_som"],
         help="What the VLM sees per box: 'crop' sends the (padded) crop; "
         "'full_som' sends the full scene with the box highlighted/numbered.",
@@ -1031,7 +1031,7 @@ def parse_args(argv=None) -> argparse.Namespace:
         parser.error("--crop_padding_pct must be >= 0 (0 = exact-box crop)")
     if getattr(args, "recls_context", None) not in ("crop", "full_som"):
         if getattr(args, "recls_context", None) is None:
-            args.recls_context = "crop"
+            args.recls_context = "full_som"
         else:
             parser.error("--recls_context must be 'crop' or 'full_som'")
     _ratio = getattr(args, "crop_resize_ratio", None)

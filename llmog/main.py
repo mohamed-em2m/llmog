@@ -522,7 +522,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--recls-context",
         dest="recls_context",
         choices=["crop", "full_som"],
-        default="crop",
+        default="full_som",
         help="What the VLM sees per auto_label box: 'crop' sends the (padded) "
         "crop; 'full_som' sends the full scene with the box highlighted and "
         "numbered, asking the model to classify only the marked box (more "

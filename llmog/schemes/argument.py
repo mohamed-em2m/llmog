@@ -207,7 +207,7 @@ class PipelineConfig(BaseModel):
     # "full_som" sends the FULL scene with the box highlighted/numbered and a
     # directive to classify only the marked box. Full images cost more tokens
     # per request -- relevant for batch payload sizes on metered providers.
-    recls_context: Literal["crop", "full_som"] = "crop"
+    recls_context: Literal["crop", "full_som"] = "full_som"
     # Ratio resize for the VLM crop (crop mode only): scale the (padded) crop
     # by this factor (1.5 = 150%, LANCZOS, aspect preserved, no letterbox
     # bars) instead of the fixed height x width letterbox. The long edge is
