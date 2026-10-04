@@ -6,7 +6,7 @@ versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [1.4.5] - 2026-10-03
+## [1.5.1] - 2026-10-03
 
 ### Fixed
 - Failed images are now recorded in `.checkpoint.json` (`failed_images`:
